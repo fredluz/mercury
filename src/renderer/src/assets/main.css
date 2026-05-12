@@ -4736,7 +4736,9 @@ body {
   min-height: 0;
   padding: 28px;
   overflow: auto;
-  background: var(--bg-primary);
+  background:
+    linear-gradient(180deg, rgba(0, 63, 122, 0.045), transparent 220px),
+    var(--bg-primary);
 }
 
 .trace-lab-header {
@@ -4749,8 +4751,42 @@ body {
 .trace-lab-header h2 {
   margin: 0 0 6px;
   color: var(--text-primary);
-  font-size: 28px;
+  font-size: 34px;
   line-height: 1.1;
+}
+
+.trace-lab-subtitle {
+  max-width: 600px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.trace-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.trace-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-secondary), white 18%);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.trace-mode-badge svg {
+  color: var(--accent-text);
 }
 
 .trace-eyebrow {
@@ -4769,11 +4805,12 @@ body {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-secondary);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.04);
 }
 
 .trace-metric {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto 1fr auto;
   gap: 3px 10px;
   padding: 16px;
   border-right: 1px solid var(--border);
@@ -4785,6 +4822,11 @@ body {
 
 .trace-metric svg {
   grid-row: span 2;
+  width: 34px;
+  height: 34px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--accent-subtle);
   color: var(--accent-text);
 }
 
@@ -4794,15 +4836,16 @@ body {
 }
 
 .trace-metric strong {
+  grid-column: 2 / 4;
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: 22px;
 }
 
 .trace-workbench {
   display: grid;
-  grid-template-columns: minmax(240px, 300px) minmax(420px, 1fr) minmax(
-      300px,
-      360px
+  grid-template-columns: minmax(250px, 320px) minmax(0, 1fr) minmax(
+      310px,
+      380px
     );
   gap: 16px;
   align-items: start;
@@ -4815,6 +4858,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-secondary);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.045);
 }
 
 .trace-run-list,
@@ -4866,7 +4910,9 @@ body {
 
 .trace-run-row.active {
   border-color: var(--border-focus);
-  background: var(--accent-subtle);
+  background:
+    linear-gradient(90deg, var(--accent-subtle), transparent), var(--bg-primary);
+  box-shadow: inset 3px 0 0 var(--accent-text);
 }
 
 .trace-run-row span,
@@ -4923,15 +4969,169 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+.trace-detail-title > div,
+.trace-section-title > div {
+  min-width: 0;
+}
+
 .trace-status-pill,
 .trace-event-type,
 .skill-training-row span {
   width: fit-content;
   padding: 5px 9px;
-  border-radius: 999px;
+  border-radius: 8px;
   font-size: 11px;
   font-weight: 700;
   text-transform: capitalize;
+}
+
+.trace-run-map {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  background:
+    radial-gradient(circle at 18% 8%, rgba(0, 106, 205, 0.09), transparent 28%),
+    radial-gradient(
+      circle at 72% 12%,
+      rgba(22, 163, 74, 0.08),
+      transparent 24%
+    ),
+    var(--bg-primary);
+}
+
+.trace-section-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.trace-section-title h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.trace-map-status {
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: capitalize;
+}
+
+.trace-map-status.completed {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.trace-map-status.running {
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+.trace-map-status.failed,
+.trace-map-status.aborted {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.trace-map-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 18px;
+}
+
+.trace-map-step-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.trace-map-step {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  min-height: 138px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-secondary), white 12%);
+}
+
+.trace-map-step.complete {
+  border-color: color-mix(in srgb, var(--accent-text), var(--border) 74%);
+}
+
+.trace-map-step.green.complete {
+  border-color: color-mix(in srgb, var(--success), var(--border) 65%);
+}
+
+.trace-map-step.amber.complete {
+  border-color: color-mix(in srgb, var(--warning), var(--border) 65%);
+}
+
+.trace-map-step.red.complete {
+  border-color: color-mix(in srgb, var(--error), var(--border) 65%);
+}
+
+.trace-map-step-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+.trace-map-step.green .trace-map-step-icon {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.trace-map-step.amber .trace-map-step-icon {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.trace-map-step.red .trace-map-step-icon {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.trace-map-step.neutral .trace-map-step-icon {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+
+.trace-map-step strong {
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.trace-map-step p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.trace-map-step small {
+  align-self: end;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.trace-map-arrow {
+  position: absolute;
+  top: 24px;
+  right: -17px;
+  z-index: 1;
+  color: var(--text-muted);
 }
 
 .trace-facts {
@@ -4964,7 +5164,11 @@ body {
 
 .trace-timeline {
   display: grid;
-  padding: 8px 16px 16px;
+  padding: 14px 16px 16px;
+}
+
+.trace-timeline .trace-section-title {
+  padding-bottom: 8px;
 }
 
 .trace-event-row {
@@ -5021,9 +5225,51 @@ body {
   gap: 12px;
 }
 
+.trace-explainer-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+
+.trace-explainer-card.primary {
+  border-color: color-mix(in srgb, var(--accent-text), var(--border) 70%);
+  background: var(--accent-subtle);
+}
+
+.trace-explainer-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--accent-text);
+}
+
+.trace-explainer-card strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.trace-raw-event {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+
 .event-inspector p,
 .trace-muted,
 .trace-empty p,
+.skill-training-empty p,
 .skill-training-row p {
   margin: 0;
   color: var(--text-secondary);
@@ -5058,6 +5304,27 @@ body {
   gap: 10px;
 }
 
+.skill-training-empty {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+
+.skill-training-empty svg {
+  color: var(--accent-text);
+}
+
+.skill-training-empty strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
 .skill-training-row {
   display: grid;
   gap: 6px;
@@ -5065,6 +5332,26 @@ body {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-primary);
+}
+
+.skill-training-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.skill-score-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+}
+
+.skill-score-track div {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--success);
 }
 
 .trace-empty {
@@ -5098,10 +5385,19 @@ body {
     flex-direction: column;
   }
 
+  .trace-header-actions {
+    justify-content: flex-start;
+  }
+
   .trace-metrics,
   .trace-workbench,
-  .trace-facts {
+  .trace-facts,
+  .trace-map-grid {
     grid-template-columns: 1fr;
+  }
+
+  .trace-map-arrow {
+    display: none;
   }
 
   .trace-metric,

@@ -1,6 +1,6 @@
 # Hermes Desktop Flow Sweep E2E
 
-Date: 2026-05-12T16:05:39.762Z
+Date: 2026-05-12T16:26:04.607Z
 
 ## Configuration
 
@@ -11,11 +11,11 @@ Date: 2026-05-12T16:05:39.762Z
 
 ## Results
 
-- PASS: Boots into Chat with isolated configured Hermes home (/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/hermes-desktop-flow-e2e-Kt9ZoG)
+- PASS: Boots into Chat with isolated configured Hermes home (/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/hermes-desktop-flow-e2e-b4BRTF)
 - PASS: Sidebar exposes all first-class desktop surfaces
 - PASS: OpenCode Go DeepSeek model is active in Chat (deepseek-v4-flash)
 - PASS: Chat sends a real model request and receives the expected reply
-- PASS: Trace store contains a completed run on disk (ad5c1c1f-9a14-4825-b7ea-4f1524fc2e3e)
+- PASS: Trace store contains a completed run on disk (bca058f8-4e3a-4349-89b2-9287f75fa425)
 - PASS: Trace Lab lists the completed chat run with timeline and inspector
 - PASS: Sessions renders and accepts search input
 - PASS: Profiles can create a local agent profile
@@ -33,7 +33,7 @@ Date: 2026-05-12T16:05:39.762Z
 ## Artifacts
 
 - Screenshot: [docs/assets/hermes-desktop-flow-sweep.png](assets/hermes-desktop-flow-sweep.png)
-- Temporary Hermes home used for this run: `/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/hermes-desktop-flow-e2e-Kt9ZoG`
+- Temporary Hermes home used for this run: `/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/hermes-desktop-flow-e2e-b4BRTF`
 
 ## Notes
 

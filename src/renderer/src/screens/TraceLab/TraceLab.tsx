@@ -2,13 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertCircle,
+  ArrowRight,
+  BookOpenCheck,
   BrainCircuit,
   CheckCircle2,
   Clock3,
   Database,
+  FileCode2,
   FileSearch,
   Gauge,
+  HelpCircle,
+  MessageSquareText,
   RefreshCw,
+  Route,
   ShieldCheck,
   Sparkles,
   Wrench,
@@ -47,6 +53,20 @@ const EVENT_ICONS: Record<string, typeof Activity> = {
   "skill.eval": Database,
   "skill.promoted": ShieldCheck,
   "skill.rejected": AlertCircle,
+};
+
+type RunMapStep = {
+  key: string;
+  label: string;
+  caption: string;
+  event?: TraceEvent;
+  icon: typeof Activity;
+  tone: "blue" | "green" | "amber" | "red" | "neutral";
+};
+
+type Narrative = {
+  happened: string;
+  matters: string;
 };
 
 function TraceLab(): React.JSX.Element {
@@ -101,13 +121,31 @@ function TraceLab(): React.JSX.Element {
     <div className="trace-lab">
       <header className="trace-lab-header">
         <div>
-          <p className="trace-eyebrow">Observability</p>
+          <p className="trace-eyebrow">Agent Intelligence</p>
           <h2>Trace Lab</h2>
+          <p className="trace-lab-subtitle">
+            Follow the agent from request to answer, then inspect what it
+            learned for the next run.
+          </p>
         </div>
-        <button className="btn btn-secondary" onClick={load} disabled={loading}>
-          <RefreshCw size={15} />
-          Refresh
-        </button>
+        <div className="trace-header-actions">
+          <span className="trace-mode-badge">
+            <Route size={14} />
+            Run map
+          </span>
+          <span className="trace-mode-badge">
+            <BookOpenCheck size={14} />
+            Skill evaluation
+          </span>
+          <button
+            className="btn btn-secondary"
+            onClick={load}
+            disabled={loading}
+          >
+            <RefreshCw size={15} />
+            Refresh
+          </button>
+        </div>
       </header>
 
       <section className="trace-metrics" aria-label="Trace metrics">
@@ -128,7 +166,7 @@ function TraceLab(): React.JSX.Element {
         />
         <Metric
           icon={BrainCircuit}
-          label="Skill loops"
+          label="Skill reviews"
           value={skillRuns.length}
         />
       </section>
@@ -175,6 +213,8 @@ function TraceLab(): React.JSX.Element {
                 </span>
               </div>
 
+              <RunMap run={selectedRun} />
+
               <div className="trace-facts">
                 <Fact
                   label="Started"
@@ -199,6 +239,10 @@ function TraceLab(): React.JSX.Element {
               </div>
 
               <div className="trace-timeline">
+                <div className="trace-section-title">
+                  <p className="trace-eyebrow">Event Timeline</p>
+                  <h3>Step-by-step evidence</h3>
+                </div>
                 {selectedRun.events.map((event) => (
                   <TraceEventRow
                     key={event.id}
@@ -224,27 +268,48 @@ function TraceLab(): React.JSX.Element {
             </div>
           </div>
 
-          {selectedEvent ? (
-            <EventInspector event={selectedEvent} />
+          {selectedRun && selectedEvent ? (
+            <EventInspector run={selectedRun} event={selectedEvent} />
           ) : (
             <EmptyState title="No event selected" />
           )}
 
-          <section className="skill-training-panel">
+          <section
+            className="skill-training-panel"
+            aria-label="Skill Evaluation"
+          >
             <div className="trace-panel-heading compact">
               <div>
-                <p className="trace-eyebrow">Skill Training</p>
-                <h3>Review queue</h3>
+                <p className="trace-eyebrow">Skill Evaluation</p>
+                <h3>Learning signals</h3>
               </div>
             </div>
 
             {skillRuns.length === 0 ? (
-              <p className="trace-muted">No skill training runs emitted yet.</p>
+              <div className="skill-training-empty">
+                <BrainCircuit size={18} />
+                <div>
+                  <strong>No skill reviews yet</strong>
+                  <p>
+                    When Hermes evaluates a skill, this panel will show the
+                    score, review status, and linked trace.
+                  </p>
+                </div>
+              </div>
             ) : (
               skillRuns.map((run) => (
                 <article className="skill-training-row" key={run.id}>
-                  <span>{run.status}</span>
-                  <strong>{run.skillName}</strong>
+                  <div className="skill-training-row-top">
+                    <span>{run.status}</span>
+                    <strong>{run.skillName}</strong>
+                  </div>
+                  <div className="skill-score-track">
+                    <div
+                      style={{
+                        width: `${Math.round((run.score || 0) * 100)}%`,
+                      }}
+                    />
+                  </div>
                   <p>{run.summary}</p>
                 </article>
               ))
@@ -253,6 +318,46 @@ function TraceLab(): React.JSX.Element {
         </aside>
       </section>
     </div>
+  );
+}
+
+function RunMap({ run }: { run: TraceRun }): React.JSX.Element {
+  const steps = buildRunMap(run);
+  return (
+    <section className="trace-run-map" aria-label="Agent Run Map">
+      <div className="trace-section-title">
+        <div>
+          <p className="trace-eyebrow">Agent Run Map</p>
+          <h3>What Hermes did</h3>
+        </div>
+        <span className={`trace-map-status ${run.status}`}>{run.status}</span>
+      </div>
+
+      <div className="trace-map-grid">
+        {steps.map((step, index) => {
+          const Icon = step.icon;
+          return (
+            <div className="trace-map-step-wrap" key={step.key}>
+              <article
+                className={`trace-map-step ${step.event ? "complete" : "pending"} ${step.tone}`}
+              >
+                <span className="trace-map-step-icon">
+                  <Icon size={16} />
+                </span>
+                <strong>{step.label}</strong>
+                <p>{step.caption}</p>
+                <small>
+                  {step.event ? formatTime(step.event.timestamp) : "Waiting"}
+                </small>
+              </article>
+              {index < steps.length - 1 ? (
+                <ArrowRight className="trace-map-arrow" size={16} />
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -316,14 +421,43 @@ function TraceEventRow({
   );
 }
 
-function EventInspector({ event }: { event: TraceEvent }): React.JSX.Element {
+function EventInspector({
+  run,
+  event,
+}: {
+  run: TraceRun;
+  event: TraceEvent;
+}): React.JSX.Element {
   const metadata = event.metadata ? Object.entries(event.metadata) : [];
+  const narrative = explainEvent(run, event);
   return (
     <section className="event-inspector">
-      <span className={`trace-event-type ${event.type.replace(".", "-")}`}>
-        {event.type}
-      </span>
-      <p>{event.detail || "No additional detail was recorded."}</p>
+      <div className="trace-explainer-card primary">
+        <span className="trace-explainer-icon">
+          <MessageSquareText size={16} />
+        </span>
+        <div>
+          <strong>What happened</strong>
+          <p>{narrative.happened}</p>
+        </div>
+      </div>
+
+      <div className="trace-explainer-card">
+        <span className="trace-explainer-icon">
+          <HelpCircle size={16} />
+        </span>
+        <div>
+          <strong>Why it matters</strong>
+          <p>{narrative.matters}</p>
+        </div>
+      </div>
+
+      <div className="trace-raw-event">
+        <span className={`trace-event-type ${event.type.replace(".", "-")}`}>
+          {event.type}
+        </span>
+        <p>{event.detail || "No additional detail was recorded."}</p>
+      </div>
       <div className="event-metadata">
         {metadata.length === 0 ? (
           <span>No metadata</span>
@@ -338,6 +472,153 @@ function EventInspector({ event }: { event: TraceEvent }): React.JSX.Element {
       </div>
     </section>
   );
+}
+
+function buildRunMap(run: TraceRun): RunMapStep[] {
+  const firstOf = (types: TraceEvent["type"][]): TraceEvent | undefined =>
+    run.events.find((event) => types.includes(event.type));
+  const anyTool = run.events.find((event) => event.type.includes("tool"));
+  const anySkill = run.events.find((event) => event.type.startsWith("skill."));
+  const anyFile =
+    run.events.find((event) =>
+      /file|edit|patch|write/i.test(event.detail || ""),
+    ) || anyTool;
+
+  return [
+    {
+      key: "ask",
+      label: "Ask",
+      caption: "The user's request was captured as the run goal.",
+      event: firstOf(["message.user", "run.started"]),
+      icon: FileSearch,
+      tone: "blue",
+    },
+    {
+      key: "plan",
+      label: "Planning",
+      caption: "Hermes framed the work before acting.",
+      event: firstOf(["run.started"]),
+      icon: Route,
+      tone: "green",
+    },
+    {
+      key: "tools",
+      label: "Tool Calls",
+      caption: anyTool
+        ? "The agent used tools to inspect or change the workspace."
+        : "No tool activity was emitted for this run.",
+      event: anyTool,
+      icon: Wrench,
+      tone: anyTool ? "blue" : "neutral",
+    },
+    {
+      key: "files",
+      label: "Files Edited",
+      caption: anyFile
+        ? "Workspace changes are linked to the trace."
+        : "No file edits were reported in this trace.",
+      event: anyFile,
+      icon: FileCode2,
+      tone: anyFile ? "amber" : "neutral",
+    },
+    {
+      key: "skills",
+      label: "Skill Notes",
+      caption: anySkill
+        ? "A skill signal was captured for evaluation."
+        : "No skill-learning signal was emitted yet.",
+      event: anySkill,
+      icon: BrainCircuit,
+      tone: anySkill ? "green" : "neutral",
+    },
+    {
+      key: "answer",
+      label: "Answer",
+      caption:
+        run.status === "completed"
+          ? "Hermes returned a completed response."
+          : "Hermes has not completed this run yet.",
+      event: firstOf(["run.completed", "run.failed", "run.aborted"]),
+      icon:
+        run.status === "completed"
+          ? CheckCircle2
+          : run.status === "running"
+            ? Activity
+            : AlertCircle,
+      tone:
+        run.status === "completed"
+          ? "green"
+          : run.status === "running"
+            ? "blue"
+            : "red",
+    },
+  ];
+}
+
+function explainEvent(run: TraceRun, event: TraceEvent): Narrative {
+  switch (event.type) {
+    case "run.started":
+      return {
+        happened: `Hermes started a new run for "${run.messagePreview || run.title}".`,
+        matters:
+          "This anchors every later action to one user-visible goal, so the trace can explain the full chain of work.",
+      };
+    case "message.user":
+      return {
+        happened: "The user's request was recorded before the agent acted.",
+        matters:
+          "Keeping the original request next to later actions makes it easier to judge whether the agent stayed on task.",
+      };
+    case "message.agent.delta":
+      return {
+        happened:
+          event.title === "Agent response completed"
+            ? "Hermes finished composing the response shown to the user."
+            : "Hermes streamed part of its response.",
+        matters:
+          "Response events connect the final answer back to the decisions and tool activity that produced it.",
+      };
+    case "tool.progress":
+      return {
+        happened: event.detail || "Hermes reported progress from a tool call.",
+        matters:
+          "Tool events show when the agent touched external systems, files, commands, or project context.",
+      };
+    case "usage.recorded":
+      return {
+        happened: "Token and cost usage were attached to the run.",
+        matters:
+          "Usage data helps compare expensive runs with the quality and learning value they produced.",
+      };
+    case "run.completed":
+      return {
+        happened: "Hermes marked the run as completed.",
+        matters:
+          "Completed runs can be reviewed as examples for skill evaluation, regression checks, and future training notes.",
+      };
+    case "run.failed":
+    case "run.aborted":
+      return {
+        happened: "Hermes stopped before a successful completion.",
+        matters:
+          "Failed traces are useful training material because they show where the agent or tools need better recovery behavior.",
+      };
+    case "skill.used":
+    case "skill.eval":
+    case "skill.promoted":
+    case "skill.rejected":
+      return {
+        happened: event.detail || "Hermes emitted a skill-learning event.",
+        matters:
+          "Skill events connect individual runs to the self-improvement loop so users can review what should be reused.",
+      };
+    default:
+      return {
+        happened: event.detail || "Hermes recorded this event in the trace.",
+        matters:
+          "Each event is evidence that helps explain what the agent did, why it did it, and what should improve next time.",
+      };
+  }
 }
 
 function EmptyState({
