@@ -116,6 +116,15 @@ import {
   resumeCronJob,
   triggerCronJob,
 } from "./cronjobs";
+import {
+  createTraceRun,
+  finishTraceRun,
+  getTraceRun,
+  listSkillTrainingRuns,
+  listTraceRuns,
+  recordTraceEvent,
+  recordTraceUsage,
+} from "./trace-store";
 import { getAppLocale, setAppLocale } from "./locale";
 import type { AppLocale } from "../shared/i18n/types";
 import {
@@ -173,6 +182,7 @@ process.on("unhandledRejection", (reason) => {
 
 let mainWindow: BrowserWindow | null = null;
 let currentChatAbort: (() => void) | null = null;
+let currentTraceRunId: string | null = null;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -515,10 +525,21 @@ function setupIPC(): void {
 
       if (currentChatAbort) {
         currentChatAbort();
+        if (currentTraceRunId) {
+          finishTraceRun(
+            currentTraceRunId,
+            "aborted",
+            undefined,
+            "Superseded by a new Hermes message.",
+          );
+        }
       }
 
       let fullResponse = "";
+      let recordedAgentStart = false;
       const chatStartTime = Date.now();
+      const traceRun = createTraceRun(message, profile);
+      currentTraceRunId = traceRun.id;
       let resolveChat: (v: { response: string; sessionId?: string }) => void;
       let rejectChat: (reason?: unknown) => void;
       const promise = new Promise<{ response: string; sessionId?: string }>(
@@ -533,10 +554,36 @@ function setupIPC(): void {
         {
           onChunk: (chunk) => {
             fullResponse += chunk;
+            if (!recordedAgentStart && chunk.trim()) {
+              recordedAgentStart = true;
+              recordTraceEvent(
+                traceRun.id,
+                "message.agent.delta",
+                "Agent response started",
+                chunk.trim().slice(0, 180),
+              );
+            }
             event.sender.send("chat-chunk", chunk);
           },
           onDone: (sessionId) => {
-            currentChatAbort = null;
+            if (currentTraceRunId === traceRun.id) {
+              currentChatAbort = null;
+              currentTraceRunId = null;
+            }
+            if (fullResponse.trim()) {
+              recordTraceEvent(
+                traceRun.id,
+                "message.agent.delta",
+                "Agent response completed",
+                fullResponse.trim().slice(0, 320),
+              );
+            }
+            finishTraceRun(
+              traceRun.id,
+              "completed",
+              sessionId,
+              "Hermes returned a completed response.",
+            );
             event.sender.send("chat-done", sessionId || "");
             resolveChat({ response: fullResponse, sessionId });
             // Desktop notification when window is not focused and response took >10s
@@ -556,7 +603,11 @@ function setupIPC(): void {
             }
           },
           onError: (error) => {
-            currentChatAbort = null;
+            if (currentTraceRunId === traceRun.id) {
+              currentChatAbort = null;
+              currentTraceRunId = null;
+            }
+            finishTraceRun(traceRun.id, "failed", undefined, error);
             event.sender.send("chat-error", error);
             rejectChat(new Error(error));
             // Notify on error too if window not focused
@@ -568,9 +619,16 @@ function setupIPC(): void {
             }
           },
           onToolProgress: (tool) => {
+            recordTraceEvent(
+              traceRun.id,
+              "tool.progress",
+              "Tool progress",
+              tool,
+            );
             event.sender.send("chat-tool-progress", tool);
           },
           onUsage: (usage) => {
+            recordTraceUsage(traceRun.id, usage);
             event.sender.send("chat-usage", usage);
           },
         },
@@ -588,8 +646,24 @@ function setupIPC(): void {
     if (currentChatAbort) {
       currentChatAbort();
       currentChatAbort = null;
+      if (currentTraceRunId) {
+        finishTraceRun(
+          currentTraceRunId,
+          "aborted",
+          undefined,
+          "User stopped the active Hermes run.",
+        );
+        currentTraceRunId = null;
+      }
     }
   });
+
+  // Trace Lab
+  ipcMain.handle("list-trace-runs", () => listTraceRuns());
+  ipcMain.handle("get-trace-run", (_event, runId: string) =>
+    getTraceRun(runId),
+  );
+  ipcMain.handle("list-skill-training-runs", () => listSkillTrainingRuns());
 
   // Gateway
   ipcMain.handle("start-gateway", async () => {

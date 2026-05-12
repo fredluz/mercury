@@ -1,5 +1,6 @@
 import { ElectronAPI } from "@electron-toolkit/preload";
 import type { AppLocale } from "../shared/i18n/types";
+import type { SkillTrainingRun, TraceRun } from "../shared/traces";
 
 interface InstallStatus {
   installed: boolean;
@@ -117,6 +118,11 @@ interface HermesAPI {
     }) => void,
   ) => () => void;
   onChatError: (callback: (error: string) => void) => () => void;
+
+  // Trace Lab
+  listTraceRuns: () => Promise<TraceRun[]>;
+  getTraceRun: (runId: string) => Promise<TraceRun | null>;
+  listSkillTrainingRuns: () => Promise<SkillTrainingRun[]>;
 
   // Gateway
   startGateway: () => Promise<boolean>;

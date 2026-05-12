@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { electronAPI } from "@electron-toolkit/preload";
 import type { AppLocale } from "../shared/i18n/types";
+import type { SkillTrainingRun, TraceRun } from "../shared/traces";
 
 const hermesAPI = {
   // Installation
@@ -216,6 +217,16 @@ const hermesAPI = {
     ipcRenderer.on("chat-error", handler);
     return () => ipcRenderer.removeListener("chat-error", handler);
   },
+
+  // Trace Lab
+  listTraceRuns: (): Promise<TraceRun[]> =>
+    ipcRenderer.invoke("list-trace-runs"),
+
+  getTraceRun: (runId: string): Promise<TraceRun | null> =>
+    ipcRenderer.invoke("get-trace-run", runId),
+
+  listSkillTrainingRuns: (): Promise<SkillTrainingRun[]> =>
+    ipcRenderer.invoke("list-skill-training-runs"),
 
   // Gateway
   startGateway: (): Promise<boolean> => ipcRenderer.invoke("start-gateway"),

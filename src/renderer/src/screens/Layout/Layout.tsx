@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import Chat, { ChatMessage } from "../Chat/Chat";
 import Sessions from "../Sessions/Sessions";
+import TraceLab from "../TraceLab/TraceLab";
 import Agents from "../Agents/Agents";
 import Settings from "../Settings/Settings";
 import Skills from "../Skills/Skills";
@@ -29,6 +30,7 @@ import {
   KeyRound,
   Timer,
   Download,
+  Activity,
 } from "../../assets/icons";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
@@ -36,6 +38,7 @@ import { useI18n } from "../../components/useI18n";
 type View =
   | "chat"
   | "sessions"
+  | "traces"
   | "agents"
   | "office"
   | "models"
@@ -51,6 +54,7 @@ type View =
 const NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "chat", icon: ChatBubble, labelKey: "navigation.chat" },
   { view: "sessions", icon: Clock, labelKey: "navigation.sessions" },
+  { view: "traces", icon: Activity, labelKey: "navigation.traces" },
   { view: "agents", icon: Users, labelKey: "navigation.agents" },
   { view: "office", icon: Building, labelKey: "navigation.office" },
   { view: "models", icon: Layers, labelKey: "navigation.models" },
@@ -241,6 +245,12 @@ function Layout(): React.JSX.Element {
                 currentSessionId={currentSessionId}
               />
             )}
+          </div>
+        )}
+
+        {visitedViews.has("traces") && (
+          <div style={paneStyle("traces")}>
+            <TraceLab />
           </div>
         )}
 
