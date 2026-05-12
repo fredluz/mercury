@@ -1,0 +1,23 @@
+{
+  "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/hermes-desktop-50-ui-dRyGSp",
+  "traceRunCount": 50,
+  "visibleRunText": "Summarize what this 50-response sweep is testing. Reply in exactly one ...\ndefault\n12:42 AM",
+  "sessionsCardsForRun50": 0,
+  "responseCount": 50,
+  "traceRuns": 50,
+  "completedTraceRuns": 50,
+  "failedTraceRuns": 0,
+  "eventMarkers": 50,
+  "bugCandidates": [
+    "Long prompt markers appear in trace event details but not in visible Trace Lab row titles."
+  ],
+  "fixesVerified": {
+    "traceRunSearchForRun50": true,
+    "traceRunSearchCountText": "1/50",
+    "traceDetailShowsFullRequestMarker": true,
+    "screenshot": "docs/usage-sweep/50-response-trace-lab-search-fixed.png"
+  },
+  "residualRisks": [
+    "Sessions search returned 0 cards for RUN_050_OK during the sweep; if users expect global search across trace/event response text, Sessions should index trace metadata or expose a cross-surface search."
+  ]
+}

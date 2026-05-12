@@ -15,6 +15,7 @@ import {
   MessageSquareText,
   RefreshCw,
   Route,
+  Search,
   ShieldCheck,
   Sparkles,
   Wrench,
@@ -75,6 +76,7 @@ function TraceLab(): React.JSX.Element {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [skillRuns, setSkillRuns] = useState<SkillTrainingRun[]>([]);
   const [loading, setLoading] = useState(true);
+  const [runQuery, setRunQuery] = useState("");
 
   async function load(): Promise<void> {
     setLoading(true);
@@ -98,10 +100,20 @@ function TraceLab(): React.JSX.Element {
     return () => window.clearTimeout(timer);
   }, []);
 
-  const selectedRun = useMemo(
-    () => runs.find((run) => run.id === selectedRunId) || runs[0] || null,
-    [runs, selectedRunId],
-  );
+  const filteredRuns = useMemo(() => {
+    const query = runQuery.trim().toLowerCase();
+    if (!query) return runs;
+    return runs.filter((run) => traceRunMatchesSearch(run, query));
+  }, [runQuery, runs]);
+
+  const selectedRun = useMemo(() => {
+    const selected = runs.find((run) => run.id === selectedRunId) || null;
+    if (!runQuery.trim()) return selected || runs[0] || null;
+    if (selected && filteredRuns.some((run) => run.id === selected.id)) {
+      return selected;
+    }
+    return filteredRuns[0] || null;
+  }, [filteredRuns, runQuery, runs, selectedRunId]);
 
   const selectedEvent = useMemo(() => {
     if (!selectedRun) return null;
@@ -178,26 +190,54 @@ function TraceLab(): React.JSX.Element {
               <p className="trace-eyebrow">Runs</p>
               <h3>Recent activity</h3>
             </div>
+            <span className="trace-run-count">
+              {filteredRuns.length}/{runs.length}
+            </span>
           </div>
 
-          {runs.length === 0 ? (
-            <EmptyState title="No trace runs yet" />
-          ) : (
-            runs.map((run) => (
-              <button
-                key={run.id}
-                className={`trace-run-row ${
-                  selectedRun?.id === run.id ? "active" : ""
-                }`}
-                onClick={() => selectRun(run)}
-              >
-                <span className={`trace-status-dot ${run.status}`} />
-                <strong>{run.title}</strong>
-                <span>{run.profile}</span>
-                <small>{formatTime(run.updatedAt)}</small>
-              </button>
-            ))
-          )}
+          <label className="trace-run-search">
+            <Search size={14} />
+            <input
+              value={runQuery}
+              onChange={(event) => setRunQuery(event.target.value)}
+              placeholder="Search requests, markers, events"
+              aria-label="Search trace runs"
+            />
+          </label>
+
+          {runQuery && filteredRuns.length === 0 ? (
+            <EmptyState
+              title="No matching runs"
+              body="Try a prompt phrase, run marker, event type, or status."
+            />
+          ) : null}
+
+          <div className="trace-run-results">
+            {runs.length === 0 ? (
+              <EmptyState title="No trace runs yet" />
+            ) : (
+              filteredRuns.map((run) => (
+                <button
+                  key={run.id}
+                  className={`trace-run-row ${
+                    selectedRun?.id === run.id ? "active" : ""
+                  }`}
+                  title={run.messagePreview}
+                  onClick={() => selectRun(run)}
+                >
+                  <span className={`trace-status-dot ${run.status}`} />
+                  <strong>{run.title}</strong>
+                  <span>{run.profile}</span>
+                  {run.messagePreview ? (
+                    <small className="trace-run-preview">
+                      {run.messagePreview}
+                    </small>
+                  ) : null}
+                  <small>{formatTime(run.updatedAt)}</small>
+                </button>
+              ))
+            )}
+          </div>
         </aside>
 
         <article className="trace-detail" aria-label="Selected trace run">
@@ -206,12 +246,19 @@ function TraceLab(): React.JSX.Element {
               <div className="trace-detail-title">
                 <div>
                   <p className="trace-eyebrow">{selectedRun.profile}</p>
-                  <h3>{selectedRun.title}</h3>
+                  <h3 title={selectedRun.messagePreview}>
+                    {selectedRun.title}
+                  </h3>
                 </div>
                 <span className={`trace-status-pill ${selectedRun.status}`}>
                   {selectedRun.status}
                 </span>
               </div>
+
+              <section className="trace-request-preview">
+                <p className="trace-eyebrow">Full Request</p>
+                <p>{selectedRun.messagePreview}</p>
+              </section>
 
               <RunMap run={selectedRun} />
 
@@ -618,6 +665,35 @@ function explainEvent(run: TraceRun, event: TraceEvent): Narrative {
         matters:
           "Each event is evidence that helps explain what the agent did, why it did it, and what should improve next time.",
       };
+  }
+}
+
+function traceRunMatchesSearch(run: TraceRun, query: string): boolean {
+  const searchable = [
+    run.title,
+    run.messagePreview,
+    run.profile,
+    run.status,
+    run.sessionId || "",
+    String(run.usage?.totalTokens || ""),
+    String(run.usage?.cost || ""),
+    ...run.events.flatMap((event) => [
+      event.title,
+      event.detail || "",
+      event.type,
+      safeStringify(event.metadata || {}),
+    ]),
+  ]
+    .join("\n")
+    .toLowerCase();
+  return searchable.includes(query);
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
   }
 }
 

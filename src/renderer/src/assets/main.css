@@ -4875,6 +4875,52 @@ body {
   gap: 12px;
 }
 
+.trace-run-count {
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.trace-run-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-muted);
+}
+
+.trace-run-search:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
+.trace-run-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.trace-run-search input::placeholder {
+  color: var(--text-muted);
+}
+
+.trace-run-results {
+  display: grid;
+  gap: 10px;
+}
+
 .trace-panel-heading.compact {
   padding-top: 10px;
   border-top: 1px solid var(--border);
@@ -4919,6 +4965,15 @@ body {
 .trace-run-row small {
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+.trace-run-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .trace-run-row strong,
@@ -4972,6 +5027,24 @@ body {
 .trace-detail-title > div,
 .trace-section-title > div {
   min-width: 0;
+}
+
+.trace-request-preview {
+  display: grid;
+  gap: 5px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-primary);
+}
+
+.trace-request-preview p:last-child {
+  max-height: 96px;
+  margin: 0;
+  overflow: auto;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .trace-status-pill,
