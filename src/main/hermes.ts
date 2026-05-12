@@ -12,7 +12,12 @@ import {
   getEnhancedPath,
 } from "./installer";
 import { getModelConfig, readEnv, getConnectionConfig } from "./config";
-import { getSshTunnelUrl, isSshTunnelActive, isSshTunnelHealthy, startSshTunnel } from "./ssh-tunnel";
+import {
+  getSshTunnelUrl,
+  isSshTunnelActive,
+  isSshTunnelHealthy,
+  startSshTunnel,
+} from "./ssh-tunnel";
 import { stripAnsi } from "./utils";
 
 const LOCAL_API_URL = "http://127.0.0.1:8642";
@@ -50,7 +55,8 @@ export function setSshRemoteApiKey(key: string): void {
 export function getRemoteAuthHeader(): Record<string, string> {
   const conn = getConnectionConfig();
   if (conn.mode === "ssh") {
-    if (_sshRemoteApiKey) return { Authorization: `Bearer ${_sshRemoteApiKey}` };
+    if (_sshRemoteApiKey)
+      return { Authorization: `Bearer ${_sshRemoteApiKey}` };
     return {};
   }
   if (conn.mode === "remote" && conn.apiKey) {
@@ -61,7 +67,10 @@ export function getRemoteAuthHeader(): Record<string, string> {
 
 export async function ensureSshTunnelIfNeeded(): Promise<void> {
   const conn = getConnectionConfig();
-  if (conn.mode === "ssh" && (!isSshTunnelActive() || !await isSshTunnelHealthy())) {
+  if (
+    conn.mode === "ssh" &&
+    (!isSshTunnelActive() || !(await isSshTunnelHealthy()))
+  ) {
     await startSshTunnel(conn.ssh);
   }
 }
@@ -80,6 +89,8 @@ const URL_KEY_MAP: Array<{ pattern: RegExp; envKey: string }> = [
   { pattern: /anthropic\.com/i, envKey: "ANTHROPIC_API_KEY" },
   { pattern: /openai\.com/i, envKey: "OPENAI_API_KEY" },
   { pattern: /huggingface\.co/i, envKey: "HF_TOKEN" },
+  { pattern: /opencode\.ai\/zen\/go/i, envKey: "OPENCODE_GO_API_KEY" },
+  { pattern: /opencode\.ai\/zen/i, envKey: "OPENCODE_ZEN_API_KEY" },
   { pattern: /api\.groq\.com/i, envKey: "GROQ_API_KEY" },
   { pattern: /api\.deepseek\.com/i, envKey: "DEEPSEEK_API_KEY" },
   { pattern: /api\.together\.xyz/i, envKey: "TOGETHER_API_KEY" },
@@ -418,7 +429,9 @@ function sendMessageViaApi(
   });
   req.on("timeout", () => {
     req.destroy();
-    finish("API request timed out. Check the SSH tunnel and remote Hermes gateway.");
+    finish(
+      "API request timed out. Check the SSH tunnel and remote Hermes gateway.",
+    );
   });
 
   req.write(body);
@@ -478,6 +491,8 @@ function sendMessageViaCli(
     "KIMI_API_KEY",
     "MINIMAX_API_KEY",
     "MINIMAX_CN_API_KEY",
+    "OPENCODE_ZEN_API_KEY",
+    "OPENCODE_GO_API_KEY",
     "HF_TOKEN",
     "EXA_API_KEY",
     "PARALLEL_API_KEY",

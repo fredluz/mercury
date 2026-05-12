@@ -4857,6 +4857,7 @@ body {
   color: var(--text-primary);
   text-align: left;
   cursor: pointer;
+  overflow: hidden;
 }
 
 .trace-run-row:hover {
@@ -4872,6 +4873,11 @@ body {
 .trace-run-row small {
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+.trace-run-row strong,
+.trace-detail-title h3 {
+  overflow-wrap: anywhere;
 }
 
 .trace-status-dot {

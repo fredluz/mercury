@@ -40,6 +40,8 @@ function Models(): React.JSX.Element {
     if (/anthropic\.com/i.test(url)) return "ANTHROPIC_API_KEY";
     if (/openai\.com/i.test(url)) return "OPENAI_API_KEY";
     if (/huggingface\.co/i.test(url)) return "HF_TOKEN";
+    if (/opencode\.ai\/zen\/go/i.test(url)) return "OPENCODE_GO_API_KEY";
+    if (/opencode\.ai\/zen/i.test(url)) return "OPENCODE_ZEN_API_KEY";
     if (/api\.groq\.com/i.test(url)) return "GROQ_API_KEY";
     if (/api\.deepseek\.com/i.test(url)) return "DEEPSEEK_API_KEY";
     if (/api\.together\.xyz/i.test(url)) return "TOGETHER_API_KEY";
@@ -57,7 +59,10 @@ function Models(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
-    loadModels();
+    const timer = window.setTimeout(() => {
+      void loadModels();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [loadModels]);
 
   function openAddModal(): void {

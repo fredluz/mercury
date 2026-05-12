@@ -16,6 +16,8 @@ export default {
   nousName: "Nous Portal",
   nousDesc: "提供免费套餐",
   nousTag: "免费",
+  opencodeGoName: "OpenCode Go",
+  opencodeGoDesc: "开放模型订阅",
   localName: "本地 / OpenAI 兼容",
   localDesc: "LM Studio、Ollama、Groq、DeepSeek、Together 等",
   localTag: "任意 OpenAI 兼容 API",

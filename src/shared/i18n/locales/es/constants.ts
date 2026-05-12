@@ -16,6 +16,8 @@ export default {
   nousName: "Nous Portal",
   nousDesc: "Nivel gratuito disponible",
   nousTag: "",
+  opencodeGoName: "OpenCode Go",
+  opencodeGoDesc: "Suscripción de modelos abiertos",
   localName: "Local",
   localDesc: "Compatible con OpenAI",
   localTag: "",

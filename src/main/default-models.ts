@@ -42,6 +42,13 @@ const DEFAULT_MODELS: DefaultModel[] = [
     baseUrl: "",
   },
 
+  // ── OpenCode Go (open models subscription) ──────────────────────────
+  {
+    name: "DeepSeek V4 Flash",
+    provider: "opencode-go",
+    model: "deepseek-v4-flash",
+    baseUrl: "",
+  },
 ];
 
 export default DEFAULT_MODELS;

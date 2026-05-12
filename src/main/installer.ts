@@ -1,5 +1,11 @@
 import { spawn, execSync, execFile } from "child_process";
-import { existsSync, readFileSync, readdirSync, writeFileSync, unlinkSync } from "fs";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+  unlinkSync,
+} from "fs";
 import { join, delimiter } from "path";
 import { homedir, tmpdir } from "os";
 import { randomBytes } from "crypto";
@@ -159,7 +165,7 @@ export function checkInstallStatus(): InstallStatus {
         const trimmed = line.trim();
         if (trimmed.startsWith("#")) continue;
         const match = trimmed.match(
-          /^(OPENROUTER_API_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY)=(.+)$/,
+          /^(OPENROUTER_API_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY|OPENCODE_ZEN_API_KEY|OPENCODE_GO_API_KEY)=(.+)$/,
         );
         if (
           match &&
