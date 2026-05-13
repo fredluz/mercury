@@ -1,6 +1,6 @@
-# Contributing to Hermes Desktop
+# Contributing to Mercury
 
-Thanks for your interest in contributing to Hermes Desktop! Whether it's a bug fix, a new feature, improved docs, or just a typo — every contribution helps.
+Thanks for your interest in contributing to Mercury! Whether it's a bug fix, a new feature, improved docs, or just a typo, every contribution helps.
 
 ## Languages
 
@@ -52,7 +52,7 @@ A maintainer will review your PR and may request changes. Once approved, it will
 
 ## Reporting Bugs
 
-Found a bug? [Open an issue](https://github.com/NousResearch/hermes-desktop/issues/new) with:
+Found a bug? [Open an issue](https://github.com/fredluz/mercury/issues/new) with:
 
 - A clear title and description.
 - Steps to reproduce the issue.
@@ -61,7 +61,7 @@ Found a bug? [Open an issue](https://github.com/NousResearch/hermes-desktop/issu
 
 ## Requesting Features
 
-Have an idea? [Open an issue](https://github.com/NousResearch/hermes-desktop/issues/new) and describe:
+Have an idea? [Open an issue](https://github.com/fredluz/mercury/issues/new) and describe:
 
 - The problem you're trying to solve.
 - How you'd like it to work.

@@ -25,6 +25,12 @@ Mercury is a native desktop front end for installing, configuring, tracing, and 
 
 Instead of managing the CLI by hand, the app walks through install, provider setup, and day-to-day usage in one place. It uses the official Hermes install script, stores Hermes in `~/.hermes`, and gives you a GUI for chat, sessions, profiles, memory, skills, tools, scheduling, messaging gateways, and more.
 
+## Fork & Attribution
+
+Mercury is a public fork and adaptation of [Hermes Desktop](https://github.com/fathah/hermes-desktop), built around [Hermes Agent](https://github.com/NousResearch/hermes-agent). The fork keeps the upstream MIT license and attribution intact while adding Mercury-specific work on trace inspection, skill-evolution workflows, run evaluation, and a more product-focused desktop surface.
+
+We expect to keep pulling useful upstream improvements where they fit Mercury's direction.
+
 ## Install
 
 Download the latest build from the Mercury releases page.
@@ -42,7 +48,7 @@ Download the latest build from the Mercury releases page.
 Once the manifest has been accepted into [`microsoft/winget-pkgs`](https://github.com/microsoft/winget-pkgs), you can install with:
 
 ```powershell
-winget install NousResearch.HermesDesktop
+winget install FredLuz.Mercury
 ```
 
 Until then, download the `.exe` from the Releases page.
