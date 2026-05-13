@@ -164,7 +164,7 @@ Large files grew because early convenience boundaries became long-term architect
 
 ## Execution Checklist
 - [x] Item 1: CSS sharding — split `src/renderer/src/assets/main.css` into ordered feature/style files, preserve cascade order, keep `main.css` under 500 LOC, and extract shared modal/overlay styles before screen-specific CSS. Completed: `main.css` is 31 LOC, largest shard is 430 LOC, and `npm run build` passed.
-- [ ] Item 2: IPC/preload contract split — split `src/main/index.ts`, `src/preload/index.ts`, and update preload types/tests while preserving `window.hermesAPI`.
+- [x] Item 2: IPC/preload contract split — split `src/main/index.ts`, `src/preload/index.ts`, and update preload types/tests while preserving `window.hermesAPI`. Completed: `src/main/index.ts` is 304 LOC, `src/preload/index.ts` is 17 LOC, max IPC module is 241 LOC, max preload API module is 157 LOC; focused parity tests, typecheck, and build passed.
 - [ ] Item 3: Main service split — split `src/main/ssh-remote.ts`, `installer.ts`, `hermes.ts`, `claw3d.ts`, and `skills.ts` along domain seams.
 - [ ] Item 4: Renderer constants/screens split — split `src/renderer/src/constants.ts`, then `Chat.tsx`, `Settings.tsx`, `TraceLab.tsx`, `Schedules.tsx`, `Memory.tsx`, and `Skills.tsx` into hooks/components/utilities.
 - [ ] Item 5: Guardrails/final verification — add/adjust LOC guard and run focused tests/typecheck/lint as feasible.

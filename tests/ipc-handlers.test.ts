@@ -1,13 +1,38 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "fs";
+import { readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 
 const ROOT = join(__dirname, "..");
-const indexSrc = readFileSync(join(ROOT, "src/main/index.ts"), "utf-8");
-const preloadSrc = readFileSync(join(ROOT, "src/preload/index.ts"), "utf-8");
+const mainIpcDir = join(ROOT, "src/main/ipc");
+const mainIpcIndexSrc = readFileSync(join(mainIpcDir, "index.ts"), "utf-8");
+
+function readTsSources(paths: string[]): string {
+  const files: string[] = [];
+
+  function collect(path: string): void {
+    const stat = statSync(path);
+    if (stat.isDirectory()) {
+      for (const entry of readdirSync(path)) collect(join(path, entry));
+      return;
+    }
+    if (path.endsWith(".ts") && !path.endsWith(".d.ts")) files.push(path);
+  }
+
+  for (const path of paths) collect(path);
+  return files
+    .sort()
+    .map((file) => readFileSync(file, "utf-8"))
+    .join("\n");
+}
+
+const mainSrc = readTsSources([join(ROOT, "src/main/index.ts"), mainIpcDir]);
+const preloadSrc = readTsSources([
+  join(ROOT, "src/preload/index.ts"),
+  join(ROOT, "src/preload/api"),
+]);
 
 /**
- * Extract all IPC channel names registered in main/index.ts.
+ * Extract all IPC channel names registered in main process modules.
  */
 function extractIpcHandleChannels(src: string): string[] {
   const channels: string[] = [];
@@ -32,7 +57,7 @@ function extractPreloadInvokeChannels(src: string): string[] {
   return [...new Set(channels)];
 }
 
-const mainChannels = extractIpcHandleChannels(indexSrc);
+const mainChannels = extractIpcHandleChannels(mainSrc);
 const preloadChannels = extractPreloadInvokeChannels(preloadSrc);
 
 describe("IPC Handler ↔ Preload Consistency", () => {
@@ -52,6 +77,25 @@ describe("IPC Handler ↔ Preload Consistency", () => {
   it("every main handler has a matching preload invoke", () => {
     const missing = mainChannels.filter((ch) => !preloadChannels.includes(ch));
     expect(missing).toEqual([]);
+  });
+
+  it("registerIpcHandlers wires every IPC module", () => {
+    const modules = readdirSync(mainIpcDir)
+      .filter((entry) => entry.endsWith(".ts"))
+      .filter((entry) => !["index.ts", "types.ts"].includes(entry));
+
+    for (const moduleName of modules) {
+      const moduleSrc = readFileSync(join(mainIpcDir, moduleName), "utf-8");
+      const registerName = moduleSrc.match(
+        /export function (register\w+Ipc)\(/,
+      )?.[1];
+      expect(
+        registerName,
+        `${moduleName} exports a register function`,
+      ).toBeTruthy();
+      expect(mainIpcIndexSrc).toContain(registerName!);
+      expect(mainIpcIndexSrc).toMatch(new RegExp(`${registerName}\\(`));
+    }
   });
 });
 

@@ -1,13 +1,44 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "fs";
+import { readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 
 const ROOT = join(__dirname, "..");
-const preloadSrc = readFileSync(join(ROOT, "src/preload/index.ts"), "utf-8");
-const preloadTypes = readFileSync(join(ROOT, "src/preload/index.d.ts"), "utf-8");
+const preloadApiDir = join(ROOT, "src/preload/api");
+const preloadApiIndexSrc = readFileSync(
+  join(preloadApiDir, "index.ts"),
+  "utf-8",
+);
+
+function readTsSources(paths: string[]): string {
+  const files: string[] = [];
+
+  function collect(path: string): void {
+    const stat = statSync(path);
+    if (stat.isDirectory()) {
+      for (const entry of readdirSync(path)) collect(join(path, entry));
+      return;
+    }
+    if (path.endsWith(".ts") && !path.endsWith(".d.ts")) files.push(path);
+  }
+
+  for (const path of paths) collect(path);
+  return files
+    .sort()
+    .map((file) => readFileSync(file, "utf-8"))
+    .join("\n");
+}
+
+const preloadSrc = readTsSources([
+  join(ROOT, "src/preload/index.ts"),
+  preloadApiDir,
+]);
+const preloadTypes = readFileSync(
+  join(ROOT, "src/preload/index.d.ts"),
+  "utf-8",
+);
 
 /**
- * Extract method names from the hermesAPI object in preload/index.ts.
+ * Extract method names from split preload API object modules.
  * Matches lines like `  methodName: (...` or `  methodName: ()`.
  */
 function extractPreloadMethods(src: string): string[] {
@@ -26,9 +57,7 @@ function extractPreloadMethods(src: string): string[] {
 function extractTypeMethods(src: string): string[] {
   const methods: string[] = [];
   // Match lines inside `interface HermesAPI { ... }`
-  const interfaceMatch = src.match(
-    /interface\s+HermesAPI\s*\{([\s\S]*?)^\}/m,
-  );
+  const interfaceMatch = src.match(/interface\s+HermesAPI\s*\{([\s\S]*?)^\}/m);
   if (!interfaceMatch) return [];
   const body = interfaceMatch[1];
   const re = /^\s{2}(\w+)\s*[:(]/gm;
@@ -59,6 +88,20 @@ describe("Preload API Surface", () => {
   it("every type declaration has a preload implementation", () => {
     const missing = typeMethods.filter((m) => !preloadMethods.includes(m));
     expect(missing).toEqual([]);
+  });
+
+  it("composes every split preload API fragment", () => {
+    const fragments = readdirSync(preloadApiDir)
+      .filter((entry) => entry.endsWith(".ts"))
+      .filter((entry) => entry !== "index.ts");
+
+    for (const fragment of fragments) {
+      const fragmentSrc = readFileSync(join(preloadApiDir, fragment), "utf-8");
+      const apiName = fragmentSrc.match(/export const (\w+Api) =/)?.[1];
+      expect(apiName, `${fragment} exports an API fragment`).toBeTruthy();
+      expect(preloadApiIndexSrc).toContain(apiName!);
+      expect(preloadApiIndexSrc).toContain(`...${apiName}`);
+    }
   });
 });
 
@@ -198,8 +241,9 @@ describe("Legacy APIs preserved (backward compat)", () => {
 
 describe("IPC channel consistency", () => {
   it("preload invoke calls use quoted string channel names", () => {
-    const invokeChannels = [...preloadSrc.matchAll(/ipcRenderer\.invoke\(\s*["']([^"']+)["']/g)]
-      .map((m) => m[1]);
+    const invokeChannels = [
+      ...preloadSrc.matchAll(/ipcRenderer\.invoke\(\s*["']([^"']+)["']/g),
+    ].map((m) => m[1]);
     expect(invokeChannels.length).toBeGreaterThan(30);
     // Every channel should be kebab-case
     for (const ch of invokeChannels) {
@@ -208,8 +252,9 @@ describe("IPC channel consistency", () => {
   });
 
   it("preload on/removeListener calls use quoted string channel names", () => {
-    const onChannels = [...preloadSrc.matchAll(/ipcRenderer\.on\(\s*["']([^"']+)["']/g)]
-      .map((m) => m[1]);
+    const onChannels = [
+      ...preloadSrc.matchAll(/ipcRenderer\.on\(\s*["']([^"']+)["']/g),
+    ].map((m) => m[1]);
     expect(onChannels.length).toBeGreaterThan(0);
     for (const ch of onChannels) {
       expect(ch).toMatch(/^[a-z][a-z0-9-]*$/);
