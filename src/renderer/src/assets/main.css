@@ -4921,6 +4921,32 @@ body {
   gap: 10px;
 }
 
+.trace-run-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.trace-run-filters button {
+  min-width: 0;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.trace-run-filters button:hover,
+.trace-run-filters button.active {
+  border-color: var(--border-focus);
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
 .trace-panel-heading.compact {
   padding-top: 10px;
   border-top: 1px solid var(--border);
@@ -5071,6 +5097,67 @@ body {
       transparent 24%
     ),
     var(--bg-primary);
+}
+
+.trace-skill-summary {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-primary);
+}
+
+.trace-skill-summary .trace-section-title > span {
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.trace-skill-links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.trace-skill-links button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 6px 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.trace-skill-links button:hover {
+  border-color: var(--border-focus);
+}
+
+.trace-skill-links strong {
+  min-width: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.trace-skill-links small {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.trace-skill-links p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .trace-section-title {
@@ -5401,10 +5488,20 @@ body {
 .skill-training-row {
   display: grid;
   gap: 6px;
+  width: 100%;
   padding: 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-primary);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.skill-training-row:hover,
+.skill-training-row.active {
+  border-color: var(--border-focus);
+  background: var(--accent-subtle);
 }
 
 .skill-training-row-top {
@@ -5425,6 +5522,42 @@ body {
   height: 100%;
   border-radius: inherit;
   background: var(--success);
+}
+
+.skill-training-row small {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.skill-status-chip {
+  width: fit-content;
+  padding: 4px 7px;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: capitalize;
+}
+
+.skill-status-chip.promoted {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.skill-status-chip.rejected,
+.skill-status-chip.needs-review {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.skill-status-chip.evaluating {
+  background: var(--warning-bg);
+  color: var(--warning);
 }
 
 .trace-empty {
@@ -5465,7 +5598,8 @@ body {
   .trace-metrics,
   .trace-workbench,
   .trace-facts,
-  .trace-map-grid {
+  .trace-map-grid,
+  .trace-skill-links {
     grid-template-columns: 1fr;
   }
 

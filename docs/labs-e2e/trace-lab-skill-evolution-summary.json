@@ -1,0 +1,17 @@
+{
+  "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/hermes-trace-lab-heavy-fix-thlRjC",
+  "totalFixtureRuns": 200,
+  "fixtureSkillEvents": 50,
+  "initialRunCount": "200/200",
+  "skillFilterCount": "50/200",
+  "skillFilterDetail": "DEFAULT\n\nSkill evolution training cycle LAB_TRACE_004\nAborted",
+  "skillFilterSummary": "SKILL AUTO-EVOLUTION\n\nWhat Hermes learned\n1 signals\nNeeds-Review\nmemory-curator\n52% trust\n\nmemory-curator eval after trace LAB_TRACE_004; score 52%.",
+  "searchCount": "1/200",
+  "fullRequestHasMarker": true,
+  "skillSummaryText": "SKILL AUTO-EVOLUTION\n\nWhat Hermes learned\n1 signals\nPromoted\nvisual-explainer\n68% trust\n\nvisual-explainer promoted after trace LAB_TRACE_120; score 68%.",
+  "skillPanelRowCount": 50,
+  "firstSkillRow": "Needs-Review\nmemory-curator\n\nmemory-curator eval after trace LAB_TRACE_004; score 52%.\n\nOpens linked trace",
+  "afterSkillClickDetail": "DEFAULT\n\nSkill evolution training cycle LAB_TRACE_004\nAborted",
+  "afterSkillClickInspectorHasMarker": true,
+  "needsAttentionCount": "80/200"
+}

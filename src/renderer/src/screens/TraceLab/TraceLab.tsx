@@ -12,6 +12,7 @@ import {
   FileSearch,
   Gauge,
   HelpCircle,
+  Link2,
   MessageSquareText,
   RefreshCw,
   Route,
@@ -70,6 +71,15 @@ type Narrative = {
   matters: string;
 };
 
+type RunFilter = "all" | "completed" | "needs-attention" | "skills";
+
+const RUN_FILTERS: { key: RunFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "completed", label: "Completed" },
+  { key: "needs-attention", label: "Needs attention" },
+  { key: "skills", label: "Skill signals" },
+];
+
 function TraceLab(): React.JSX.Element {
   const [runs, setRuns] = useState<TraceRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -77,6 +87,7 @@ function TraceLab(): React.JSX.Element {
   const [skillRuns, setSkillRuns] = useState<SkillTrainingRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [runQuery, setRunQuery] = useState("");
+  const [runFilter, setRunFilter] = useState<RunFilter>("all");
 
   async function load(): Promise<void> {
     setLoading(true);
@@ -102,18 +113,20 @@ function TraceLab(): React.JSX.Element {
 
   const filteredRuns = useMemo(() => {
     const query = runQuery.trim().toLowerCase();
-    if (!query) return runs;
-    return runs.filter((run) => traceRunMatchesSearch(run, query));
-  }, [runQuery, runs]);
+    return runs.filter(
+      (run) =>
+        traceRunMatchesFilter(run, runFilter) &&
+        (!query || traceRunMatchesSearch(run, query)),
+    );
+  }, [runFilter, runQuery, runs]);
 
   const selectedRun = useMemo(() => {
     const selected = runs.find((run) => run.id === selectedRunId) || null;
-    if (!runQuery.trim()) return selected || runs[0] || null;
     if (selected && filteredRuns.some((run) => run.id === selected.id)) {
       return selected;
     }
-    return filteredRuns[0] || null;
-  }, [filteredRuns, runQuery, runs, selectedRunId]);
+    return filteredRuns[0] || runs[0] || null;
+  }, [filteredRuns, runs, selectedRunId]);
 
   const selectedEvent = useMemo(() => {
     if (!selectedRun) return null;
@@ -124,9 +137,25 @@ function TraceLab(): React.JSX.Element {
     );
   }, [selectedEventId, selectedRun]);
 
+  const selectedRunSkillRuns = useMemo(() => {
+    if (!selectedRun) return [];
+    return skillRuns.filter((run) => run.linkedRunId === selectedRun.id);
+  }, [selectedRun, skillRuns]);
+
   function selectRun(run: TraceRun): void {
     setSelectedRunId(run.id);
     setSelectedEventId(run.events[0]?.id || null);
+  }
+
+  function selectSkillRun(skillRun: SkillTrainingRun): void {
+    const linkedRun = runs.find((run) => run.id === skillRun.linkedRunId);
+    if (!linkedRun) return;
+    setSelectedRunId(linkedRun.id);
+    setSelectedEventId(skillRun.id);
+    if (runFilter !== "all" && !traceRunMatchesFilter(linkedRun, runFilter)) {
+      setRunFilter("all");
+    }
+    setRunQuery("");
   }
 
   return (
@@ -205,6 +234,18 @@ function TraceLab(): React.JSX.Element {
             />
           </label>
 
+          <div className="trace-run-filters" aria-label="Trace run filters">
+            {RUN_FILTERS.map((filter) => (
+              <button
+                key={filter.key}
+                className={runFilter === filter.key ? "active" : ""}
+                onClick={() => setRunFilter(filter.key)}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+
           {runQuery && filteredRuns.length === 0 ? (
             <EmptyState
               title="No matching runs"
@@ -261,6 +302,11 @@ function TraceLab(): React.JSX.Element {
               </section>
 
               <RunMap run={selectedRun} />
+
+              <SkillTraceSummary
+                skillRuns={selectedRunSkillRuns}
+                onSelect={(skillRun) => setSelectedEventId(skillRun.id)}
+              />
 
               <div className="trace-facts">
                 <Fact
@@ -345,7 +391,13 @@ function TraceLab(): React.JSX.Element {
               </div>
             ) : (
               skillRuns.map((run) => (
-                <article className="skill-training-row" key={run.id}>
+                <button
+                  className={`skill-training-row ${
+                    selectedEvent?.id === run.id ? "active" : ""
+                  }`}
+                  key={run.id}
+                  onClick={() => selectSkillRun(run)}
+                >
                   <div className="skill-training-row-top">
                     <span>{run.status}</span>
                     <strong>{run.skillName}</strong>
@@ -358,13 +410,58 @@ function TraceLab(): React.JSX.Element {
                     />
                   </div>
                   <p>{run.summary}</p>
-                </article>
+                  {run.linkedRunId ? (
+                    <small>
+                      <Link2 size={12} />
+                      Opens linked trace
+                    </small>
+                  ) : null}
+                </button>
               ))
             )}
           </section>
         </aside>
       </section>
     </div>
+  );
+}
+
+function SkillTraceSummary({
+  skillRuns,
+  onSelect,
+}: {
+  skillRuns: SkillTrainingRun[];
+  onSelect: (run: SkillTrainingRun) => void;
+}): React.JSX.Element {
+  return (
+    <section className="trace-skill-summary" aria-label="Skill learning links">
+      <div className="trace-section-title">
+        <div>
+          <p className="trace-eyebrow">Skill Auto-Evolution</p>
+          <h3>What Hermes learned</h3>
+        </div>
+        <span>{skillRuns.length} signals</span>
+      </div>
+
+      {skillRuns.length === 0 ? (
+        <p className="trace-muted">
+          No skill-learning signal is linked to this run yet.
+        </p>
+      ) : (
+        <div className="trace-skill-links">
+          {skillRuns.map((run) => (
+            <button key={run.id} onClick={() => onSelect(run)}>
+              <span className={`skill-status-chip ${run.status}`}>
+                {run.status}
+              </span>
+              <strong>{run.skillName}</strong>
+              <small>{formatSkillScore(run.score)}</small>
+              <p>{run.summary}</p>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -687,6 +784,21 @@ function traceRunMatchesSearch(run: TraceRun, query: string): boolean {
     .join("\n")
     .toLowerCase();
   return searchable.includes(query);
+}
+
+function traceRunMatchesFilter(run: TraceRun, filter: RunFilter): boolean {
+  if (filter === "completed") return run.status === "completed";
+  if (filter === "needs-attention") {
+    return run.status === "failed" || run.status === "aborted";
+  }
+  if (filter === "skills") {
+    return run.events.some((event) => event.type.startsWith("skill."));
+  }
+  return true;
+}
+
+function formatSkillScore(score?: number): string {
+  return score == null ? "No score" : `${Math.round(score * 100)}% trust`;
 }
 
 function safeStringify(value: unknown): string {

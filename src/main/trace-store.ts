@@ -184,7 +184,8 @@ export function listSkillTrainingRuns(): SkillTrainingRun[] {
           skillName: String(
             event.metadata?.skillName || event.title || "Unknown skill",
           ),
-          status: skillStatusFromEvent(event.type),
+          status: skillStatusFromEvent(event.type, event.metadata),
+          score: skillScoreFromEvent(event.metadata?.score),
           linkedRunId: run.id,
           summary: event.detail || run.title,
           updatedAt: event.timestamp,
@@ -208,9 +209,18 @@ function eventTitle(type: TraceEventType): string {
 
 function skillStatusFromEvent(
   type: TraceEventType,
+  metadata?: Record<string, unknown>,
 ): SkillTrainingRun["status"] {
+  const status = String(metadata?.status || metadata?.reviewStatus || "");
+  if (status === "needs-review") return "needs-review";
   if (type === "skill.promoted") return "promoted";
   if (type === "skill.rejected") return "rejected";
   if (type === "skill.eval") return "evaluating";
   return "candidate";
+}
+
+function skillScoreFromEvent(score: unknown): number | undefined {
+  const numericScore = typeof score === "number" ? score : Number(score);
+  if (!Number.isFinite(numericScore)) return undefined;
+  return Math.max(0, Math.min(1, numericScore));
 }
