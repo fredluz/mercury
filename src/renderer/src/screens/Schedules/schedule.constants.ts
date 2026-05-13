@@ -1,0 +1,18 @@
+export const DELIVER_TARGETS = [
+  { value: "local", label: "Local" },
+  { value: "origin", label: "Origin" },
+  { value: "telegram", label: "Telegram" },
+  { value: "discord", label: "Discord" },
+  { value: "slack", label: "Slack" },
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "signal", label: "Signal" },
+  { value: "matrix", label: "Matrix" },
+  { value: "mattermost", label: "Mattermost" },
+  { value: "email", label: "Email" },
+  { value: "webhook", label: "Webhook" },
+  { value: "sms", label: "SMS" },
+  { value: "homeassistant", label: "Home Assistant" },
+  { value: "dingtalk", label: "DingTalk" },
+  { value: "feishu", label: "Feishu" },
+  { value: "wecom", label: "WeCom" },
+];
