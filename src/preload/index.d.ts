@@ -1,5 +1,9 @@
 import { ElectronAPI } from "@electron-toolkit/preload";
 import type { AppLocale } from "../shared/i18n/types";
+import type {
+  SkillMarkdownImportRequest,
+  SkillMarkdownImportResult,
+} from "../shared/skills";
 import type { SkillTrainingRun, TraceRun } from "../shared/traces";
 
 interface InstallStatus {
@@ -249,6 +253,10 @@ interface HermesAPI {
     name: string,
     profile?: string,
   ) => Promise<{ success: boolean; error?: string }>;
+  importSkillMarkdown: (
+    request: SkillMarkdownImportRequest,
+    profile?: string,
+  ) => Promise<SkillMarkdownImportResult>;
 
   // Session cache
   listCachedSessions: (

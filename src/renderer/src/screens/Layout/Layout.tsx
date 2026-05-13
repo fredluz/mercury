@@ -9,7 +9,6 @@ import Soul from "../Soul/Soul";
 import Memory from "../Memory/Memory";
 import Tools from "../Tools/Tools";
 import Gateway from "../Gateway/Gateway";
-import Office from "../Office/Office";
 import Models from "../Models/Models";
 import Providers from "../Providers/Providers";
 import Schedules from "../Schedules/Schedules";
@@ -24,7 +23,6 @@ import {
   Brain,
   Wrench,
   Signal,
-  Building,
   Layers,
   KeyRound,
   Timer,
@@ -39,7 +37,6 @@ type View =
   | "sessions"
   | "traces"
   | "agents"
-  | "office"
   | "models"
   | "providers"
   | "skills"
@@ -55,7 +52,6 @@ const NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "sessions", icon: Clock, labelKey: "navigation.sessions" },
   { view: "traces", icon: Activity, labelKey: "navigation.traces" },
   { view: "agents", icon: Users, labelKey: "navigation.agents" },
-  { view: "office", icon: Building, labelKey: "navigation.office" },
   { view: "models", icon: Layers, labelKey: "navigation.models" },
   { view: "providers", icon: KeyRound, labelKey: "navigation.providers" },
   { view: "skills", icon: Puzzle, labelKey: "navigation.skills" },
@@ -269,12 +265,6 @@ function Layout(): React.JSX.Element {
                 }}
               />
             )}
-          </div>
-        )}
-
-        {visitedViews.has("office") && (
-          <div style={paneStyle("office")}>
-            <Office visible={view === "office"} />
           </div>
         )}
 

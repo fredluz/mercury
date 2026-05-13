@@ -21,4 +21,23 @@ export default {
   installedBadge: "Instalada",
   installing: "Instalando...",
   install: "Instalar",
+  importMarkdownAction: "Importar Markdown",
+  importTitle: "Importar habilidad Markdown",
+  importHelp:
+    "Pega un archivo SKILL.md. La habilidad se guarda en el perfil seleccionado.",
+  importName: "Nombre",
+  importNamePlaceholder: "nombre-habilidad",
+  importCategory: "Categoría",
+  importDescription: "Descripción",
+  importDescriptionPlaceholder: "Resumen opcional",
+  importMarkdown: "Markdown",
+  importMarkdownPlaceholder: "---\nname: mi-habilidad\ndescription: Qué hace esta habilidad\n---\n# Instrucciones...",
+  importOverwrite: "Sobrescribir si esta habilidad ya existe",
+  importCancel: "Cancelar",
+  importing: "Importando...",
+  import: "Importar",
+  importFailed: "No se pudo importar la habilidad",
+  importSuccess: "Habilidad importada.",
+  importRestartWarning:
+    "Habilidad importada. Reinicia el gateway o inicia una nueva sesión de Hermes para indexarla.",
 } as const;

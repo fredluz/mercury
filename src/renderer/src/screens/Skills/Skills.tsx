@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Search, X, Download, Trash, Refresh } from "../../assets/icons";
+import { Search, X, Download, Trash, Refresh, Plus } from "../../assets/icons";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { useI18n } from "../../components/useI18n";
+import type { SkillMarkdownImportRequest } from "../../../../shared/skills";
 
 interface InstalledSkill {
   name: string;
@@ -36,6 +37,15 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
   const [detailContent, setDetailContent] = useState("");
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [importName, setImportName] = useState("");
+  const [importCategory, setImportCategory] = useState("custom");
+  const [importDescription, setImportDescription] = useState("");
+  const [importMarkdown, setImportMarkdown] = useState("");
+  const [importOverwrite, setImportOverwrite] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 
   const loadInstalled = useCallback(async (): Promise<void> => {
@@ -55,7 +65,7 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
   }, [loadInstalled, loadBundled]);
 
   useEffect(() => {
-    loadAll();
+    void Promise.resolve().then(() => loadAll());
   }, [loadAll]);
 
   async function handleViewDetail(skill: InstalledSkill): Promise<void> {
@@ -86,6 +96,47 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
       await loadInstalled();
     } else {
       setError(result.error || t("skills.uninstallFailed"));
+    }
+  }
+
+  async function handleImportMarkdown(): Promise<void> {
+    setImporting(true);
+    setError("");
+    setNotice("");
+    setImportError("");
+    const request: SkillMarkdownImportRequest = {
+      markdown: importMarkdown,
+      name: importName.trim() || undefined,
+      category: importCategory.trim() || undefined,
+      description: importDescription.trim() || undefined,
+      overwrite: importOverwrite,
+    };
+    try {
+      const result = await window.hermesAPI.importSkillMarkdown(request, profile);
+
+      if (!result.success) {
+        setImportError(result.error);
+        return;
+      }
+
+      setImportOpen(false);
+      setImportName("");
+      setImportCategory("custom");
+      setImportDescription("");
+      setImportMarkdown("");
+      setImportOverwrite(false);
+      setImportError("");
+      setTab("installed");
+      await loadInstalled();
+      setNotice(
+        result.warning === "gateway-restart-required"
+          ? t("skills.importRestartWarning")
+          : t("skills.importSuccess"),
+      );
+    } catch (err) {
+      setImportError((err as Error).message || t("skills.importFailed"));
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -182,16 +233,145 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
         </div>
       )}
 
+      {importOpen && (
+        <div
+          className="skills-detail-overlay"
+          onClick={() => {
+            setImportError("");
+            setImportOpen(false);
+          }}
+        >
+          <div
+            className="skills-import-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="skills-detail-header">
+              <div>
+                <div className="skills-detail-name">
+                  {t("skills.importTitle")}
+                </div>
+                <div className="skills-import-help">
+                  {t("skills.importHelp")}
+                </div>
+              </div>
+              <button
+                className="btn-ghost"
+                onClick={() => {
+                  setImportError("");
+                  setImportOpen(false);
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            {importError && (
+              <div className="skills-error skills-import-error">
+                {importError}
+                <button className="btn-ghost" onClick={() => setImportError("")}>
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+            <div className="skills-import-form">
+              <label className="skills-import-field">
+                <span>{t("skills.importName")}</span>
+                <input
+                  className="skills-search-input"
+                  value={importName}
+                  onChange={(e) => setImportName(e.target.value)}
+                  placeholder={t("skills.importNamePlaceholder")}
+                />
+              </label>
+              <label className="skills-import-field">
+                <span>{t("skills.importCategory")}</span>
+                <input
+                  className="skills-search-input"
+                  value={importCategory}
+                  onChange={(e) => setImportCategory(e.target.value)}
+                  placeholder="custom"
+                />
+              </label>
+              <label className="skills-import-field skills-import-field-wide">
+                <span>{t("skills.importDescription")}</span>
+                <input
+                  className="skills-search-input"
+                  value={importDescription}
+                  onChange={(e) => setImportDescription(e.target.value)}
+                  placeholder={t("skills.importDescriptionPlaceholder")}
+                />
+              </label>
+              <label className="skills-import-field skills-import-field-wide">
+                <span>{t("skills.importMarkdown")}</span>
+                <textarea
+                  className="skills-import-textarea"
+                  value={importMarkdown}
+                  onChange={(e) => setImportMarkdown(e.target.value)}
+                  placeholder={t("skills.importMarkdownPlaceholder")}
+                />
+              </label>
+              <label className="skills-import-overwrite">
+                <input
+                  type="checkbox"
+                  checked={importOverwrite}
+                  onChange={(e) => setImportOverwrite(e.target.checked)}
+                />
+                <span>{t("skills.importOverwrite")}</span>
+              </label>
+            </div>
+            <div className="skills-import-actions">
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  setImportError("");
+                  setImportOpen(false);
+                }}
+                disabled={importing}
+              >
+                {t("skills.importCancel")}
+              </button>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={handleImportMarkdown}
+                disabled={importing || !importMarkdown.trim()}
+              >
+                {importing ? t("skills.importing") : t("skills.import")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="skills-header">
         <div>
           <h2 className="skills-title">{t("skills.title")}</h2>
           <p className="skills-subtitle">{t("skills.subtitle")}</p>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={loadAll}>
-          <Refresh size={14} />
-          {t("skills.refresh")}
-        </button>
+        <div className="skills-header-actions">
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => {
+              setImportError("");
+              setImportOpen(true);
+            }}
+          >
+            <Plus size={14} />
+            {t("skills.importMarkdownAction")}
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={loadAll}>
+            <Refresh size={14} />
+            {t("skills.refresh")}
+          </button>
+        </div>
       </div>
+
+      {notice && (
+        <div className="skills-notice">
+          {notice}
+          <button className="btn-ghost" onClick={() => setNotice("")}>
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="skills-error">

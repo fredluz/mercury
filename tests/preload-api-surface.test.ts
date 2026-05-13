@@ -91,6 +91,11 @@ describe("New APIs from v0.8/v0.9 features", () => {
     expect(preloadMethods).toContain("discoverMemoryProviders");
     expect(typeMethods).toContain("discoverMemoryProviders");
   });
+
+  it("has manual Markdown skill import API", () => {
+    expect(preloadMethods).toContain("importSkillMarkdown");
+    expect(typeMethods).toContain("importSkillMarkdown");
+  });
 });
 
 // ─── Legacy APIs still present ──────────────────────────
@@ -155,6 +160,7 @@ describe("Legacy APIs preserved (backward compat)", () => {
     "getSkillContent",
     "installSkill",
     "uninstallSkill",
+    "importSkillMarkdown",
     // Models
     "listModels",
     "addModel",

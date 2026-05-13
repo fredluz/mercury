@@ -8,7 +8,16 @@ import { spawn } from "child_process";
 import { homedir } from "os";
 import { join } from "path";
 import type { SshConfig } from "./ssh-tunnel";
-import type { InstalledSkill, SkillSearchResult } from "./skills";
+import {
+  isValidSkillImportProfile,
+  prepareSkillMarkdownImport,
+  type InstalledSkill,
+  type SkillSearchResult,
+} from "./skills";
+import type {
+  SkillMarkdownImportRequest,
+  SkillMarkdownImportResult,
+} from "../shared/skills";
 import type { MemoryInfo } from "./memory";
 import type { SessionSummary, SessionMessage, SearchResult } from "./sessions";
 import type { CachedSession } from "./session-cache";
@@ -121,6 +130,18 @@ async function sshWriteFile(config: SshConfig, remotePath: string, content: stri
   );
 }
 
+async function sshFileExists(config: SshConfig, remotePath: string): Promise<boolean> {
+  try {
+    const out = await sshExec(
+      config,
+      `bash -c 'expand(){ case "$1" in "~/"*) printf "%s" "$HOME/\${1#~/}" ;; "\\$HOME/"*) printf "%s" "$HOME/\${1#\\$HOME/}" ;; *) printf "%s" "$1" ;; esac; }; file=$(expand "$1"); test -e "$file" && printf yes || printf no' -- ${shellQuote(normalizeRemotePath(remotePath))}`,
+    );
+    return out.trim() === "yes";
+  } catch {
+    return false;
+  }
+}
+
 // ── Skills ───────────────────────────────────────────────────────────────────
 
 const REMOTE_PREFIX = "REMOTE:";
@@ -202,6 +223,62 @@ export async function sshUninstallSkill(config: SshConfig, name: string): Promis
     return { success: true };
   } catch (err) {
     return { success: false, error: (err as Error).message };
+  }
+}
+
+function remoteSkillDir(profile: string | undefined, category: string, name: string): string {
+  const skillsRoot =
+    profile && profile !== "default"
+      ? `~/.hermes/profiles/${profile}/skills`
+      : "~/.hermes/skills";
+  return `${skillsRoot}/${category}/${name}`;
+}
+
+export async function sshImportSkillMarkdown(
+  config: SshConfig,
+  request: SkillMarkdownImportRequest,
+  profile?: string,
+): Promise<SkillMarkdownImportResult> {
+  if (!isValidSkillImportProfile(profile)) {
+    return {
+      success: false,
+      code: "write-failed",
+      error: "Invalid profile name for remote skill import.",
+    };
+  }
+
+  const preparedResult = prepareSkillMarkdownImport(request);
+  if (!preparedResult.success) return preparedResult;
+
+  const { prepared } = preparedResult;
+  const skillDir = remoteSkillDir(profile, prepared.category, prepared.name);
+  const skillFile = `${skillDir}/SKILL.md`;
+
+  if (!request.overwrite && (await sshFileExists(config, skillFile))) {
+    return {
+      success: false,
+      code: "duplicate",
+      error: `Skill ${prepared.category}/${prepared.name} already exists on the remote host.`,
+    };
+  }
+
+  try {
+    await sshWriteFile(config, skillFile, prepared.markdown);
+    return {
+      success: true,
+      skill: {
+        name: prepared.name,
+        category: prepared.category,
+        description: prepared.description,
+        path: REMOTE_PREFIX + normalizeRemotePath(skillDir),
+      },
+    };
+  } catch (err) {
+    return {
+      success: false,
+      code: "write-failed",
+      error: (err as Error).message,
+    };
   }
 }
 

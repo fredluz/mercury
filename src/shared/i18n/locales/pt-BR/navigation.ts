@@ -3,7 +3,6 @@ export default {
   sessions: "Sessões",
   traces: "Trace Lab",
   agents: "Perfis",
-  office: "Escritório",
   models: "Modelos",
   providers: "Provedores",
   skills: "Habilidades",

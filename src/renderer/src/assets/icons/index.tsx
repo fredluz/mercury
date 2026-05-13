@@ -3,7 +3,6 @@ export {
   ArrowRight,
   Bot,
   Brain,
-  Building,
   ChevronDown,
   Clock,
   Copy,

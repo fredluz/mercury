@@ -138,7 +138,6 @@ const run = async () => {
       "Sessions",
       "Trace Lab",
       "Profiles",
-      "Office",
       "Models",
       "Providers",
       "Skills",
@@ -303,17 +302,6 @@ const run = async () => {
     await page.locator(".settings-platform-card").first().waitFor();
     appendResult(results, "Gateway renders status and platform cards", "pass");
 
-    await clickNav(page, "Office");
-    await page
-      .locator(".office-center, .office-ready")
-      .first()
-      .waitFor({ timeout: 30_000 });
-    appendResult(
-      results,
-      "Office renders without blocking the rest of the app",
-      "pass",
-    );
-
     await clickNav(page, "Settings");
     await page
       .locator(".settings-container")
@@ -354,7 +342,7 @@ const run = async () => {
       "## Notes",
       "",
       "- This sweep exercises the real chat path, Trace Lab persistence, and the main desktop surfaces.",
-      "- Schedules, Gateway, Office, provider credential mutations, and external service actions are rendered or opened but not triggered when doing so would start long-running processes or call unrelated services.",
+      "- Schedules, Gateway, provider credential mutations, and external service actions are rendered or opened but not triggered when doing so would start long-running processes or call unrelated services.",
       "",
     ].join("\n");
     fs.writeFileSync(reportPath, report);

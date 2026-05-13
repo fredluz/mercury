@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { electronAPI } from "@electron-toolkit/preload";
 import type { AppLocale } from "../shared/i18n/types";
+import type {
+  SkillMarkdownImportRequest,
+  SkillMarkdownImportResult,
+} from "../shared/skills";
 import type { SkillTrainingRun, TraceRun } from "../shared/traces";
 
 const hermesAPI = {
@@ -377,6 +381,11 @@ const hermesAPI = {
     profile?: string,
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("uninstall-skill", name, profile),
+  importSkillMarkdown: (
+    request: SkillMarkdownImportRequest,
+    profile?: string,
+  ): Promise<SkillMarkdownImportResult> =>
+    ipcRenderer.invoke("import-skill-markdown", request, profile),
 
   // Session cache (fast local cache with generated titles)
   listCachedSessions: (

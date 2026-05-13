@@ -21,4 +21,23 @@ export default {
   installedBadge: "Installed",
   installing: "Installing...",
   install: "Install",
+  importMarkdownAction: "Import Markdown",
+  importTitle: "Import Markdown skill",
+  importHelp:
+    "Paste a SKILL.md file. The skill is saved to the selected profile.",
+  importName: "Name",
+  importNamePlaceholder: "skill-name",
+  importCategory: "Category",
+  importDescription: "Description",
+  importDescriptionPlaceholder: "Optional summary",
+  importMarkdown: "Markdown",
+  importMarkdownPlaceholder: "---\nname: my-skill\ndescription: What this skill does\n---\n# Instructions...",
+  importOverwrite: "Overwrite if this skill already exists",
+  importCancel: "Cancel",
+  importing: "Importing...",
+  import: "Import",
+  importFailed: "Failed to import skill",
+  importSuccess: "Skill imported.",
+  importRestartWarning:
+    "Skill imported. Restart the gateway or start a new Hermes session for runtime indexing.",
 } as const;

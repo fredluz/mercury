@@ -107,7 +107,9 @@ import {
   getSkillContent,
   installSkill,
   uninstallSkill,
+  importSkillMarkdown,
 } from "./skills";
+import type { SkillMarkdownImportRequest } from "../shared/skills";
 import {
   listCronJobs,
   createCronJob,
@@ -132,6 +134,7 @@ import {
   sshGetSkillContent,
   sshInstallSkill,
   sshUninstallSkill,
+  sshImportSkillMarkdown,
   sshListBundledSkills,
   sshReadMemory,
   sshAddMemoryEntry,
@@ -886,6 +889,36 @@ function setupIPC(): void {
       if (conn.mode === "ssh" && conn.ssh)
         return sshUninstallSkill(conn.ssh, name);
       return uninstallSkill(name, _profile);
+    },
+  );
+  ipcMain.handle(
+    "import-skill-markdown",
+    async (
+      _event,
+      request: SkillMarkdownImportRequest,
+      profile?: string,
+    ) => {
+      const conn = getConnectionConfig();
+      if (conn.mode === "ssh" && conn.ssh) {
+        const result = await sshImportSkillMarkdown(conn.ssh, request, profile);
+        if (result.success && (await sshGatewayStatus(conn.ssh))) {
+          return { ...result, warning: "gateway-restart-required" as const };
+        }
+        return result;
+      }
+      if (conn.mode === "remote") {
+        return {
+          success: false,
+          code: "write-failed",
+          error:
+            "Manual Markdown skill import is only available in local and SSH modes because it writes to the selected profile's filesystem.",
+        };
+      }
+      const result = importSkillMarkdown(request, profile);
+      if (result.success && isGatewayRunning()) {
+        return { ...result, warning: "gateway-restart-required" as const };
+      }
+      return result;
     },
   );
 
