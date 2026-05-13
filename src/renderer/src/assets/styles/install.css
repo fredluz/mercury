@@ -1,0 +1,125 @@
+/* ========================================================================
+   INSTALL SCREEN
+   ======================================================================== */
+.install-screen {
+  padding-top: 60px;
+  justify-content: flex-start;
+}
+
+.install-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 28px;
+  color: var(--text-primary);
+}
+
+.install-progress-container {
+  width: 100%;
+  max-width: 500px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.install-progress-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.install-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+
+.install-percent {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 36px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.install-step-info {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.install-step-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.install-step-detail {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.install-log {
+  width: 100%;
+  max-width: 620px;
+  flex: 1;
+  min-height: 200px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-top: 20px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+}
+
+.install-progress-fill--error {
+  background: var(--error) !important;
+}
+
+.install-error-banner {
+  width: 100%;
+  max-width: 620px;
+  background: var(--error-bg);
+  border: 1px solid var(--error);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.install-error-text {
+  font-size: 13px;
+  color: var(--error);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.install-error-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.install-error {
+  text-align: center;
+  margin-top: 16px;
+  color: var(--error);
+  font-size: 14px;
+  max-width: 500px;
+  line-height: 1.5;
+}
+
+.install-done {
+  margin-top: 20px;
+}

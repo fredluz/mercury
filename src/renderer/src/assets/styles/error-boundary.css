@@ -1,0 +1,34 @@
+/* ========================================================================
+   ERROR BOUNDARY
+   ======================================================================== */
+.error-boundary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  padding: 24px;
+  background: var(--bg-primary);
+}
+
+.error-boundary-card {
+  text-align: center;
+  padding: 32px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  max-width: 420px;
+}
+
+.error-boundary-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.error-boundary-message {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+  line-height: 1.5;
+}

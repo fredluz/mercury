@@ -1,0 +1,358 @@
+/* ========================================================================
+   TRACE LAB
+   ======================================================================== */
+.trace-lab {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;
+  padding: 28px;
+  overflow: auto;
+  background:
+    linear-gradient(180deg, rgba(0, 63, 122, 0.045), transparent 220px),
+    var(--bg-primary);
+}
+
+.trace-lab-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.trace-lab-header h2 {
+  margin: 0 0 6px;
+  color: var(--text-primary);
+  font-size: 34px;
+  line-height: 1.1;
+}
+
+.trace-lab-subtitle {
+  max-width: 600px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.trace-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.trace-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-secondary), white 18%);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.trace-mode-badge svg {
+  color: var(--accent-text);
+}
+
+.trace-eyebrow {
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.trace-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.04);
+}
+
+.trace-metric {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 3px 10px;
+  padding: 16px;
+  border-right: 1px solid var(--border);
+}
+
+.trace-metric:last-child {
+  border-right: 0;
+}
+
+.trace-metric svg {
+  grid-row: span 2;
+  width: 34px;
+  height: 34px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+.trace-metric span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.trace-metric strong {
+  grid-column: 2 / 4;
+  color: var(--text-primary);
+  font-size: 22px;
+}
+
+.trace-workbench {
+  display: grid;
+  grid-template-columns: minmax(250px, 320px) minmax(0, 1fr) minmax(
+      310px,
+      380px
+    );
+  gap: 16px;
+  align-items: start;
+}
+
+.trace-run-list,
+.trace-detail,
+.trace-inspector {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.045);
+}
+
+.trace-run-list,
+.trace-inspector {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.trace-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.trace-run-count {
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.trace-run-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-muted);
+}
+
+.trace-run-search:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
+.trace-run-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.trace-run-search input::placeholder {
+  color: var(--text-muted);
+}
+
+.trace-run-results {
+  display: grid;
+  gap: 10px;
+}
+
+.trace-run-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.trace-run-filters button {
+  min-width: 0;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.trace-run-filters button:hover,
+.trace-run-filters button.active {
+  border-color: var(--border-focus);
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+.trace-panel-heading.compact {
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.trace-panel-heading h3,
+.trace-detail-title h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+.trace-run-row {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-height: 76px;
+  padding: 12px 12px 12px 28px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.trace-run-row:hover {
+  background: var(--bg-tertiary);
+}
+
+.trace-run-row.active {
+  border-color: var(--border-focus);
+  background:
+    linear-gradient(90deg, var(--accent-subtle), transparent), var(--bg-primary);
+  box-shadow: inset 3px 0 0 var(--accent-text);
+}
+
+.trace-run-row span,
+.trace-run-row small {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.trace-run-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.trace-run-row strong,
+.trace-detail-title h3 {
+  overflow-wrap: anywhere;
+}
+
+.trace-status-dot {
+  position: absolute;
+  top: 16px;
+  left: 12px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--text-muted);
+}
+
+.trace-status-dot.completed,
+.trace-status-pill.completed {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.trace-status-dot.running,
+.trace-status-pill.running {
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+.trace-status-dot.failed,
+.trace-status-dot.aborted,
+.trace-status-pill.failed,
+.trace-status-pill.aborted {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.trace-detail {
+  overflow: hidden;
+}
+
+.trace-detail-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.trace-detail-title > div,
+.trace-section-title > div {
+  min-width: 0;
+}
+
+.trace-request-preview {
+  display: grid;
+  gap: 5px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-primary);
+}
+
+.trace-request-preview p:last-child {
+  max-height: 96px;
+  margin: 0;
+  overflow: auto;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.trace-status-pill,
+.trace-event-type,
+.skill-training-row span {
+  width: fit-content;
+  padding: 5px 9px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: capitalize;
+}

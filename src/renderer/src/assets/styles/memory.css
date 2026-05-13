@@ -1,0 +1,369 @@
+/* ========================================================================
+   MEMORY
+   ======================================================================== */
+.memory-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.memory-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.memory-stats {
+  display: flex;
+  gap: 24px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 20px;
+  margin-bottom: 16px;
+}
+
+.memory-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.memory-stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.memory-stat-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Capacity bars */
+.memory-capacities {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.memory-capacity {
+  flex: 1;
+}
+
+.memory-capacity-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.memory-capacity-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.memory-capacity-value {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.memory-capacity-track {
+  height: 4px;
+  background: var(--bg-elevated);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.memory-capacity-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* Tabs */
+.memory-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+.memory-tab {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all var(--transition);
+}
+
+.memory-tab:hover {
+  color: var(--text-secondary);
+}
+
+.memory-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+
+.memory-tab-time {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.memory-error {
+  background: var(--error-bg);
+  color: var(--error);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+/* Entry list */
+.memory-entries-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.memory-entries-count {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.memory-entry-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+
+.memory-entry-card:hover {
+  border-color: var(--border-bright);
+}
+
+.memory-entry-content {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.memory-entry-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.memory-entry-btn {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 2px 6px;
+}
+
+.memory-entry-btn:hover {
+  color: var(--text-primary);
+}
+
+.memory-entry-confirm {
+  font-size: 11px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.memory-entry-form {
+  margin-bottom: 12px;
+}
+
+.memory-entry-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+  line-height: 1.5;
+}
+
+.memory-entry-textarea:focus {
+  border-color: var(--border-focus);
+}
+
+.memory-entry-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  justify-content: flex-end;
+}
+
+.memory-entry-chars {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-right: auto;
+}
+
+.memory-empty {
+  text-align: center;
+  padding: 32px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.memory-empty-hint {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/* User profile */
+.memory-profile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.memory-profile-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.memory-profile-textarea {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+  line-height: 1.6;
+}
+
+.memory-profile-textarea:focus {
+  border-color: var(--border-focus);
+}
+
+.memory-profile-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+/* Memory Providers */
+.memory-providers {
+  margin-top: 16px;
+}
+
+.memory-providers-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.memory-providers-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.memory-provider-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  transition: border-color 0.15s;
+}
+
+.memory-provider-card:hover {
+  border-color: var(--border-hover);
+}
+
+.memory-provider-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg-secondary));
+}
+
+.memory-provider-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.memory-provider-name {
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: capitalize;
+}
+
+.memory-provider-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  padding: 2px 7px;
+  border-radius: 10px;
+}
+
+.memory-provider-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin-bottom: 10px;
+}
+
+.memory-provider-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.memory-provider-field-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  margin-bottom: 2px;
+  display: block;
+}
+
+.memory-provider-actions {
+  display: flex;
+  gap: 8px;
+}

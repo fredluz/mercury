@@ -1,0 +1,237 @@
+.trace-run-map {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  background:
+    radial-gradient(circle at 18% 8%, rgba(0, 106, 205, 0.09), transparent 28%),
+    radial-gradient(
+      circle at 72% 12%,
+      rgba(22, 163, 74, 0.08),
+      transparent 24%
+    ),
+    var(--bg-primary);
+}
+
+.trace-skill-summary {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-primary);
+}
+
+.trace-skill-summary .trace-section-title > span {
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.trace-skill-links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.trace-skill-links button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 6px 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.trace-skill-links button:hover {
+  border-color: var(--border-focus);
+}
+
+.trace-skill-links strong {
+  min-width: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.trace-skill-links small {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.trace-skill-links p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.trace-section-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.trace-section-title h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.trace-map-status {
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: capitalize;
+}
+
+.trace-map-status.completed {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.trace-map-status.running {
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+.trace-map-status.failed,
+.trace-map-status.aborted {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.trace-map-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 18px;
+}
+
+.trace-map-step-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.trace-map-step {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  min-height: 138px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-secondary), white 12%);
+}
+
+.trace-map-step.complete {
+  border-color: color-mix(in srgb, var(--accent-text), var(--border) 74%);
+}
+
+.trace-map-step.green.complete {
+  border-color: color-mix(in srgb, var(--success), var(--border) 65%);
+}
+
+.trace-map-step.amber.complete {
+  border-color: color-mix(in srgb, var(--warning), var(--border) 65%);
+}
+
+.trace-map-step.red.complete {
+  border-color: color-mix(in srgb, var(--error), var(--border) 65%);
+}
+
+.trace-map-step-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+.trace-map-step.green .trace-map-step-icon {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.trace-map-step.amber .trace-map-step-icon {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.trace-map-step.red .trace-map-step-icon {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.trace-map-step.neutral .trace-map-step-icon {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+
+.trace-map-step strong {
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.trace-map-step p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.trace-map-step small {
+  align-self: end;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.trace-map-arrow {
+  position: absolute;
+  top: 24px;
+  right: -17px;
+  z-index: 1;
+  color: var(--text-muted);
+}
+
+.trace-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-bottom: 1px solid var(--border);
+}
+
+.trace-fact {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-right: 1px solid var(--border);
+}
+
+.trace-fact:last-child {
+  border-right: 0;
+}
+
+.trace-fact span {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.trace-fact strong {
+  color: var(--text-primary);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
