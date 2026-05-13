@@ -104,7 +104,7 @@ function writeClaw3dSettings(wsUrl?: string): void {
       const envPath = join(HERMES_OFFICE_DIR, ".env");
       const port = getSavedPort();
       const envContent = [
-        "# Auto-configured by Hermes Desktop",
+        "# Auto-configured by Mercury",
         `PORT=${port}`,
         `HOST=127.0.0.1`,
         `NEXT_PUBLIC_GATEWAY_URL=${url}`,

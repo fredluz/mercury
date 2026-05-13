@@ -1,5 +1,5 @@
 /* ========================================================================
-   Hermes Agent Desktop — Clean Design System
+   Mercury Desktop — Clean Design System
    Dark + Light mode, no gradients, flat design
    ======================================================================== */
 
@@ -820,6 +820,14 @@ body {
   gap: 10px;
   padding: 20px 10px;
   margin-top: 25px;
+}
+
+.sidebar-brand-lockup {
+  color: var(--text-primary);
+  font-size: 25px;
+  font-weight: 850;
+  line-height: 1;
+  letter-spacing: 0;
 }
 
 .sidebar-brand-icon {
@@ -4663,9 +4671,11 @@ body {
 .splash-logo {
   position: relative;
   z-index: 1;
-  width: 600px;
-  max-width: 60%;
   opacity: 0;
+  color: #f8fafc;
+  font-size: 72px;
+  font-weight: 850;
+  letter-spacing: 0;
   animation: splashFadeIn 1.1s ease-out forwards;
 }
 

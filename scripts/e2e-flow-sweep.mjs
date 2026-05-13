@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url);
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const artifactsDir = path.join(repoRoot, "docs", "assets");
-const screenshotPath = path.join(artifactsDir, "hermes-desktop-flow-sweep.png");
+const screenshotPath = path.join(artifactsDir, "mercury-flow-sweep.png");
 const reportPath = path.join(repoRoot, "docs", "e2e-flow-sweep-report.md");
 
 const waitForCompletedTrace = async (tracePath, timeout = 180_000) => {
@@ -61,7 +61,7 @@ const readOpenCodeGoKey = () => {
 const writeHermesHome = () => {
   const key = readOpenCodeGoKey();
   const hermesHome = fs.mkdtempSync(
-    path.join(os.tmpdir(), "hermes-desktop-flow-e2e-"),
+    path.join(os.tmpdir(), "mercury-flow-e2e-"),
   );
   fs.chmodSync(hermesHome, 0o700);
 
@@ -328,7 +328,7 @@ const run = async () => {
     );
 
     const report = [
-      "# Hermes Desktop Flow Sweep E2E",
+      "# Mercury Flow Sweep E2E",
       "",
       `Date: ${new Date().toISOString()}`,
       "",
@@ -348,7 +348,7 @@ const run = async () => {
       "",
       "## Artifacts",
       "",
-      `- Screenshot: [docs/assets/hermes-desktop-flow-sweep.png](assets/hermes-desktop-flow-sweep.png)`,
+      `- Screenshot: [docs/assets/mercury-flow-sweep.png](assets/mercury-flow-sweep.png)`,
       `- Temporary Hermes home used for this run: \`${hermesHome}\``,
       "",
       "## Notes",

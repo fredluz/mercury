@@ -56,7 +56,7 @@ describe("I18nProvider", () => {
       );
     });
 
-    expect(await screen.findByText("Welcome to Hermes")).toBeInTheDocument();
+    expect(await screen.findByText("Welcome to Mercury")).toBeInTheDocument();
   });
 
   it("renders Spanish translations after switching locale", async () => {
@@ -67,7 +67,9 @@ describe("I18nProvider", () => {
     );
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Switch to Spanish" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "Switch to Spanish" }),
+      );
     });
 
     expect(setLocale).toHaveBeenLastCalledWith("es");

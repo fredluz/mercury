@@ -1,7 +1,7 @@
 export default {
-  title: "Welcome to Hermes",
+  title: "Welcome to Mercury",
   subtitle:
-    "Your self-improving AI assistant that runs locally on your machine. Private, powerful, and always learning.",
+    "A desktop control surface for Hermes Agent. Private, powerful, and built for tracing and skill evolution.",
   installIssueTitle: "Installation Issue",
   getStarted: "Get Started",
   retryInstall: "Retry Installation",
@@ -18,5 +18,6 @@ export default {
   remoteApiKeyPlaceholder: "Bearer token (API_SERVER_KEY)",
   testingConnection: "Testing",
   connect: "Connect",
-  remoteHint: "Leave the key empty if the server accepts unauthenticated requests (e.g. via SSH tunnel to localhost).",
+  remoteHint:
+    "Leave the key empty if the server accepts unauthenticated requests (e.g. via SSH tunnel to localhost).",
 } as const;

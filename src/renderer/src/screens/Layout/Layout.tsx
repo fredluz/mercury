@@ -14,7 +14,6 @@ import Models from "../Models/Models";
 import Providers from "../Providers/Providers";
 import Schedules from "../Schedules/Schedules";
 import RemoteNotice from "../../components/RemoteNotice";
-import hermeslogo from "../../assets/hermes.png";
 import {
   ChatBubble,
   Clock,
@@ -182,7 +181,9 @@ function Layout(): React.JSX.Element {
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <img src={hermeslogo} height={30} alt="" />
+          <div className="sidebar-brand-lockup" aria-label="Mercury">
+            Mercury
+          </div>
         </div>
 
         <nav className="sidebar-nav">

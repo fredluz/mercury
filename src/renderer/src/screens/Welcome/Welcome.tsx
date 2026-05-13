@@ -1,12 +1,6 @@
 import { useState } from "react";
-import HermesLogo from "../../components/common/HermesLogo";
-import {
-  ArrowRight,
-  Refresh,
-  Copy,
-  Globe,
-  Spinner,
-} from "../../assets/icons";
+import MercuryMark from "../../components/common/MercuryMark";
+import { ArrowRight, Refresh, Copy, Globe, Spinner } from "../../assets/icons";
 import { INSTALL_CMD } from "../../constants";
 import { useI18n } from "../../components/useI18n";
 
@@ -44,7 +38,10 @@ function Welcome({
   async function handleConnectRemote(): Promise<void> {
     const url = remoteUrl.trim();
     const key = remoteApiKey.trim();
-    if (!url) { setRemoteError("Please enter a URL."); return; }
+    if (!url) {
+      setRemoteError("Please enter a URL.");
+      return;
+    }
     setRemoteTesting(true);
     setRemoteError(null);
     try {
@@ -67,15 +64,31 @@ function Welcome({
   async function handleConnectSsh(): Promise<void> {
     const host = sshHost.trim();
     const user = sshUser.trim();
-    if (!host || !user) { setSshError("Host and username are required."); return; }
+    if (!host || !user) {
+      setSshError("Host and username are required.");
+      return;
+    }
     const port = parseInt(sshPort, 10) || 22;
     const remotePort = parseInt(sshRemotePort, 10) || 8642;
     setSshTesting(true);
     setSshError(null);
     try {
-      const ok = await window.hermesAPI.testSshConnection(host, port, user, sshKeyPath.trim(), remotePort);
+      const ok = await window.hermesAPI.testSshConnection(
+        host,
+        port,
+        user,
+        sshKeyPath.trim(),
+        remotePort,
+      );
       if (ok) {
-        await window.hermesAPI.setSshConfig(host, port, user, sshKeyPath.trim(), remotePort, 18642);
+        await window.hermesAPI.setSshConfig(
+          host,
+          port,
+          user,
+          sshKeyPath.trim(),
+          remotePort,
+          18642,
+        );
         onRecheck();
       } else {
         setSshError(
@@ -92,7 +105,7 @@ function Welcome({
   if (panel === "remote") {
     return (
       <div className="screen welcome-screen">
-        <HermesLogo size={36} />
+        <MercuryMark size={36} />
         <h1 className="welcome-title" style={{ fontSize: 22 }}>
           {t("welcome.connectRemoteTitle")}
         </h1>
@@ -110,7 +123,9 @@ function Welcome({
             placeholder="http://192.168.1.100:8642"
             value={remoteUrl}
             onChange={(e) => setRemoteUrl(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleConnectRemote(); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleConnectRemote();
+            }}
             autoFocus
           />
 
@@ -123,7 +138,9 @@ function Welcome({
             placeholder={t("welcome.remoteApiKeyPlaceholder")}
             value={remoteApiKey}
             onChange={(e) => setRemoteApiKey(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleConnectRemote(); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleConnectRemote();
+            }}
           />
 
           <div className="welcome-remote-row" style={{ marginTop: 12 }}>
@@ -134,13 +151,23 @@ function Welcome({
               style={{ whiteSpace: "nowrap", width: "100%" }}
             >
               {remoteTesting ? (
-                <>{t("welcome.testingConnection")}<Spinner size={14} className="animate-spin" /></>
+                <>
+                  {t("welcome.testingConnection")}
+                  <Spinner size={14} className="animate-spin" />
+                </>
               ) : (
                 t("welcome.connect")
               )}
             </button>
           </div>
-          {remoteError && <p className="welcome-remote-error" style={{ whiteSpace: "pre-line" }}>{remoteError}</p>}
+          {remoteError && (
+            <p
+              className="welcome-remote-error"
+              style={{ whiteSpace: "pre-line" }}
+            >
+              {remoteError}
+            </p>
+          )}
           <p className="welcome-remote-hint">{t("welcome.remoteHint")}</p>
         </div>
 
@@ -158,12 +185,13 @@ function Welcome({
   if (panel === "ssh") {
     return (
       <div className="screen welcome-screen">
-        <HermesLogo size={36} />
+        <MercuryMark size={36} />
         <h1 className="welcome-title" style={{ fontSize: 22 }}>
           Connect via SSH
         </h1>
         <p className="welcome-subtitle" style={{ marginBottom: 24 }}>
-          Tunnel to a remote Hermes over SSH — no exposed ports or API keys needed.
+          Tunnel to a remote Hermes over SSH — no exposed ports or API keys
+          needed.
         </p>
 
         <div className="welcome-remote-card">
@@ -191,7 +219,9 @@ function Welcome({
             </div>
           </div>
 
-          <label className="welcome-remote-label" style={{ marginTop: 12 }}>Username</label>
+          <label className="welcome-remote-label" style={{ marginTop: 12 }}>
+            Username
+          </label>
           <input
             type="text"
             className="welcome-remote-input"
@@ -201,7 +231,10 @@ function Welcome({
           />
 
           <label className="welcome-remote-label" style={{ marginTop: 12 }}>
-            Private Key Path <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional — defaults to ~/.ssh/id_rsa)</span>
+            Private Key Path{" "}
+            <span style={{ fontWeight: 400, opacity: 0.6 }}>
+              (optional — defaults to ~/.ssh/id_rsa)
+            </span>
           </label>
           <input
             type="text"
@@ -212,7 +245,10 @@ function Welcome({
           />
 
           <label className="welcome-remote-label" style={{ marginTop: 12 }}>
-            Remote Hermes Port <span style={{ fontWeight: 400, opacity: 0.6 }}>(default 8642)</span>
+            Remote Hermes Port{" "}
+            <span style={{ fontWeight: 400, opacity: 0.6 }}>
+              (default 8642)
+            </span>
           </label>
           <input
             type="number"
@@ -230,15 +266,24 @@ function Welcome({
               style={{ whiteSpace: "nowrap", width: "100%" }}
             >
               {sshTesting ? (
-                <>Testing SSH connection…<Spinner size={14} className="animate-spin" /></>
+                <>
+                  Testing SSH connection…
+                  <Spinner size={14} className="animate-spin" />
+                </>
               ) : (
-                <>Connect via SSH<ArrowRight size={16} /></>
+                <>
+                  Connect via SSH
+                  <ArrowRight size={16} />
+                </>
               )}
             </button>
           </div>
 
           {sshError && (
-            <p className="welcome-remote-error" style={{ whiteSpace: "pre-line" }}>
+            <p
+              className="welcome-remote-error"
+              style={{ whiteSpace: "pre-line" }}
+            >
               {sshError}
             </p>
           )}
@@ -265,7 +310,7 @@ function Welcome({
 
   return (
     <div className="screen welcome-screen">
-      <HermesLogo size={40} />
+      <MercuryMark size={40} />
 
       {error ? (
         <>
@@ -273,15 +318,22 @@ function Welcome({
           <p className="welcome-subtitle">{error}</p>
 
           <div className="welcome-actions">
-            <button className="btn btn-primary welcome-button" onClick={onStart}>
+            <button
+              className="btn btn-primary welcome-button"
+              onClick={onStart}
+            >
               {t("welcome.retryInstall")}
               <Refresh size={16} />
             </button>
 
-            <div className="welcome-divider"><span>{t("welcome.dividerOr")}</span></div>
+            <div className="welcome-divider">
+              <span>{t("welcome.dividerOr")}</span>
+            </div>
 
             <div className="welcome-terminal-option">
-              <p className="welcome-terminal-label">{t("welcome.terminalInstallHint")}</p>
+              <p className="welcome-terminal-label">
+                {t("welcome.terminalInstallHint")}
+              </p>
               <div className="welcome-terminal-box">
                 <code>{INSTALL_CMD}</code>
                 <button
@@ -294,17 +346,28 @@ function Welcome({
               </div>
             </div>
 
-            <button className="btn btn-secondary welcome-recheck-btn" onClick={onRecheck}>
+            <button
+              className="btn btn-secondary welcome-recheck-btn"
+              onClick={onRecheck}
+            >
               {t("welcome.recheck")}
             </button>
 
-            <div className="welcome-divider"><span>or</span></div>
+            <div className="welcome-divider">
+              <span>or</span>
+            </div>
 
-            <button className="btn btn-secondary welcome-recheck-btn" onClick={() => setPanel("ssh")}>
+            <button
+              className="btn btn-secondary welcome-recheck-btn"
+              onClick={() => setPanel("ssh")}
+            >
               🔐 Connect via SSH
             </button>
 
-            <button className="btn btn-secondary welcome-recheck-btn" onClick={() => setPanel("remote")}>
+            <button
+              className="btn btn-secondary welcome-recheck-btn"
+              onClick={() => setPanel("remote")}
+            >
               <Globe size={16} />
               Connect to Remote Hermes
             </button>
@@ -320,13 +383,21 @@ function Welcome({
           </button>
           <p className="welcome-note">{t("welcome.installSizeHint")}</p>
 
-          <div className="welcome-divider"><span>{t("welcome.dividerOr")}</span></div>
+          <div className="welcome-divider">
+            <span>{t("welcome.dividerOr")}</span>
+          </div>
 
-          <button className="btn btn-secondary welcome-recheck-btn" onClick={() => setPanel("ssh")}>
+          <button
+            className="btn btn-secondary welcome-recheck-btn"
+            onClick={() => setPanel("ssh")}
+          >
             🔐 Connect via SSH
           </button>
 
-          <button className="btn btn-secondary welcome-recheck-btn" onClick={() => setPanel("remote")}>
+          <button
+            className="btn btn-secondary welcome-recheck-btn"
+            onClick={() => setPanel("remote")}
+          >
             <Globe size={16} />
             {t("welcome.connectRemote")}
           </button>

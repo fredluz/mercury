@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Trash, ChatBubble } from "../../assets/icons";
-import HermesLogo from "../../components/common/HermesLogo";
+import MercuryMark from "../../components/common/MercuryMark";
 import { useI18n } from "../../components/useI18n";
 
 interface ProfileInfo {
@@ -26,7 +26,7 @@ function AgentAvatar({ name }: { name: string }): React.JSX.Element {
   if (name === "default") {
     return (
       <div className="agents-card-avatar agents-card-avatar-icon">
-        <HermesLogo size={22} />
+        <MercuryMark size={22} />
       </div>
     );
   }
@@ -57,7 +57,10 @@ function Agents({
   }, []);
 
   useEffect(() => {
-    loadProfiles();
+    const timer = window.setTimeout(() => {
+      void loadProfiles();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [loadProfiles]);
 
   async function handleCreate(): Promise<void> {
@@ -70,7 +73,7 @@ function Agents({
     if (result.success) {
       setShowCreate(false);
       setNewName("");
-      loadProfiles();
+      void loadProfiles();
     } else {
       setError(result.error || t("agents.createFailed"));
     }
@@ -80,7 +83,7 @@ function Agents({
     const result = await window.hermesAPI.deleteProfile(name);
     if (result.success) {
       if (activeProfile === name) onSelectProfile("default");
-      loadProfiles();
+      void loadProfiles();
     }
     setConfirmDelete(null);
   }
@@ -88,7 +91,7 @@ function Agents({
   async function handleSelect(name: string): Promise<void> {
     await window.hermesAPI.setActiveProfile(name);
     onSelectProfile(name);
-    loadProfiles();
+    void loadProfiles();
   }
 
   function providerLabel(provider: string): string {

@@ -45,35 +45,33 @@ describe("generateWingetManifests", () => {
     const distDir = join(TEST_DIR, "dist");
     mkdirSync(distDir, { recursive: true });
     writeFileSync(
-      join(distDir, "hermes-desktop-9.9.9-setup.exe"),
+      join(distDir, "mercury-9.9.9-setup.exe"),
       "fake-installer-bytes",
     );
 
     generateWingetManifests({
       rootDir: TEST_DIR,
       version: "9.9.9",
-      name: "hermes-desktop",
-      publishOwner: "fathah",
+      name: "mercury",
+      publishOwner: "fredluz",
     });
 
     const outDir = join(
       distDir,
       "winget",
       "manifests",
-      "n",
-      "NousResearch",
-      "HermesDesktop",
+      "f",
+      "FredLuz",
+      "Mercury",
       "9.9.9",
     );
-    expect(
-      existsSync(join(outDir, "NousResearch.HermesDesktop.installer.yaml")),
-    ).toBe(true);
-    expect(
-      existsSync(join(outDir, "NousResearch.HermesDesktop.locale.en-US.yaml")),
-    ).toBe(true);
-    expect(existsSync(join(outDir, "NousResearch.HermesDesktop.yaml"))).toBe(
+    expect(existsSync(join(outDir, "FredLuz.Mercury.installer.yaml"))).toBe(
       true,
     );
+    expect(existsSync(join(outDir, "FredLuz.Mercury.locale.en-US.yaml"))).toBe(
+      true,
+    );
+    expect(existsSync(join(outDir, "FredLuz.Mercury.yaml"))).toBe(true);
   });
 
   it("replaces all placeholders in the installer manifest", () => {
@@ -81,31 +79,31 @@ describe("generateWingetManifests", () => {
     const distDir = join(TEST_DIR, "dist");
     mkdirSync(distDir, { recursive: true });
     writeFileSync(
-      join(distDir, "hermes-desktop-9.9.9-setup.exe"),
+      join(distDir, "mercury-9.9.9-setup.exe"),
       "fake-installer-bytes",
     );
 
     generateWingetManifests({
       rootDir: TEST_DIR,
       version: "9.9.9",
-      name: "hermes-desktop",
-      publishOwner: "fathah",
+      name: "mercury",
+      publishOwner: "fredluz",
     });
 
     const outFile = join(
       distDir,
       "winget",
       "manifests",
-      "n",
-      "NousResearch",
-      "HermesDesktop",
+      "f",
+      "FredLuz",
+      "Mercury",
       "9.9.9",
-      "NousResearch.HermesDesktop.installer.yaml",
+      "FredLuz.Mercury.installer.yaml",
     );
     const content = readFileSync(outFile, "utf-8");
     expect(content).toContain("Version: 9.9.9");
     expect(content).toContain(
-      "Url: https://github.com/fathah/hermes-desktop/releases/download/v9.9.9/hermes-desktop-9.9.9-setup.exe",
+      "Url: https://github.com/fredluz/mercury/releases/download/v9.9.9/mercury-9.9.9-setup.exe",
     );
     expect(content).toMatch(/Sha: [A-F0-9]{64}/);
     expect(content).toMatch(/Date: \d{4}-\d{2}-\d{2}/);
@@ -117,30 +115,30 @@ describe("generateWingetManifests", () => {
     const distDir = join(TEST_DIR, "dist");
     mkdirSync(distDir, { recursive: true });
     writeFileSync(
-      join(distDir, "hermes-desktop-9.9.9-setup.exe"),
+      join(distDir, "mercury-9.9.9-setup.exe"),
       "fake-installer-bytes",
     );
 
     generateWingetManifests({
       rootDir: TEST_DIR,
       version: "9.9.9",
-      name: "hermes-desktop",
-      publishOwner: "fathah",
+      name: "mercury",
+      publishOwner: "fredluz",
     });
 
     const outFile = join(
       distDir,
       "winget",
       "manifests",
-      "n",
-      "NousResearch",
-      "HermesDesktop",
+      "f",
+      "FredLuz",
+      "Mercury",
       "9.9.9",
-      "NousResearch.HermesDesktop.locale.en-US.yaml",
+      "FredLuz.Mercury.locale.en-US.yaml",
     );
     const content = readFileSync(outFile, "utf-8");
     expect(content).toContain(
-      "Notes: https://github.com/fathah/hermes-desktop/releases/tag/v9.9.9",
+      "Notes: https://github.com/fredluz/mercury/releases/tag/v9.9.9",
     );
     expect(content).not.toContain("{{");
   });
@@ -153,8 +151,8 @@ describe("generateWingetManifests", () => {
       generateWingetManifests({
         rootDir: TEST_DIR,
         version: "9.9.9",
-        name: "hermes-desktop",
-        publishOwner: "fathah",
+        name: "mercury",
+        publishOwner: "fredluz",
       }),
     ).toThrow(/installer not found/i);
   });
@@ -164,7 +162,7 @@ describe("generateWingetManifests", () => {
     const distDir = join(TEST_DIR, "dist");
     mkdirSync(distDir, { recursive: true });
     writeFileSync(
-      join(distDir, "hermes-desktop-9.9.9-setup.exe"),
+      join(distDir, "mercury-9.9.9-setup.exe"),
       "fake-installer-bytes",
     );
 
@@ -172,8 +170,8 @@ describe("generateWingetManifests", () => {
       generateWingetManifests({
         rootDir: TEST_DIR,
         version: "9.9.9",
-        name: "hermes-desktop",
-        publishOwner: "fathah",
+        name: "mercury",
+        publishOwner: "fredluz",
       }),
     ).toThrow(/templates not found/i);
   });

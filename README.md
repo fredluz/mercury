@@ -1,33 +1,33 @@
-<img width="100%" alt="HERMES DESKTOP" src="https://github.com/user-attachments/assets/80585955-3bae-4aee-af90-a1e61757ccb8" />
+# Mercury
 
 <br/>
 <p align="center">
   <a href="https://hermes-agent.nousresearch.com/docs/"><img src="https://img.shields.io/badge/Docs-hermes--agent.nousresearch.com-FFD700?style=for-the-badge" alt="Documentation"></a>
   <a href="https://discord.gg/NousResearch"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
-  <a href="https://github.com/fathah/hermes-desktop/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
-  <a href="https://github.com/fathah/hermes-desktop/releases/"><img src="https://img.shields.io/badge/Download-Releases-FF6600?style=for-the-badge" alt="Releases"></a>
-<a href="https://github.com/fathah/hermes-desktop/stargazers">
-  <img src="https://img.shields.io/github/stars/fathah/hermes-desktop?style=for-the-badge&color=FFD700&label=Stars" alt="Stars">
+  <a href="https://github.com/fredluz/mercury/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
+  <a href="https://github.com/fredluz/mercury/releases/"><img src="https://img.shields.io/badge/Download-Releases-FF6600?style=for-the-badge" alt="Releases"></a>
+<a href="https://github.com/fredluz/mercury/stargazers">
+  <img src="https://img.shields.io/github/stars/fredluz/mercury?style=for-the-badge&color=FFD700&label=Stars" alt="Stars">
 </a>
-  <a href="https://github.com/fathah/hermes-desktop/releases/">
-  <img src="https://img.shields.io/github/downloads/fathah/hermes-desktop/total?style=for-the-badge&color=00B496&label=Total%20Downloads" alt="Downloads">
+  <a href="https://github.com/fredluz/mercury/releases/">
+  <img src="https://img.shields.io/github/downloads/fredluz/mercury/total?style=for-the-badge&color=00B496&label=Total%20Downloads" alt="Downloads">
 </a>
 </p>
 
-> **This project is in active development.** Features may change, and some things might break. If you run into a problem or have an idea, [open an issue](https://github.com/fathah/hermes-desktop/issues). Contributions are welcome!
+> **This project is in active development.** Features may change, and some things might break. If you run into a problem or have an idea, open an issue in the Mercury repository. Contributions are welcome!
 
 ## Languages
 
 - English: `README.md`
 - 简体中文: `README.zh-CN.md`
 
-Hermes Desktop is a native desktop app for installing, configuring, and chatting with [Hermes Agent](https://github.com/NousResearch/hermes-agent) — a self-improving AI assistant with tool use, multi-platform messaging, and a closed learning loop.
+Mercury is a native desktop front end for installing, configuring, tracing, and operating [Hermes Agent](https://github.com/NousResearch/hermes-agent) — a self-improving AI assistant with tool use, multi-platform messaging, and a closed learning loop.
 
 Instead of managing the CLI by hand, the app walks through install, provider setup, and day-to-day usage in one place. It uses the official Hermes install script, stores Hermes in `~/.hermes`, and gives you a GUI for chat, sessions, profiles, memory, skills, tools, scheduling, messaging gateways, and more.
 
 ## Install
 
-Download the latest build from the [Releases](https://github.com/fathah/hermes-desktop/releases/) page.
+Download the latest build from the Mercury releases page.
 
 | Platform       | File                    |
 | -------------- | ----------------------- |
@@ -52,7 +52,7 @@ Until then, download the `.exe` from the Releases page.
 ### Fedora (RPM)
 
 ```bash
-sudo dnf install ./hermes-desktop-<version>.rpm
+sudo dnf install ./mercury-<version>.rpm
 ```
 
 > **Fedora users:** The `.rpm` is not GPG-signed. If your system enforces signature checking, append `--nogpgcheck` to the install command. Auto-update is not supported for `.rpm` builds (limitation of `electron-updater`); reinstall the new `.rpm` to update.
@@ -62,7 +62,7 @@ sudo dnf install ./hermes-desktop-<version>.rpm
 > **macOS users:** The app is not code-signed or notarized. macOS will block it on first launch. To fix this, run the following after installing:
 >
 > ```bash
-> xattr -cr "/Applications/Hermes Agent.app"
+> xattr -cr "/Applications/Mercury.app"
 > ```
 >
 > Or right-click the app → **Open** → click **Open** in the confirmation dialog.
@@ -262,7 +262,7 @@ Hermes files are managed in:
 
 ## Contributing
 
-Contributions are welcome! Check out the [Contributing Guide](CONTRIBUTING.md) to get started. If you're not sure where to begin, take a look at the [open issues](https://github.com/NousResearch/hermes-desktop/issues). Found a bug or have a feature request? [File an issue](https://github.com/NousResearch/hermes-desktop/issues/new).
+Contributions are welcome! Check out the [Contributing Guide](CONTRIBUTING.md) to get started.
 
 ## Related Project
 
