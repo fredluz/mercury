@@ -175,4 +175,21 @@ describe("generateWingetManifests", () => {
       }),
     ).toThrow(/templates not found/i);
   });
+
+  it("keeps checked-in templates on the Mercury package identity", () => {
+    const templateDir = join(process.cwd(), "build", "winget");
+    const templateNames = [
+      "Installer.template.yaml",
+      "Locale.en-US.template.yaml",
+      "Version.template.yaml",
+    ];
+
+    for (const templateName of templateNames) {
+      const content = readFileSync(join(templateDir, templateName), "utf-8");
+      expect(content).toContain("PackageIdentifier: FredLuz.Mercury");
+      expect(content).not.toContain("NousResearch." + "Hermes" + "Desktop");
+      expect(content).not.toContain("Hermes" + " Desktop");
+      expect(content).not.toContain("{ " + "{");
+    }
+  });
 });

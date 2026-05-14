@@ -1,4 +1,5 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
+import type { ContextWindowSource } from "../../../../shared/chat-metadata";
 import type { TraceEvent } from "../../../../shared/traces";
 
 export interface SlashCommand {
@@ -18,7 +19,21 @@ export interface ChatMessage {
 export interface ModelGroup {
   provider: string;
   providerLabel: string;
-  models: { provider: string; model: string; label: string; baseUrl: string }[];
+  models: {
+    provider: string;
+    model: string;
+    label: string;
+    baseUrl: string;
+    contextWindow?: number;
+  }[];
+}
+
+export interface ChatContextUsage {
+  usedTokens: number;
+  contextWindow: number;
+  percent: number;
+  source: ContextWindowSource;
+  model: string;
 }
 
 export interface ChatUsage {
@@ -26,6 +41,12 @@ export interface ChatUsage {
   completionTokens: number;
   totalTokens: number;
   cost?: number;
+  lastPromptTokens?: number;
+  lastCompletionTokens?: number;
+  lastTotalTokens?: number;
+  contextWindow?: number;
+  contextWindowSource?: ContextWindowSource;
+  contextModel?: string;
 }
 
 export type ChatActivityGroupStatus = "running" | "completed" | "failed" | "aborted";
@@ -48,6 +69,8 @@ export interface ChatController {
   activityGroups: ChatActivityGroup[];
   toggleActivityGroup: (groupId: string) => void;
   usage: ChatUsage | null;
+  contextUsage: ChatContextUsage | null;
+  titleGenerationPending: boolean;
   fastMode: boolean;
   setFastMode: Dispatch<SetStateAction<boolean>>;
   messagesEndRef: RefObject<HTMLDivElement | null>;
@@ -71,7 +94,12 @@ export interface ChatController {
   lastMessageIsAgent: boolean;
   hermesSessionId: string | null;
   loadModelConfig: () => Promise<void>;
-  selectModel: (provider: string, model: string, baseUrl: string) => Promise<void>;
+  selectModel: (
+    provider: string,
+    model: string,
+    baseUrl: string,
+    contextWindow?: number,
+  ) => Promise<void>;
   handleCustomModelSubmit: () => Promise<void>;
   handleSend: () => Promise<void>;
   handleQuickAsk: () => Promise<void>;

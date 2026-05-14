@@ -1,6 +1,6 @@
 # Generated from this template by scripts/generate-winget-manifests.mjs.
 # Placeholders ({{...}}) are replaced at build time. Do not edit the generated copy in dist/.
-PackageIdentifier: NousResearch.HermesDesktop
+PackageIdentifier: FredLuz.Mercury
 PackageVersion: {{VERSION}}
 InstallerLocale: en-US
 InstallerType: nullsoft

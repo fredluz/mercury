@@ -1,5 +1,9 @@
 # Mercury
 
+<p align="center">
+  <img src="docs/assets/mercury-logo.png" alt="Mercury" width="520">
+</p>
+
 Mercury 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的原生桌面前端，用于安装、配置、追踪和操作自改进 AI 助手。
 
 ## 语言

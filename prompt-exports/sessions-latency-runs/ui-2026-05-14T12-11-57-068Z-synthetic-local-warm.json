@@ -1,0 +1,209 @@
+{
+  "runId": "ui-2026-05-14T12-11-57-068Z-synthetic-local-warm",
+  "date": "2026-05-14T12:12:12.660Z",
+  "options": {
+    "caseName": "synthetic-local",
+    "cache": "warm",
+    "mountSamples": 5,
+    "searchSamples": 10,
+    "sessions": 5,
+    "messagesPerSession": 6,
+    "largeMessages": false,
+    "keepHomes": false
+  },
+  "queryLabel": "latencyneedle",
+  "dataset": {
+    "sessions": 5,
+    "messagesPerSession": 6,
+    "fts": true,
+    "largeMessages": false,
+    "cache": "warm"
+  },
+  "mount": [
+    {
+      "ok": true,
+      "ms": 304.2560000000001,
+      "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-11-57-068Z-synthetic-local-warm-mount-0.ndjson",
+      "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-h0bWC7"
+    },
+    {
+      "ok": true,
+      "ms": 274.19195899999977,
+      "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-11-57-068Z-synthetic-local-warm-mount-1.ndjson",
+      "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-d8k1gV"
+    },
+    {
+      "ok": true,
+      "ms": 286.28891700000077,
+      "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-11-57-068Z-synthetic-local-warm-mount-2.ndjson",
+      "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-q6SknI"
+    },
+    {
+      "ok": true,
+      "ms": 289.1716670000005,
+      "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-11-57-068Z-synthetic-local-warm-mount-3.ndjson",
+      "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-VdKRAN"
+    },
+    {
+      "ok": true,
+      "ms": 320.1659579999996,
+      "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-11-57-068Z-synthetic-local-warm-mount-4.ndjson",
+      "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-e1gjAc"
+    }
+  ],
+  "search": {
+    "samples": [
+      {
+        "ok": true,
+        "ms": 315.06133299999965
+      },
+      {
+        "ok": true,
+        "ms": 320.7375830000001
+      },
+      {
+        "ok": true,
+        "ms": 316.0672909999994
+      },
+      {
+        "ok": true,
+        "ms": 311.42875000000095
+      },
+      {
+        "ok": true,
+        "ms": 794.3704170000001
+      },
+      {
+        "ok": true,
+        "ms": 11.730084000000716
+      },
+      {
+        "ok": true,
+        "ms": 313.9041670000006
+      },
+      {
+        "ok": true,
+        "ms": 310.4806669999998
+      },
+      {
+        "ok": true,
+        "ms": 11.49854200000118
+      },
+      {
+        "ok": true,
+        "ms": 11.07641700000022
+      }
+    ],
+    "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-11-57-068Z-synthetic-local-warm-search.ndjson",
+    "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-fAj7i8"
+  },
+  "summary": {
+    "mountToFirstRenderableMs": {
+      "min": 274.19195899999977,
+      "median": 289.1716670000005,
+      "p95": 320.1659579999996,
+      "max": 320.1659579999996,
+      "mean": 294.8149002000001,
+      "stddev": 15.884927895507705
+    },
+    "rendererInputToResultsMs": {
+      "min": 11.07641700000022,
+      "median": 313.9041670000006,
+      "p95": 794.3704170000001,
+      "max": 794.3704170000001,
+      "mean": 271.6355251000003,
+      "stddev": 220.7974145911462
+    },
+    "ipc": {
+      "list-cached-sessions": {
+        "totalMs": {
+          "min": 0.20545799999990777,
+          "median": 0.30995800000005147,
+          "p95": 0.5037500000000819,
+          "max": 0.5037500000000819,
+          "mean": 0.31995816666661386,
+          "stddev": 0.10338229693463061
+        },
+        "configMs": {
+          "min": 0.09037499999999454,
+          "median": 0.13799999999991996,
+          "p95": 0.2308339999999589,
+          "max": 0.2308339999999589,
+          "mean": 0.14020849999993365,
+          "stddev": 0.04870649492880149
+        },
+        "implMs": {
+          "min": 0.06012500000019827,
+          "median": 0.09583299999985684,
+          "p95": 0.1508329999999205,
+          "max": 0.1508329999999205,
+          "mean": 0.09680549999999737,
+          "stddev": 0.03091125482052108
+        },
+        "samples": 6
+      },
+      "sync-session-cache": {
+        "totalMs": {
+          "min": 2.203958000000057,
+          "median": 3.094250000000102,
+          "p95": 4.772583000000168,
+          "max": 4.772583000000168,
+          "mean": 3.298506833333363,
+          "stddev": 0.7864681432307801
+        },
+        "configMs": {
+          "min": 0.048583000000007814,
+          "median": 0.07241700000008677,
+          "p95": 0.12120800000002419,
+          "max": 0.12120800000002419,
+          "mean": 0.07185400000003028,
+          "stddev": 0.02508965445493379
+        },
+        "implMs": {
+          "min": 2.118167000000085,
+          "median": 2.998499999999922,
+          "p95": 4.584917000000132,
+          "max": 4.584917000000132,
+          "mean": 3.183034833333371,
+          "stddev": 0.7518949927499852
+        },
+        "samples": 6
+      },
+      "search-sessions": {
+        "totalMs": {
+          "min": 0.4476670000003651,
+          "median": 0.5589580000000751,
+          "p95": 1.5098330000000715,
+          "max": 1.5098330000000715,
+          "mean": 0.7844284285714431,
+          "stddev": 0.4209241060244668
+        },
+        "configMs": {
+          "min": 0.09316700000044875,
+          "median": 0.11074999999982538,
+          "p95": 0.32841700000017227,
+          "max": 0.32841700000017227,
+          "mean": 0.143928714285851,
+          "stddev": 0.07835453660441219
+        },
+        "implMs": {
+          "min": 0.32883399999991525,
+          "median": 0.4230419999998958,
+          "p95": 1.1349159999999756,
+          "max": 1.1349159999999756,
+          "mean": 0.6064584285713863,
+          "stddev": 0.3332393225527762
+        },
+        "samples": 7
+      }
+    }
+  },
+  "diagFiles": [
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-11-57-068Z-synthetic-local-warm-mount-0.ndjson",
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-11-57-068Z-synthetic-local-warm-mount-1.ndjson",
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-11-57-068Z-synthetic-local-warm-mount-2.ndjson",
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-11-57-068Z-synthetic-local-warm-mount-3.ndjson",
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-11-57-068Z-synthetic-local-warm-mount-4.ndjson",
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-11-57-068Z-synthetic-local-warm-search.ndjson"
+  ]
+}

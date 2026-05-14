@@ -7,7 +7,9 @@
 }
 
 .welcome-logo {
-  border-radius: var(--radius-lg);
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(5, 5, 5, 0.1);
+  margin-bottom: 18px;
 }
 
 .welcome-title {

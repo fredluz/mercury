@@ -1,0 +1,3 @@
+{"scope":"sessions-ipc","channel":"list-cached-sessions","totalMs":0.22125000000005457,"resultCount":5,"ok":true,"ts":"2026-05-14T12:08:40.142Z","mode":"local","configMs":0.09641699999974662,"limit":50,"implMs":0.06550000000015643}
+{"scope":"sessions-ipc","channel":"sync-session-cache","totalMs":2.236207999999806,"ok":false,"errorName":"Error","ts":"2026-05-14T12:08:40.145Z","mode":"local","configMs":0.057792000000063126,"implMs":2.1030000000000655}
+{"scope":"sessions-ipc","channel":"search-sessions","totalMs":4.592916000000059,"ok":false,"errorName":"Error","ts":"2026-05-14T12:08:40.494Z","mode":"local","configMs":0.22270799999978408,"queryLength":13,"implMs":4.256000000000313}

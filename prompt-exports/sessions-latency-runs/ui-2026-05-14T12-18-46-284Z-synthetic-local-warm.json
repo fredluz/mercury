@@ -1,0 +1,203 @@
+{
+  "runId": "ui-2026-05-14T12-18-46-284Z-synthetic-local-warm",
+  "date": "2026-05-14T12:19:03.745Z",
+  "options": {
+    "caseName": "synthetic-local",
+    "cache": "warm",
+    "mountSamples": 5,
+    "searchSamples": 10,
+    "sessions": 5,
+    "messagesPerSession": 6,
+    "largeMessages": false,
+    "keepHomes": false
+  },
+  "queryLabel": "latencyneedle",
+  "dataset": {
+    "sessions": 5,
+    "messagesPerSession": 6,
+    "fts": true,
+    "largeMessages": false,
+    "cache": "warm"
+  },
+  "mount": [
+    {
+      "ok": true,
+      "ms": 330.4406249999997,
+      "diagFile": "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-18-46-284Z-synthetic-local-warm-mount-0.ndjson"
+    },
+    {
+      "ok": true,
+      "ms": 282.4581249999992,
+      "diagFile": "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-18-46-284Z-synthetic-local-warm-mount-1.ndjson"
+    },
+    {
+      "ok": true,
+      "ms": 296.44545799999923,
+      "diagFile": "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-18-46-284Z-synthetic-local-warm-mount-2.ndjson"
+    },
+    {
+      "ok": true,
+      "ms": 304.7493340000001,
+      "diagFile": "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-18-46-284Z-synthetic-local-warm-mount-3.ndjson"
+    },
+    {
+      "ok": true,
+      "ms": 298.4260840000006,
+      "diagFile": "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-18-46-284Z-synthetic-local-warm-mount-4.ndjson"
+    }
+  ],
+  "search": {
+    "samples": [
+      {
+        "ok": true,
+        "ms": 332.5114999999987
+      },
+      {
+        "ok": true,
+        "ms": 343.7536249999994
+      },
+      {
+        "ok": true,
+        "ms": 316.7630829999998
+      },
+      {
+        "ok": true,
+        "ms": 332.06425000000127
+      },
+      {
+        "ok": true,
+        "ms": 344.66341699999975
+      },
+      {
+        "ok": true,
+        "ms": 332.9393749999999
+      },
+      {
+        "ok": true,
+        "ms": 311.8973330000008
+      },
+      {
+        "ok": true,
+        "ms": 322.09595900000204
+      },
+      {
+        "ok": true,
+        "ms": 326.36104200000045
+      },
+      {
+        "ok": true,
+        "ms": 325.3642089999994
+      }
+    ],
+    "diagFile": "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-18-46-284Z-synthetic-local-warm-search.ndjson"
+  },
+  "summary": {
+    "mountToFirstRenderableMs": {
+      "min": 282.4581249999992,
+      "median": 298.4260840000006,
+      "p95": 330.4406249999997,
+      "max": 330.4406249999997,
+      "mean": 302.5039251999998,
+      "stddev": 15.75226317529435
+    },
+    "rendererInputToResultsMs": {
+      "min": 311.8973330000008,
+      "median": 332.06425000000127,
+      "p95": 344.66341699999975,
+      "max": 344.66341699999975,
+      "mean": 328.84137930000014,
+      "stddev": 10.050331472263894
+    },
+    "ipc": {
+      "list-cached-sessions": {
+        "totalMs": {
+          "min": 0.1877910000000611,
+          "median": 0.2654170000000704,
+          "p95": 0.46137499999986176,
+          "max": 0.46137499999986176,
+          "mean": 0.2759998333333442,
+          "stddev": 0.09361256123221748
+        },
+        "configMs": {
+          "min": 0.06729100000006838,
+          "median": 0.1120840000003227,
+          "p95": 0.20620899999994435,
+          "max": 0.20620899999994435,
+          "mean": 0.11652783333336932,
+          "stddev": 0.04538451215045023
+        },
+        "implMs": {
+          "min": 0.05929100000003018,
+          "median": 0.07808299999987867,
+          "p95": 0.11087500000007822,
+          "max": 0.11087500000007822,
+          "mean": 0.07816650000002785,
+          "stddev": 0.018281236717391472
+        },
+        "samples": 6
+      },
+      "sync-session-cache": {
+        "totalMs": {
+          "min": 2.1935419999999795,
+          "median": 3.061625000000049,
+          "p95": 48.5503749999998,
+          "max": 48.5503749999998,
+          "mean": 10.2756943333333,
+          "stddev": 17.12178438072376
+        },
+        "configMs": {
+          "min": 0.03099999999994907,
+          "median": 0.05429199999980483,
+          "p95": 0.06512500000008004,
+          "max": 0.06512500000008004,
+          "mean": 0.04979866666663687,
+          "stddev": 0.012031474911933373
+        },
+        "implMs": {
+          "min": 2.140292000000045,
+          "median": 2.956124999999929,
+          "p95": 48.46379200000001,
+          "max": 48.46379200000001,
+          "mean": 10.195173833333305,
+          "stddev": 17.118724181353908
+        },
+        "samples": 6
+      },
+      "search-sessions": {
+        "totalMs": {
+          "min": 0.4671250000001237,
+          "median": 0.8345420000000559,
+          "p95": 2.0954169999999976,
+          "max": 2.0954169999999976,
+          "mean": 0.9472416000000521,
+          "stddev": 0.5060115622378951
+        },
+        "configMs": {
+          "min": 0.08204100000057224,
+          "median": 0.12195800000063173,
+          "p95": 0.4267499999996289,
+          "max": 0.4267499999996289,
+          "mean": 0.18428330000015195,
+          "stddev": 0.12366142046234069
+        },
+        "implMs": {
+          "min": 0.3647499999997308,
+          "median": 0.7127909999999247,
+          "p95": 1.6149170000003323,
+          "max": 1.6149170000003323,
+          "mean": 0.7202625000000353,
+          "stddev": 0.3798720335496336
+        },
+        "samples": 10
+      }
+    }
+  },
+  "diagFiles": [
+    "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-18-46-284Z-synthetic-local-warm-mount-0.ndjson",
+    "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-18-46-284Z-synthetic-local-warm-mount-1.ndjson",
+    "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-18-46-284Z-synthetic-local-warm-mount-2.ndjson",
+    "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-18-46-284Z-synthetic-local-warm-mount-3.ndjson",
+    "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-18-46-284Z-synthetic-local-warm-mount-4.ndjson",
+    "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-18-46-284Z-synthetic-local-warm-search.ndjson"
+  ]
+}

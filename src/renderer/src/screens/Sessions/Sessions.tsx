@@ -24,9 +24,10 @@ interface SearchResult {
 }
 
 interface SessionsProps {
-  onResumeSession: (sessionId: string) => void;
+  onResumeSession: (sessionId: string, title?: string | null) => void;
   onNewChat: () => void;
   currentSessionId: string | null;
+  refreshToken?: number;
 }
 
 function formatTime(ts: number): string {
@@ -158,6 +159,7 @@ function Sessions({
   onResumeSession,
   onNewChat,
   currentSessionId,
+  refreshToken,
 }: SessionsProps): React.JSX.Element {
   const { t } = useI18n();
   const [sessions, setSessions] = useState<CachedSession[]>([]);
@@ -182,7 +184,7 @@ function Sessions({
 
   useEffect(() => {
     loadSessions();
-  }, [loadSessions]);
+  }, [loadSessions, refreshToken]);
 
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -200,7 +202,7 @@ function Sessions({
     return () => {
       if (searchTimer.current) clearTimeout(searchTimer.current);
     };
-  }, [searchQuery]);
+  }, [searchQuery, refreshToken]);
 
   const isShowingSearch = searchQuery.trim().length > 0;
   const grouped = groupSessions(sessions);
@@ -262,7 +264,7 @@ function Sessions({
               <button
                 key={r.sessionId}
                 className={`sessions-card ${currentSessionId === r.sessionId ? "sessions-card--active" : ""}`}
-                onClick={() => onResumeSession(r.sessionId)}
+                onClick={() => onResumeSession(r.sessionId, r.title)}
               >
                 <div className="sessions-card-main">
                   <span className="sessions-card-title">
@@ -314,7 +316,7 @@ function Sessions({
                   showFullDate={
                     group.label === "thisWeek" || group.label === "earlier"
                   }
-                  onClick={() => onResumeSession(s.id)}
+                  onClick={() => onResumeSession(s.id, s.title)}
                 />
               ))}
             </div>

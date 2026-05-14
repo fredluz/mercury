@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { HERMES_HOME } from "./installer";
 import { safeWriteFile } from "./utils";
 import DEFAULT_MODELS from "./default-models";
+import { inferContextWindow } from "../shared/chat-metadata";
 
 const MODELS_FILE = join(HERMES_HOME, "models.json");
 
@@ -14,12 +15,26 @@ export interface SavedModel {
   model: string;
   baseUrl: string;
   createdAt: number;
+  contextWindow?: number;
+}
+
+function normalizeModel(model: SavedModel): SavedModel {
+  return {
+    ...model,
+    contextWindow: inferContextWindow(
+      model.provider,
+      model.model,
+      model.contextWindow,
+    ).tokens,
+  };
 }
 
 function readModels(): SavedModel[] {
   try {
     if (!existsSync(MODELS_FILE)) return [];
-    return JSON.parse(readFileSync(MODELS_FILE, "utf-8"));
+    const parsed = JSON.parse(readFileSync(MODELS_FILE, "utf-8"));
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((model) => normalizeModel(model as SavedModel));
   } catch {
     return [];
   }
@@ -37,6 +52,7 @@ function seedDefaults(): SavedModel[] {
     model: m.model,
     baseUrl: m.baseUrl,
     createdAt: Date.now(),
+    contextWindow: m.contextWindow,
   }));
   writeModels(models);
   return models;
@@ -70,6 +86,7 @@ export function addModel(
     model,
     baseUrl: baseUrl || "",
     createdAt: Date.now(),
+    contextWindow: inferContextWindow(provider, model).tokens,
   };
   models.push(entry);
   writeModels(models);
@@ -86,12 +103,21 @@ export function removeModel(id: string): boolean {
 
 export function updateModel(
   id: string,
-  fields: Partial<Pick<SavedModel, "name" | "provider" | "model" | "baseUrl">>,
+  fields: Partial<Pick<SavedModel, "name" | "provider" | "model" | "baseUrl" | "contextWindow">>,
 ): boolean {
   const models = readModels();
   const idx = models.findIndex((m) => m.id === id);
   if (idx === -1) return false;
-  models[idx] = { ...models[idx], ...fields };
+  const modelChanged = fields.provider !== undefined || fields.model !== undefined;
+  const contextWindowProvided = Object.prototype.hasOwnProperty.call(
+    fields,
+    "contextWindow",
+  );
+  const nextModel = { ...models[idx], ...fields };
+  if (modelChanged && !contextWindowProvided) {
+    delete nextModel.contextWindow;
+  }
+  models[idx] = normalizeModel(nextModel);
   writeModels(models);
   return true;
 }

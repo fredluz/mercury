@@ -20,8 +20,13 @@ interface ChatProps {
   messages: ChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   sessionId: string | null;
+  sessionTitle?: string | null;
+  conversationVersion: number;
   profile?: string;
   onSessionStarted?: () => void;
+  onSessionResolved?: (sessionId: string) => void;
+  onSessionTitleChange?: (title: string) => void;
+  onSessionReset?: () => void;
   onNewChat?: () => void;
 }
 
@@ -29,16 +34,26 @@ function Chat({
   messages,
   setMessages,
   sessionId,
+  sessionTitle,
+  conversationVersion,
   profile,
   onSessionStarted,
+  onSessionResolved,
+  onSessionTitleChange,
+  onSessionReset,
   onNewChat,
 }: ChatProps): React.JSX.Element {
   const { t } = useI18n();
   const chat = useChatController({
     messages,
     setMessages,
+    sessionId,
+    sessionTitle,
+    conversationVersion,
     profile,
     onSessionStarted,
+    onSessionResolved,
+    onSessionTitleChange,
     onNewChat,
   });
 
@@ -46,13 +61,18 @@ function Chat({
     <div className="chat-container">
       <ChatHeader
         sessionId={sessionId}
-        usage={chat.usage}
+        sessionTitle={sessionTitle}
+        titlePending={chat.titleGenerationPending}
+        contextUsage={chat.contextUsage}
         fastMode={chat.fastMode}
         messages={messages}
         profile={profile}
         onFastModeChange={chat.setFastMode}
         onNewChat={onNewChat}
-        onClear={chat.handleClear}
+        onClear={() => {
+          chat.handleClear();
+          onSessionReset?.();
+        }}
         t={t}
       />
 

@@ -152,6 +152,23 @@ export function searchSessions(query: string, limit = 20): SearchResult[] {
   }
 }
 
+export function getSessionTitle(sessionId: string): string | null {
+  const db = getDb();
+  if (!db) return null;
+
+  try {
+    const row = db
+      .prepare(`SELECT title FROM sessions WHERE id = ?`)
+      .get(sessionId) as { title: string | null } | undefined;
+    const title = row?.title?.trim();
+    return title || null;
+  } catch {
+    return null;
+  } finally {
+    db.close();
+  }
+}
+
 export function getSessionMessages(sessionId: string): SessionMessage[] {
   const db = getDb();
   if (!db) return [];

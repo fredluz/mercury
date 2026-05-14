@@ -1,4 +1,8 @@
 import { ipcMain } from "electron";
+import { appendFileSync, mkdirSync } from "fs";
+import { dirname, join } from "path";
+import { tmpdir } from "os";
+import { performance } from "perf_hooks";
 import { getConnectionConfig } from "../config";
 import { listSessions, getSessionMessages, searchSessions } from "../sessions";
 import {
@@ -22,6 +26,37 @@ import {
   sshListCachedSessions,
 } from "../ssh-remote";
 
+type SessionsDiagChannel =
+  | "list-cached-sessions"
+  | "sync-session-cache"
+  | "search-sessions";
+
+function isSessionsDiagEnabled(): boolean {
+  return process.env.MERCURY_SESSIONS_DIAG === "1";
+}
+
+function getSessionsDiagFile(): string {
+  return (
+    process.env.MERCURY_SESSIONS_DIAG_FILE ||
+    join(tmpdir(), "mercury-sessions-diag.ndjson")
+  );
+}
+
+function resultCount(result: unknown): number | undefined {
+  return Array.isArray(result) ? result.length : undefined;
+}
+
+function writeSessionsDiag(record: Record<string, unknown>): void {
+  if (!isSessionsDiagEnabled()) return;
+  try {
+    const file = getSessionsDiagFile();
+    mkdirSync(dirname(file), { recursive: true });
+    appendFileSync(file, `${JSON.stringify(record)}\n`, "utf8");
+  } catch {
+    // Diagnostics must never affect IPC behavior.
+  }
+}
+
 function attachCachedProfiles<
   T extends { sessionId: string; profile?: string },
 >(results: T[]): T[] {
@@ -35,6 +70,40 @@ function attachCachedProfiles<
     ...result,
     profile: result.profile || profiles.get(result.sessionId),
   }));
+}
+
+async function withSessionsDiag<T>(
+  channel: SessionsDiagChannel,
+  meta: Record<string, unknown>,
+  run: () => T | Promise<T>,
+  start = performance.now(),
+): Promise<T> {
+  if (!isSessionsDiagEnabled()) return run();
+  try {
+    const result = await run();
+    writeSessionsDiag({
+      scope: "sessions-ipc",
+      channel,
+      totalMs: performance.now() - start,
+      resultCount: resultCount(result),
+      ok: true,
+      ts: new Date().toISOString(),
+      ...meta,
+    });
+    return result;
+  } catch (error) {
+    writeSessionsDiag({
+      scope: "sessions-ipc",
+      channel,
+      totalMs: performance.now() - start,
+      ok: false,
+      errorName: error instanceof Error ? error.name : typeof error,
+      errorMessage: error instanceof Error ? error.message : undefined,
+      ts: new Date().toISOString(),
+      ...meta,
+    });
+    throw error;
+  }
 }
 
 export function registerSessionsIpc(): void {
@@ -79,18 +148,55 @@ export function registerSessionsIpc(): void {
   // Session cache (fast local cache with generated titles)
   ipcMain.handle(
     "list-cached-sessions",
-    (_event, limit?: number, offset?: number) => {
+    async (_event, limit?: number, offset?: number) => {
+      const configStart = performance.now();
       const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh)
-        return sshListCachedSessions(conn.ssh, limit, offset);
-      return listCachedSessions(limit, offset);
+      const configMs = performance.now() - configStart;
+      const mode = conn.mode;
+      const diagMeta: Record<string, unknown> = {
+        mode,
+        configMs,
+        limit,
+        offset,
+      };
+      return withSessionsDiag(
+        "list-cached-sessions",
+        diagMeta,
+        async () => {
+          const implStart = performance.now();
+          try {
+            if (conn.mode === "ssh" && conn.ssh)
+              return await sshListCachedSessions(conn.ssh, limit, offset);
+            return listCachedSessions(limit, offset);
+          } finally {
+            diagMeta.implMs = performance.now() - implStart;
+          }
+        },
+        configStart,
+      );
     },
   );
-  ipcMain.handle("sync-session-cache", () => {
+  ipcMain.handle("sync-session-cache", async () => {
+    const configStart = performance.now();
     const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshListCachedSessions(conn.ssh, 50);
-    return syncSessionCache();
+    const configMs = performance.now() - configStart;
+    const mode = conn.mode;
+    const diagMeta: Record<string, unknown> = { mode, configMs };
+    return withSessionsDiag(
+      "sync-session-cache",
+      diagMeta,
+      async () => {
+        const implStart = performance.now();
+        try {
+          if (conn.mode === "ssh" && conn.ssh)
+            return await sshListCachedSessions(conn.ssh, 50);
+          return syncSessionCache();
+        } finally {
+          diagMeta.implMs = performance.now() - implStart;
+        }
+      },
+      configStart,
+    );
   });
   ipcMain.handle(
     "update-session-title",
@@ -99,10 +205,35 @@ export function registerSessionsIpc(): void {
   );
 
   // Session search
-  ipcMain.handle("search-sessions", (_event, query: string, limit?: number) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshSearchSessions(conn.ssh, query, limit);
-    return attachCachedProfiles(searchSessions(query, limit));
-  });
+  ipcMain.handle(
+    "search-sessions",
+    async (_event, query: string, limit?: number) => {
+      const safeQuery = typeof query === "string" ? query : "";
+      const configStart = performance.now();
+      const conn = getConnectionConfig();
+      const configMs = performance.now() - configStart;
+      const mode = conn.mode;
+      const diagMeta: Record<string, unknown> = {
+        mode,
+        configMs,
+        queryLength: safeQuery.length,
+        limit,
+      };
+      return withSessionsDiag(
+        "search-sessions",
+        diagMeta,
+        async () => {
+          const implStart = performance.now();
+          try {
+            if (conn.mode === "ssh" && conn.ssh)
+              return await sshSearchSessions(conn.ssh, safeQuery, limit);
+            return attachCachedProfiles(searchSessions(safeQuery, limit));
+          } finally {
+            diagMeta.implMs = performance.now() - implStart;
+          }
+        },
+        configStart,
+      );
+    },
+  );
 }

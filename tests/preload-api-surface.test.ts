@@ -146,6 +146,11 @@ describe("New APIs from v0.8/v0.9 features", () => {
     expect(preloadMethods).toContain("onChatTraceEvent");
     expect(typeMethods).toContain("onChatTraceEvent");
   });
+
+  it("has chat title generation API", () => {
+    expect(preloadMethods).toContain("generateChatTitle");
+    expect(typeMethods).toContain("generateChatTitle");
+  });
 });
 
 // ─── Legacy APIs still present ──────────────────────────

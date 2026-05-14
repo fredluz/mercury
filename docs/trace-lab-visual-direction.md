@@ -4,7 +4,7 @@ Date: 2026-05-12
 
 ## Goal
 
-Make Hermes Desktop feel like a first-class AI agent dashboard rather than a terminal wrapper. Trace Lab should explain what the agent did, why it mattered, and how the run feeds future skill learning.
+Make Mercury feel like a first-class AI agent dashboard rather than a terminal wrapper. Trace Lab should explain what the agent did, why it mattered, and how the run feeds future skill learning.
 
 ## GPT Image 2 References
 

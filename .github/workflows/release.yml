@@ -192,7 +192,7 @@ jobs:
       - name: Generate winget manifests
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
-          PUBLISH_OWNER: fathah
+          PUBLISH_OWNER: fredluz
         run: node scripts/generate-winget-manifests.mjs
 
       - name: Upload winget manifests artifact
@@ -227,7 +227,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
-          name: Hermes Desktop ${{ needs.prepare.outputs.tag }}
+          name: Mercury ${{ needs.prepare.outputs.tag }}
           generate_release_notes: true
           files: |
             artifacts/*.dmg

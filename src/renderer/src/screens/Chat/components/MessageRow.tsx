@@ -1,18 +1,20 @@
 import type React from "react";
 import { memo } from "react";
-import icon from "../../../assets/icon.png";
 import { AgentMarkdown } from "../../../components/AgentMarkdown";
+import MercuryMark from "../../../components/common/MercuryMark";
 import { useI18n } from "../../../components/useI18n";
 import { APPROVAL_RE } from "../chat.constants";
 import type { ChatMessage } from "../types";
 
-export function HermesAvatar({ size = 30 }: { size?: number }): React.JSX.Element {
+export function MercuryAvatar({ size = 30 }: { size?: number }): React.JSX.Element {
   return (
     <div className="chat-avatar chat-avatar-agent">
-      <img src={icon} width={size} height={size} alt="" />
+      <MercuryMark size={size} decorative />
     </div>
   );
 }
+
+export const HermesAvatar = MercuryAvatar;
 
 interface MessageRowProps {
   msg: ChatMessage;
@@ -32,7 +34,7 @@ export const MessageRow = memo(function MessageRow({
   const { t } = useI18n();
   return (
     <div className={`chat-message chat-message-${msg.role}`}>
-      {msg.role === "user" ? <div className="chat-avatar chat-avatar-user">U</div> : <HermesAvatar />}
+      {msg.role === "user" ? <div className="chat-avatar chat-avatar-user">U</div> : <MercuryAvatar />}
       <div className={`chat-bubble chat-bubble-${msg.role}`}>
         {msg.role === "agent" ? <AgentMarkdown>{msg.content}</AgentMarkdown> : msg.content}
       </div>

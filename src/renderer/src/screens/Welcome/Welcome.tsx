@@ -105,7 +105,7 @@ function Welcome({
   if (panel === "remote") {
     return (
       <div className="screen welcome-screen">
-        <MercuryMark size={36} />
+        <MercuryMark size={52} className="welcome-logo" decorative />
         <h1 className="welcome-title" style={{ fontSize: 22 }}>
           {t("welcome.connectRemoteTitle")}
         </h1>
@@ -185,7 +185,7 @@ function Welcome({
   if (panel === "ssh") {
     return (
       <div className="screen welcome-screen">
-        <MercuryMark size={36} />
+        <MercuryMark size={52} className="welcome-logo" decorative />
         <h1 className="welcome-title" style={{ fontSize: 22 }}>
           Connect via SSH
         </h1>
@@ -310,7 +310,7 @@ function Welcome({
 
   return (
     <div className="screen welcome-screen">
-      <MercuryMark size={40} />
+      <MercuryMark size={64} className="welcome-logo" decorative />
 
       {error ? (
         <>

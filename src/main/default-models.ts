@@ -15,6 +15,7 @@ export interface DefaultModel {
   provider: string;
   model: string;
   baseUrl: string;
+  contextWindow: number;
 }
 
 const DEFAULT_MODELS: DefaultModel[] = [
@@ -24,6 +25,7 @@ const DEFAULT_MODELS: DefaultModel[] = [
     provider: "openrouter",
     model: "anthropic/claude-sonnet-4-20250514",
     baseUrl: "",
+    contextWindow: 200_000,
   },
 
   // ── Anthropic (direct) ───────────────────────────────────────────────
@@ -32,6 +34,7 @@ const DEFAULT_MODELS: DefaultModel[] = [
     provider: "anthropic",
     model: "claude-sonnet-4-20250514",
     baseUrl: "",
+    contextWindow: 200_000,
   },
 
   // ── OpenAI (direct) ──────────────────────────────────────────────────
@@ -40,6 +43,7 @@ const DEFAULT_MODELS: DefaultModel[] = [
     provider: "openai",
     model: "gpt-4.1",
     baseUrl: "",
+    contextWindow: 1_047_576,
   },
 
   // ── OpenCode Go (open models subscription) ──────────────────────────
@@ -48,6 +52,7 @@ const DEFAULT_MODELS: DefaultModel[] = [
     provider: "opencode-go",
     model: "deepseek-v4-flash",
     baseUrl: "",
+    contextWindow: 128_000,
   },
 ];
 

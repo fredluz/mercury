@@ -1,8 +1,8 @@
 # Generated from this template by scripts/generate-winget-manifests.mjs.
-PackageIdentifier: NousResearch.HermesDesktop
-PackageVersion: { { VERSION } }
+PackageIdentifier: FredLuz.Mercury
+PackageVersion: {{VERSION}}
 PackageLocale: en-US
-Publisher: Nous Research
+Publisher: FredLuz
 PublisherUrl: https://github.com/fredluz/mercury
 PublisherSupportUrl: https://github.com/fredluz/mercury/issues
 PackageName: Mercury
@@ -20,6 +20,6 @@ Tags:
   - desktop
   - electron
   - llm
-ReleaseNotesUrl: { { RELEASE_NOTES_URL } }
+ReleaseNotesUrl: {{RELEASE_NOTES_URL}}
 ManifestType: defaultLocale
 ManifestVersion: 1.6.0

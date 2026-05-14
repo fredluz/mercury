@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  calculateContextUsage,
+  inferContextWindow,
+  type ContextWindowInfo,
+} from "../../../../../shared/chat-metadata";
 import type { TraceEvent } from "../../../../../shared/traces";
 import { PROVIDERS } from "../../../constants";
 import { useI18n } from "../../../components/useI18n";
@@ -18,16 +23,26 @@ import type {
 interface UseChatControllerArgs {
   messages: ChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
+  sessionId?: string | null;
+  sessionTitle?: string | null;
+  conversationVersion: number;
   profile?: string;
   onSessionStarted?: () => void;
+  onSessionResolved?: (sessionId: string) => void;
+  onSessionTitleChange?: (title: string) => void;
   onNewChat?: () => void;
 }
 
 export function useChatController({
   messages,
   setMessages,
+  sessionId,
+  sessionTitle,
+  conversationVersion,
   profile,
   onSessionStarted,
+  onSessionResolved,
+  onSessionTitleChange,
   onNewChat,
 }: UseChatControllerArgs): ChatController {
   const { t } = useI18n();
@@ -36,6 +51,7 @@ export function useChatController({
   const [hermesSessionId, setHermesSessionId] = useState<string | null>(null);
   const [activityGroups, setActivityGroups] = useState<ChatActivityGroup[]>([]);
   const [usage, setUsage] = useState<ChatUsage | null>(null);
+  const [titleGenerationPending, setTitleGenerationPending] = useState(false);
   const [fastMode, setFastMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -48,6 +64,9 @@ export function useChatController({
   const [currentModel, setCurrentModel] = useState("");
   const [currentProvider, setCurrentProvider] = useState("auto");
   const [currentBaseUrl, setCurrentBaseUrl] = useState("");
+  const [currentContextInfo, setCurrentContextInfo] = useState<ContextWindowInfo>(() =>
+    inferContextWindow("auto", ""),
+  );
   const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [customModelInput, setCustomModelInput] = useState("");
@@ -57,8 +76,17 @@ export function useChatController({
   const [slashFilter, setSlashFilter] = useState("");
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
   const slashMenuRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef(messages);
+  const profileRef = useRef(profile);
+  const sessionIdRef = useRef<string | null>(sessionId ?? null);
+  const sessionTitleRef = useRef<string | null>(sessionTitle ?? null);
+  const titleRequestSeqRef = useRef(0);
 
   isLoadingRef.current = isLoading;
+  messagesRef.current = messages;
+  profileRef.current = profile;
+  sessionIdRef.current = sessionId ?? hermesSessionId;
+  sessionTitleRef.current = sessionTitle ?? null;
 
   const filteredSlashCommands = useMemo(
     () =>
@@ -67,6 +95,22 @@ export function useChatController({
         : [],
     [slashMenuOpen, slashFilter],
   );
+
+  useEffect(() => {
+    setHermesSessionId(sessionId ?? null);
+  }, [sessionId]);
+
+  useEffect(() => {
+    titleRequestSeqRef.current += 1;
+    setTitleGenerationPending(false);
+    setUsage(null);
+    setActivityGroups([]);
+    activeActivityGroupIdRef.current = null;
+  }, [conversationVersion, profile]);
+
+  useEffect(() => {
+    sessionTitleRef.current = sessionTitle ?? null;
+  }, [sessionTitle]);
 
   const scrollToBottom = useCallback((force?: boolean) => {
     if (!force && userScrolledUpRef.current) return;
@@ -148,6 +192,12 @@ export function useChatController({
     setCurrentModel(mc.model);
     setCurrentProvider(mc.provider);
     setCurrentBaseUrl(mc.baseUrl);
+    const selectedSavedModel = savedModels.find(
+      (m) => m.provider === mc.provider && m.model === mc.model,
+    );
+    setCurrentContextInfo(
+      inferContextWindow(mc.provider, mc.model, selectedSavedModel?.contextWindow),
+    );
 
     const groupMap = new Map<string, ModelGroup>();
     for (const m of savedModels) {
@@ -163,6 +213,7 @@ export function useChatController({
         model: m.model,
         label: m.name,
         baseUrl: m.baseUrl || "",
+        contextWindow: m.contextWindow,
       });
     }
     setModelGroups(Array.from(groupMap.values()));
@@ -182,8 +233,11 @@ export function useChatController({
   useEffect(() => {
     if (messages.length === 0) {
       setHermesSessionId(null);
+      setUsage(null);
       setActivityGroups([]);
       activeActivityGroupIdRef.current = null;
+      titleRequestSeqRef.current += 1;
+      setTitleGenerationPending(false);
     }
   }, [messages]);
 
@@ -241,11 +295,19 @@ export function useChatController({
       setIsLoading(false);
     });
     const cleanupUsage = window.hermesAPI.onChatUsage((u) => {
+      const contextInfo = currentContextInfo;
+      const contextModel = currentModel || currentProvider;
       setUsage((prev) => ({
         promptTokens: (prev?.promptTokens || 0) + u.promptTokens,
         completionTokens: (prev?.completionTokens || 0) + u.completionTokens,
         totalTokens: (prev?.totalTokens || 0) + u.totalTokens,
         cost: u.cost != null ? (prev?.cost || 0) + u.cost : prev?.cost,
+        lastPromptTokens: u.promptTokens,
+        lastCompletionTokens: u.completionTokens,
+        lastTotalTokens: u.totalTokens,
+        contextWindow: contextInfo.tokens,
+        contextWindowSource: contextInfo.source,
+        contextModel,
       }));
     });
     return () => {
@@ -255,7 +317,7 @@ export function useChatController({
       cleanupError();
       cleanupUsage();
     };
-  }, [appendActivityEvent, markActiveActivityGroup, setMessages]);
+  }, [appendActivityEvent, markActiveActivityGroup, setMessages, currentContextInfo, currentModel, currentProvider]);
 
   useEffect(() => scrollToBottom(), [messages, activityGroups, scrollToBottom]);
 
@@ -283,11 +345,17 @@ export function useChatController({
     return () => window.removeEventListener("keydown", handleShortcut);
   }, [onNewChat]);
 
-  async function selectModel(provider: string, model: string, baseUrl: string): Promise<void> {
+  async function selectModel(
+    provider: string,
+    model: string,
+    baseUrl: string,
+    contextWindow?: number,
+  ): Promise<void> {
     await window.hermesAPI.setModelConfig(provider, model, baseUrl, profile);
     setCurrentModel(model);
     setCurrentProvider(provider);
     setCurrentBaseUrl(baseUrl);
+    setCurrentContextInfo(inferContextWindow(provider, model, contextWindow));
     setShowModelPicker(false);
     setCustomModelInput("");
   }
@@ -295,6 +363,52 @@ export function useChatController({
   async function handleCustomModelSubmit(): Promise<void> {
     const model = customModelInput.trim();
     if (model) await selectModel(currentProvider === "auto" ? "auto" : currentProvider, model, currentBaseUrl);
+  }
+
+  async function requestGeneratedTitleOnce(
+    resolvedSessionId: string | undefined,
+    conversationMessages: ChatMessage[],
+    requestSeq: number,
+  ): Promise<void> {
+    if (!resolvedSessionId || sessionTitleRef.current) return;
+    const eligibleUserMessages = conversationMessages.filter(
+      (message) => message.role === "user" && !message.content.trim().startsWith("/"),
+    );
+    if (eligibleUserMessages.length !== 1) return;
+
+    setTitleGenerationPending(true);
+    try {
+      const firstEligibleIndex = conversationMessages.findIndex(
+        (message) => message.role === "user" && !message.content.trim().startsWith("/"),
+      );
+      const titleMessages = conversationMessages
+        .slice(firstEligibleIndex)
+        .filter((message) => message.role !== "user" || !message.content.trim().startsWith("/"));
+      const title = await window.hermesAPI.generateChatTitle({
+        profile: profileRef.current,
+        sessionId: resolvedSessionId,
+        messages: titleMessages.map((message) => ({
+          role: message.role,
+          content: message.content,
+        })),
+      });
+      if (
+        title &&
+        requestSeq === titleRequestSeqRef.current &&
+        !sessionTitleRef.current &&
+        (sessionIdRef.current === resolvedSessionId || !sessionIdRef.current) &&
+        messagesRef.current.length > 0
+      ) {
+        onSessionTitleChange?.(title);
+      }
+    } catch {
+      // The main process already falls back to heuristic titles where possible;
+      // if IPC itself fails, keep the visible untitled state.
+    } finally {
+      if (requestSeq === titleRequestSeqRef.current) {
+        setTitleGenerationPending(false);
+      }
+    }
   }
 
   function handleClear(): void {
@@ -306,6 +420,7 @@ export function useChatController({
     setMessages([]);
     setHermesSessionId(null);
     setUsage(null);
+    setTitleGenerationPending(false);
     setActivityGroups([]);
     activeActivityGroupIdRef.current = null;
   }
@@ -329,17 +444,39 @@ export function useChatController({
     }
 
     const userMessage: ChatMessage = { id: `user-${Date.now()}`, role: "user", content: text };
+    const requestSeq = titleRequestSeqRef.current;
+    const historyMessages = messages.map((m) => ({ role: m.role, content: m.content }));
     setIsLoading(true);
     setMessages((prev) => [...prev, userMessage]);
     beginActivityGroup(userMessage.id);
     onSessionStarted?.();
     try {
-      await window.hermesAPI.sendMessage(
+      const result = await window.hermesAPI.sendMessage(
         text,
         profile,
         hermesSessionId || undefined,
-        messages.map((m) => ({ role: m.role, content: m.content })),
+        historyMessages,
       );
+      const resolvedSessionId = result.sessionId || hermesSessionId || undefined;
+      if (resolvedSessionId) {
+        setHermesSessionId(resolvedSessionId);
+        sessionIdRef.current = resolvedSessionId;
+        onSessionResolved?.(resolvedSessionId);
+      }
+      const titleMessages: ChatMessage[] = [
+        ...messages,
+        userMessage,
+        ...(result.response.trim()
+          ? [
+              {
+                id: `agent-title-${Date.now()}`,
+                role: "agent" as const,
+                content: result.response,
+              },
+            ]
+          : []),
+      ];
+      await requestGeneratedTitleOnce(resolvedSessionId, titleMessages, requestSeq);
     } catch {
       // Error already handled by onChatError IPC listener — avoid duplicate
     }
@@ -456,6 +593,19 @@ export function useChatController({
       .catch(() => setIsLoading(false));
   }, [beginActivityGroup, profile, hermesSessionId, setMessages, messages]);
 
+  const contextUsage = useMemo(() => {
+    const usedTokens = usage?.lastTotalTokens ?? 0;
+    const contextWindow = usage?.contextWindow ?? currentContextInfo.tokens;
+    if (!usedTokens || !contextWindow) return null;
+    return {
+      usedTokens,
+      contextWindow,
+      percent: calculateContextUsage(usedTokens, contextWindow),
+      source: usage?.contextWindowSource ?? currentContextInfo.source,
+      model: usage?.contextModel || currentModel || currentProvider,
+    };
+  }, [usage, currentContextInfo, currentModel, currentProvider]);
+
   return {
     input,
     setInput,
@@ -463,6 +613,8 @@ export function useChatController({
     activityGroups,
     toggleActivityGroup,
     usage,
+    contextUsage,
+    titleGenerationPending,
     fastMode,
     setFastMode,
     messagesEndRef,

@@ -1,6 +1,6 @@
 import type React from "react";
 import { Bell, ChartLine, Clock, Code, Mail, Search } from "lucide-react";
-import icon from "../../../assets/icon.png";
+import MercuryMark from "../../../components/common/MercuryMark";
 
 interface ChatEmptyProps {
   setPrompt: (value: string) => void;
@@ -19,7 +19,9 @@ export function ChatEmpty({ setPrompt, focusInput, t }: ChatEmptyProps): React.J
   ];
   return (
     <div className="chat-empty">
-      <div className="chat-empty-icon"><img src={icon} width={64} height={64} alt="" /></div>
+      <div className="chat-empty-icon">
+        <MercuryMark size={64} decorative />
+      </div>
       <div className="chat-empty-text">{t("chat.emptyTitle")}</div>
       <div className="chat-empty-hint">{t("chat.emptyHint")}</div>
       <div className="chat-empty-suggestions">

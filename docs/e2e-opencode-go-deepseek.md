@@ -4,7 +4,7 @@ Date: 2026-05-12
 
 ## Target
 
-Verify Hermes Desktop can drive Hermes Agent with the OpenCode Go provider and the `deepseek-v4-flash` model, then surface the completed run in Trace Lab.
+Verify Mercury can drive Hermes Agent with the OpenCode Go provider and the `deepseek-v4-flash` model, then surface the completed run in Trace Lab.
 
 ## Provider Findings
 
@@ -12,7 +12,7 @@ Verify Hermes Desktop can drive Hermes Agent with the OpenCode Go provider and t
 - OpenCode is installed locally and lists `opencode-go/deepseek-v4-flash`.
 - Hermes Agent supports provider `opencode-go` with model `deepseek-v4-flash`.
 - Hermes Agent requires `OPENCODE_GO_API_KEY`; Pi/OpenCode auth can have the credential even when `~/.hermes/.env` does not.
-- Hermes Desktop did not previously expose OpenCode Go as a first-class provider option. This fork now does.
+- Mercury did not previously expose OpenCode Go as a first-class provider option. This fork now does.
 
 ## Execution Evidence
 
@@ -28,7 +28,7 @@ Hermes direct smoke test with isolated `HERMES_HOME`:
 HERMES_E2E_OPENCODE_GO_DEEPSEEK_OK
 ```
 
-Hermes Desktop E2E with isolated `HERMES_HOME`:
+Mercury E2E with isolated `HERMES_HOME`:
 
 ```json
 {
@@ -48,8 +48,8 @@ Hermes Desktop E2E with isolated `HERMES_HOME`:
 ```
 
 Screenshot:
-![Hermes Desktop Trace Lab E2E](assets/hermes-desktop-trace-lab-e2e.png)
+![Mercury Trace Lab E2E](assets/hermes-desktop-trace-lab-e2e.png)
 
 ## Follow-Up
 
-The phrase "Pi agent provider for Hermes" does not currently map to a Hermes Desktop provider. Pi itself can use OpenCode Go, and Hermes Agent can use OpenCode Go directly. If Hermes should literally spawn Pi as an agent backend, that is a new integration layer beyond the current Hermes provider registry.
+The phrase "Pi agent provider for Hermes" does not currently map to a Mercury provider. Pi itself can use OpenCode Go, and Hermes Agent can use OpenCode Go directly. If Hermes should literally spawn Pi as an agent backend, that is a new integration layer beyond the current Hermes provider registry.

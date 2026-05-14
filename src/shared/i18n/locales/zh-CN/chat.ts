@@ -1,6 +1,13 @@
 export default {
   title: "新聊天",
   sessionTitle: "会话 {{id}}",
+  defaultAgent: "默认",
+  agentIdentity: "代理：{{profile}}",
+  generatingTitle: "正在生成标题…",
+  untitledChat: "未命名聊天",
+  contextUsed: "{{percent}} 上下文",
+  contextTooltip: "{{model}} 的上下文窗口已使用 {{used}} / {{limit}} 个 token。",
+  contextTooltipEstimated: "估算：{{model}} 的上下文窗口已使用 {{used}} / {{limit}} 个 token。",
   noModel: "未设置模型",
   auto: "自动",
   commandsTitle: "命令",

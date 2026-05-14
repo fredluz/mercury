@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import splashBg from "../../assets/splash.png";
+import MercuryLockup from "../../components/common/MercuryLockup";
 
 interface SplashScreenProps {
   onFinished: () => void;
@@ -12,10 +12,7 @@ function SplashScreen({ onFinished }: SplashScreenProps): React.JSX.Element {
 
   return (
     <div className="splash-screen">
-      <img className="splash-bg" src={splashBg} alt="" />
-      <div className="splash-logo" aria-label="Mercury">
-        Mercury
-      </div>
+      <MercuryLockup className="splash-lockup" />
     </div>
   );
 }

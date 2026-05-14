@@ -1,0 +1,2 @@
+{"scope":"sessions-ipc","channel":"list-cached-sessions","totalMs":0.39016700000001947,"resultCount":5,"ok":true,"ts":"2026-05-14T12:12:42.396Z","mode":"local","configMs":0.1749170000000504,"limit":50,"implMs":0.11712499999998727}
+{"scope":"sessions-ipc","channel":"sync-session-cache","totalMs":3.898625000000038,"resultCount":5,"ok":true,"ts":"2026-05-14T12:12:42.402Z","mode":"local","configMs":0.10329200000001038,"implMs":3.74149999999986}

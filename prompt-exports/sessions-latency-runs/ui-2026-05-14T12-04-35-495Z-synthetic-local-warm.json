@@ -1,0 +1,96 @@
+{
+  "runId": "ui-2026-05-14T12-04-35-495Z-synthetic-local-warm",
+  "date": "2026-05-14T12:07:08.528Z",
+  "options": {
+    "caseName": "synthetic-local",
+    "cache": "warm",
+    "mountSamples": 5,
+    "searchSamples": 10,
+    "sessions": 5,
+    "messagesPerSession": 6,
+    "largeMessages": false,
+    "keepHomes": false
+  },
+  "queryLabel": "latencyneedle",
+  "dataset": {
+    "sessions": 5,
+    "messagesPerSession": 6,
+    "fts": true,
+    "largeMessages": false,
+    "cache": "warm"
+  },
+  "mount": [
+    {
+      "ok": false,
+      "error": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.sidebar-nav-item').filter({ hasText: 'Sessions' }) to be visible\u001b[22m\n",
+      "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-04-35-495Z-synthetic-local-warm-mount-0.ndjson",
+      "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-JC5EER"
+    },
+    {
+      "ok": false,
+      "error": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.sidebar-nav-item').filter({ hasText: 'Sessions' }) to be visible\u001b[22m\n",
+      "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-04-35-495Z-synthetic-local-warm-mount-1.ndjson",
+      "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-UkBA76"
+    },
+    {
+      "ok": false,
+      "error": "locator.waitFor: Target page, context or browser has been closed\nCall log:\n\u001b[2m  - waiting for locator('.sidebar-nav-item').filter({ hasText: 'Sessions' }) to be visible\u001b[22m\n",
+      "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-04-35-495Z-synthetic-local-warm-mount-2.ndjson",
+      "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-Vyw8PY"
+    },
+    {
+      "ok": false,
+      "error": "locator.waitFor: Target page, context or browser has been closed\nCall log:\n\u001b[2m  - waiting for locator('.sidebar-nav-item').filter({ hasText: 'Sessions' }) to be visible\u001b[22m\n",
+      "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-04-35-495Z-synthetic-local-warm-mount-3.ndjson",
+      "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-Z3qpCH"
+    },
+    {
+      "ok": false,
+      "error": "locator.waitFor: Target page, context or browser has been closed\nCall log:\n\u001b[2m  - waiting for locator('.sidebar-nav-item').filter({ hasText: 'Sessions' }) to be visible\u001b[22m\n",
+      "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-04-35-495Z-synthetic-local-warm-mount-4.ndjson",
+      "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-QMSxmy"
+    }
+  ],
+  "search": {
+    "samples": [
+      {
+        "ok": false,
+        "error": "locator.waitFor: Target page, context or browser has been closed\nCall log:\n\u001b[2m  - waiting for locator('.sidebar-nav-item').filter({ hasText: 'Sessions' }) to be visible\u001b[22m\n"
+      }
+    ],
+    "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-04-35-495Z-synthetic-local-warm-search.ndjson",
+    "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-h3C9YJ"
+  },
+  "summary": {
+    "mountToFirstRenderableMs": null,
+    "rendererInputToResultsMs": null,
+    "ipc": {
+      "list-cached-sessions": {
+        "totalMs": null,
+        "configMs": null,
+        "implMs": null,
+        "samples": 0
+      },
+      "sync-session-cache": {
+        "totalMs": null,
+        "configMs": null,
+        "implMs": null,
+        "samples": 0
+      },
+      "search-sessions": {
+        "totalMs": null,
+        "configMs": null,
+        "implMs": null,
+        "samples": 0
+      }
+    }
+  },
+  "diagFiles": [
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-04-35-495Z-synthetic-local-warm-mount-0.ndjson",
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-04-35-495Z-synthetic-local-warm-mount-1.ndjson",
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-04-35-495Z-synthetic-local-warm-mount-2.ndjson",
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-04-35-495Z-synthetic-local-warm-mount-3.ndjson",
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-04-35-495Z-synthetic-local-warm-mount-4.ndjson",
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-04-35-495Z-synthetic-local-warm-search.ndjson"
+  ]
+}

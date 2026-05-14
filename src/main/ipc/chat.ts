@@ -9,6 +9,10 @@ import {
 } from "../hermes";
 import { extractArtifactEventsFromText } from "../hermes/trace-events";
 import type { TraceEvent, TraceEventType } from "../../shared/traces";
+import {
+  isGenerateChatTitleRequest,
+  normalizeGenerateChatTitleRequest,
+} from "../../shared/chat-metadata";
 import { startSshTunnel, isSshTunnelHealthy } from "../ssh-tunnel";
 import { getConnectionConfig } from "../config";
 import {
@@ -22,7 +26,8 @@ import {
   sshStartGateway,
   sshReadRemoteApiKey,
 } from "../ssh-remote";
-import { updateSessionProfile } from "../session-cache";
+import { updateSessionProfile, updateSessionTitle } from "../session-cache";
+import { generateChatTitle as resolveChatTitle } from "../hermes/title";
 import type { IpcRegistrationContext } from "./types";
 
 type ChatResponse = { response: string; sessionId?: string };
@@ -66,6 +71,25 @@ export function abortActiveChat(): void {
   abortCurrentRun("Mercury shut down the active Hermes run.");
 }
 
+async function prepareChatBackend(profile?: string): Promise<void> {
+  if (!isRemoteMode() && !isGatewayRunning()) {
+    startGateway(profile);
+  }
+
+  await ensureSshTunnelIfNeeded();
+  const conn = getConnectionConfig();
+  if (conn.mode === "ssh" && conn.ssh) {
+    const gatewayRunning = await sshGatewayStatus(conn.ssh);
+    const tunnelHealthy = await isSshTunnelHealthy();
+    if (!gatewayRunning || !tunnelHealthy) {
+      await sshStartGateway(conn.ssh);
+      await startSshTunnel(conn.ssh);
+      const key = await sshReadRemoteApiKey(conn.ssh);
+      setSshRemoteApiKey(key);
+    }
+  }
+}
+
 export function registerChatIpc({
   getMainWindow,
 }: IpcRegistrationContext): void {
@@ -79,22 +103,7 @@ export function registerChatIpc({
       resumeSessionId?: string,
       history?: Array<{ role: string; content: string }>,
     ) => {
-      if (!isRemoteMode() && !isGatewayRunning()) {
-        startGateway(profile);
-      }
-
-      await ensureSshTunnelIfNeeded();
-      const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh) {
-        const gatewayRunning = await sshGatewayStatus(conn.ssh);
-        const tunnelHealthy = await isSshTunnelHealthy();
-        if (!gatewayRunning || !tunnelHealthy) {
-          await sshStartGateway(conn.ssh);
-          await startSshTunnel(conn.ssh);
-          const key = await sshReadRemoteApiKey(conn.ssh);
-          setSshRemoteApiKey(key);
-        }
-      }
+      await prepareChatBackend(profile);
 
       abortCurrentRun("Superseded by a new Hermes message.");
 
@@ -302,6 +311,20 @@ export function registerChatIpc({
       return promise;
     },
   );
+
+  ipcMain.handle("generate-chat-title", async (_event, request: unknown) => {
+    if (!isGenerateChatTitleRequest(request)) {
+      throw new Error("Invalid generate-chat-title request");
+    }
+
+    const normalizedRequest = normalizeGenerateChatTitleRequest(request);
+    await prepareChatBackend(normalizedRequest.profile);
+    const title = await resolveChatTitle(normalizedRequest);
+    if (normalizedRequest.sessionId && title) {
+      updateSessionTitle(normalizedRequest.sessionId, title);
+    }
+    return title;
+  });
 
   ipcMain.handle("abort-chat", () => {
     abortCurrentRun("User stopped the active Hermes run.");

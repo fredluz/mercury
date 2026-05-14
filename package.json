@@ -18,15 +18,17 @@
     "dev:fresh": "HERMES_HOME=$(mktemp -d -t hermes-fresh) electron-vite dev",
     "e2e:trace-lab-hardening": "node scripts/e2e-trace-lab-hardening.mjs",
     "build": "npm run typecheck && electron-vite build",
+    "brand:generate": "node scripts/generate-brand-assets.mjs",
+    "brand:check": "node scripts/generate-brand-assets.mjs --check",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",
     "build:rpm": "npm run build && electron-builder --linux rpm",
-    "test:watch": "vitest",
     "open:latest:mac": "node scripts/open-latest-mac-build.mjs",
-    "install:dock:mac": "node scripts/install-mac-dock-launcher.mjs --dock"
+    "install:dock:mac": "node scripts/install-mac-dock-launcher.mjs --dock",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

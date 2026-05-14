@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { join } from "path";
-import { mkdirSync, rmSync, existsSync } from "fs";
+import { mkdirSync, rmSync, existsSync, readFileSync } from "fs";
 
 // vi.hoisted runs before module imports, so we can't reference imported
 // helpers here — use the bare Node modules via require.
@@ -34,7 +34,11 @@ vi.mock("../src/main/locale", () => ({
 }));
 
 import Database from "better-sqlite3";
-import { syncSessionCache, updateSessionProfile } from "../src/main/session-cache";
+import {
+  syncSessionCache,
+  updateSessionProfile,
+  updateSessionTitle,
+} from "../src/main/session-cache";
 
 const CACHE_FILE = join(TEST_HOME, "desktop", "sessions.json");
 const DB_PATH = join(TEST_HOME, "state.db");
@@ -134,6 +138,34 @@ describe("syncSessionCache", () => {
     expect(existsSync(CACHE_FILE)).toBe(true);
   });
 
+  it("refreshes cached metadata from DB titles on existing sessions", () => {
+    const future = Math.floor(Date.now() / 1000) + 600;
+    seedDb([
+      {
+        id: "s1",
+        started_at: future,
+        message_count: 2,
+        firstUserMessage: "old heuristic title",
+      },
+    ]);
+    syncSessionCache();
+
+    seedDb([
+      {
+        id: "s1",
+        started_at: future,
+        message_count: 3,
+        title: "Generated DB Title",
+        firstUserMessage: "old heuristic title",
+      },
+    ]);
+
+    const result = syncSessionCache();
+    expect(result).toHaveLength(1);
+    expect(result[0].title).toBe("Generated DB Title");
+    expect(result[0].messageCount).toBe(3);
+  });
+
   it("updates messageCount on existing sessions without duplicating them (issue #16 regression)", () => {
     // Use a future started_at so the 5-minute incremental sync window
     // (lastSync - 300) still catches the row on the second sync.
@@ -195,6 +227,61 @@ describe("syncSessionCache", () => {
     expect(result.map((r) => r.id)).toEqual(["s2", "s1"]);
   });
 
+  it("updates SQLite title and inserts cache entry when cache is missing", () => {
+    const now = Math.floor(Date.now() / 1000);
+    seedDb([
+      {
+        id: "s-title",
+        started_at: now,
+        message_count: 2,
+        model: "gpt-4.1",
+        firstUserMessage: "please name this chat",
+      },
+    ]);
+
+    expect(updateSessionTitle("s-title", "Model Generated Title")).toBe(true);
+
+    const db = new Database(DB_PATH, { readonly: true });
+    const row = db
+      .prepare(`SELECT title FROM sessions WHERE id = ?`)
+      .get("s-title") as { title: string | null };
+    db.close();
+    expect(row.title).toBe("Model Generated Title");
+
+    const cache = JSON.parse(readFileSync(CACHE_FILE, "utf-8")) as {
+      sessions: Array<{ id: string; title: string; model: string }>;
+    };
+    expect(cache.sessions).toEqual([
+      expect.objectContaining({
+        id: "s-title",
+        title: "Model Generated Title",
+        model: "gpt-4.1",
+      }),
+    ]);
+  });
+
+  it("updates an existing cache entry even if the DB row is unavailable", () => {
+    const now = Math.floor(Date.now() / 1000);
+    seedDb([
+      {
+        id: "cached-only",
+        started_at: now,
+        message_count: 1,
+        firstUserMessage: "cached only title",
+      },
+    ]);
+    syncSessionCache();
+    rmSync(DB_PATH, { force: true });
+
+    expect(updateSessionTitle("cached-only", "Cache Only Title")).toBe(true);
+    const cache = JSON.parse(readFileSync(CACHE_FILE, "utf-8")) as {
+      sessions: Array<{ id: string; title: string }>;
+    };
+    expect(cache.sessions[0]).toEqual(
+      expect.objectContaining({ id: "cached-only", title: "Cache Only Title" }),
+    );
+  });
+
   it("records the Mercury profile used for a session in the desktop cache", () => {
     const now = Math.floor(Date.now() / 1000);
     seedDb([
@@ -239,6 +326,7 @@ describe("syncSessionCache", () => {
         id: "profile-preserved",
         started_at: future,
         message_count: 3,
+        title: "Updated Title",
         firstUserMessage: "remember the profile",
       },
     ]);
@@ -249,6 +337,7 @@ describe("syncSessionCache", () => {
         id: "profile-preserved",
         profile: "research-agent",
         messageCount: 3,
+        title: "Updated Title",
       }),
     );
   });

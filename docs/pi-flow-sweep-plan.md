@@ -1,6 +1,6 @@
-# Hermes Desktop — E2E Flow Sweep Plan
+# Mercury — E2E Flow Sweep Plan
 
-This document lists the main end-to-end flows in Hermes Desktop, organised by:
+This document lists the main end-to-end flows in Mercury, organised by:
 
 - **Offline-friendly** — works with an isolated `HERMES_HOME` and no external API calls.
 - **Requires external services** — needs a live Hermes Agent, network, or provider API key.
@@ -20,10 +20,10 @@ This document lists the main end-to-end flows in Hermes Desktop, organised by:
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Screen**     | `SplashScreen`                                                                                                                                              |
 | **CSS class**  | `.splash-screen`                                                                                                                                            |
-| **Children**   | `<img className="splash-bg" />`, `<img className="splash-logo" />`                                                                                          |
+| **Children**   | Mercury brand lockup element generated from the shared logo asset                                                                                          |
 | **Behaviour**  | Calls `onFinished()` in `useEffect` — auto-transitions after mount. App logic waits for a minimum `SPLASH_MIN_MS` (1300 ms) plus the install-check promise. |
 | **Offline**    | ✅ Yes                                                                                                                                                      |
-| **Assertions** | `.splash-screen` exists, `.splash-logo` exists with `alt="Hermes Agent"`.                                                                                   |
+| **Assertions** | `.splash-screen` exists and the Mercury brand lockup renders with Mercury alt text.                                                                                   |
 
 ### 1.2 Welcome Screen — Ready State
 

@@ -1,0 +1,189 @@
+{
+  "runId": "ui-2026-05-14T12-12-59-669Z-synthetic-local-empty",
+  "date": "2026-05-14T12:13:14.621Z",
+  "options": {
+    "caseName": "synthetic-local",
+    "cache": "empty",
+    "mountSamples": 5,
+    "searchSamples": 5,
+    "sessions": 5,
+    "messagesPerSession": 6,
+    "largeMessages": false,
+    "keepHomes": false
+  },
+  "queryLabel": "latencyneedle",
+  "dataset": {
+    "sessions": 5,
+    "messagesPerSession": 6,
+    "fts": true,
+    "largeMessages": false,
+    "cache": "empty"
+  },
+  "mount": [
+    {
+      "ok": true,
+      "ms": 316.03654200000005,
+      "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-12-59-669Z-synthetic-local-empty-mount-0.ndjson",
+      "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-fe95By"
+    },
+    {
+      "ok": true,
+      "ms": 83.24712499999987,
+      "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-12-59-669Z-synthetic-local-empty-mount-1.ndjson",
+      "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-V32VWo"
+    },
+    {
+      "ok": true,
+      "ms": 304.4173329999994,
+      "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-12-59-669Z-synthetic-local-empty-mount-2.ndjson",
+      "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-Z1QfWx"
+    },
+    {
+      "ok": true,
+      "ms": 296.4556670000002,
+      "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-12-59-669Z-synthetic-local-empty-mount-3.ndjson",
+      "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-wR5zAQ"
+    },
+    {
+      "ok": true,
+      "ms": 302.84200000000055,
+      "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-12-59-669Z-synthetic-local-empty-mount-4.ndjson",
+      "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-qlQDss"
+    }
+  ],
+  "search": {
+    "samples": [
+      {
+        "ok": true,
+        "ms": 322.1207080000004
+      },
+      {
+        "ok": true,
+        "ms": 327.5612920000003
+      },
+      {
+        "ok": true,
+        "ms": 325.81362499999886
+      },
+      {
+        "ok": true,
+        "ms": 353.78862500000105
+      },
+      {
+        "ok": true,
+        "ms": 329.8792080000003
+      }
+    ],
+    "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-12-59-669Z-synthetic-local-empty-search.ndjson",
+    "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-NSCz3x"
+  },
+  "summary": {
+    "mountToFirstRenderableMs": {
+      "min": 83.24712499999987,
+      "median": 302.84200000000055,
+      "p95": 316.03654200000005,
+      "max": 316.03654200000005,
+      "mean": 260.5997334,
+      "stddev": 88.9013234441151
+    },
+    "rendererInputToResultsMs": {
+      "min": 322.1207080000004,
+      "median": 327.5612920000003,
+      "p95": 353.78862500000105,
+      "max": 353.78862500000105,
+      "mean": 331.8326916000002,
+      "stddev": 11.26655006970224
+    },
+    "ipc": {
+      "list-cached-sessions": {
+        "totalMs": {
+          "min": 0.19195800000011332,
+          "median": 0.20250000000010004,
+          "p95": 0.23258399999986068,
+          "max": 0.23258399999986068,
+          "mean": 0.2050138333332825,
+          "stddev": 0.01321121607338654
+        },
+        "configMs": {
+          "min": 0.1013749999999618,
+          "median": 0.10791599999993196,
+          "p95": 0.1253340000002936,
+          "max": 0.1253340000002936,
+          "mean": 0.1101736666666208,
+          "stddev": 0.008387924508324962
+        },
+        "implMs": {
+          "min": 0.02670799999987139,
+          "median": 0.03187500000012733,
+          "p95": 0.035666000000219356,
+          "max": 0.035666000000219356,
+          "mean": 0.030930333333344606,
+          "stddev": 0.00295012608025817
+        },
+        "samples": 6
+      },
+      "sync-session-cache": {
+        "totalMs": {
+          "min": 2.5414169999999103,
+          "median": 2.831333000000086,
+          "p95": 3.322834000000057,
+          "max": 3.322834000000057,
+          "mean": 2.8669585000000097,
+          "stddev": 0.27207450156702206
+        },
+        "configMs": {
+          "min": 0.04612500000007458,
+          "median": 0.06341699999984485,
+          "p95": 0.06808399999999892,
+          "max": 0.06808399999999892,
+          "mean": 0.05910433333334216,
+          "stddev": 0.008876453790147995
+        },
+        "implMs": {
+          "min": 2.4420419999999012,
+          "median": 2.731959000000188,
+          "p95": 3.2443329999998696,
+          "max": 3.2443329999998696,
+          "mean": 2.773166666666725,
+          "stddev": 0.27773052736223686
+        },
+        "samples": 6
+      },
+      "search-sessions": {
+        "totalMs": {
+          "min": 0.5914170000000922,
+          "median": 0.6990000000000691,
+          "p95": 1.782416000000012,
+          "max": 1.782416000000012,
+          "mean": 0.9681582000000162,
+          "stddev": 0.451773055044824
+        },
+        "configMs": {
+          "min": 0.09524999999985084,
+          "median": 0.1259170000002996,
+          "p95": 0.2585409999996955,
+          "max": 0.2585409999996955,
+          "mean": 0.1706750000000284,
+          "stddev": 0.07213417413396156
+        },
+        "implMs": {
+          "min": 0.46412499999996726,
+          "median": 0.5562919999997575,
+          "p95": 1.4614580000002206,
+          "max": 1.4614580000002206,
+          "mean": 0.7544084000000112,
+          "stddev": 0.3747608152114176
+        },
+        "samples": 5
+      }
+    }
+  },
+  "diagFiles": [
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-12-59-669Z-synthetic-local-empty-mount-0.ndjson",
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-12-59-669Z-synthetic-local-empty-mount-1.ndjson",
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-12-59-669Z-synthetic-local-empty-mount-2.ndjson",
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-12-59-669Z-synthetic-local-empty-mount-3.ndjson",
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-12-59-669Z-synthetic-local-empty-mount-4.ndjson",
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-12-59-669Z-synthetic-local-empty-search.ndjson"
+  ]
+}

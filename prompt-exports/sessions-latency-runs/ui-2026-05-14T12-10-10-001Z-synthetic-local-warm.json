@@ -1,0 +1,96 @@
+{
+  "runId": "ui-2026-05-14T12-10-10-001Z-synthetic-local-warm",
+  "date": "2026-05-14T12:11:00.007Z",
+  "options": {
+    "caseName": "synthetic-local",
+    "cache": "warm",
+    "mountSamples": 1,
+    "searchSamples": 1,
+    "sessions": 5,
+    "messagesPerSession": 6,
+    "largeMessages": false,
+    "keepHomes": true
+  },
+  "queryLabel": "latencyneedle",
+  "dataset": {
+    "sessions": 5,
+    "messagesPerSession": 6,
+    "fts": true,
+    "largeMessages": false,
+    "cache": "warm"
+  },
+  "mount": [
+    {
+      "ok": true,
+      "ms": 321.7907089999999,
+      "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-10-10-001Z-synthetic-local-warm-mount-0.ndjson",
+      "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-tn35QR"
+    }
+  ],
+  "search": {
+    "samples": [
+      {
+        "ok": false,
+        "error": "locator.waitFor: Timeout 45000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.sessions-list, .sessions-empty').first() to be visible\u001b[22m\n"
+      }
+    ],
+    "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-10-10-001Z-synthetic-local-warm-search.ndjson",
+    "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sessions-latency-w2VPnw"
+  },
+  "summary": {
+    "mountToFirstRenderableMs": {
+      "min": 321.7907089999999,
+      "median": 321.7907089999999,
+      "p95": 321.7907089999999,
+      "max": 321.7907089999999,
+      "mean": 321.7907089999999,
+      "stddev": 0
+    },
+    "rendererInputToResultsMs": null,
+    "ipc": {
+      "list-cached-sessions": {
+        "totalMs": {
+          "min": 0.34600000000000364,
+          "median": 0.3527079999998932,
+          "p95": 0.3527079999998932,
+          "max": 0.3527079999998932,
+          "mean": 0.34935399999994843,
+          "stddev": 0.00335399999994479
+        },
+        "configMs": {
+          "min": 0.16124999999988177,
+          "median": 0.16720800000030067,
+          "p95": 0.16720800000030067,
+          "max": 0.16720800000030067,
+          "mean": 0.16422900000009122,
+          "stddev": 0.002979000000209453
+        },
+        "implMs": {
+          "min": 0.09725000000003092,
+          "median": 0.10312500000009095,
+          "p95": 0.10312500000009095,
+          "max": 0.10312500000009095,
+          "mean": 0.10018750000006094,
+          "stddev": 0.0029375000000300133
+        },
+        "samples": 2
+      },
+      "sync-session-cache": {
+        "totalMs": null,
+        "configMs": null,
+        "implMs": null,
+        "samples": 0
+      },
+      "search-sessions": {
+        "totalMs": null,
+        "configMs": null,
+        "implMs": null,
+        "samples": 0
+      }
+    }
+  },
+  "diagFiles": [
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-10-10-001Z-synthetic-local-warm-mount-0.ndjson",
+    "/Users/fredluz/Code/mercury/prompt-exports/sessions-latency-runs/ui-2026-05-14T12-10-10-001Z-synthetic-local-warm-search.ndjson"
+  ]
+}

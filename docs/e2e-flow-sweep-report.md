@@ -1,4 +1,4 @@
-# Hermes Desktop Flow Sweep E2E
+# Mercury Flow Sweep E2E
 
 Date: 2026-05-12T16:26:04.607Z
 

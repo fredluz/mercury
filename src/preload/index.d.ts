@@ -1,4 +1,5 @@
 import { ElectronAPI } from "@electron-toolkit/preload";
+import type { GenerateChatTitleRequest } from "../shared/chat-metadata";
 import type { AppLocale } from "../shared/i18n/types";
 import type {
   SkillMarkdownImportRequest,
@@ -113,6 +114,7 @@ interface HermesAPI {
     history?: Array<{ role: string; content: string }>,
   ) => Promise<{ response: string; sessionId?: string }>;
   abortChat: () => Promise<void>;
+  generateChatTitle: (request: GenerateChatTitleRequest) => Promise<string>;
   recordLocalChatTrace: (request: LocalChatTraceRequest) => Promise<TraceRun>;
   onChatChunk: (callback: (chunk: string) => void) => () => void;
   onChatDone: (callback: (sessionId?: string) => void) => () => void;
@@ -291,7 +293,7 @@ interface HermesAPI {
       profile?: string;
     }>
   >;
-  updateSessionTitle: (sessionId: string, title: string) => Promise<void>;
+  updateSessionTitle: (sessionId: string, title: string) => Promise<boolean>;
 
   // Session search
   searchSessions: (
@@ -328,6 +330,7 @@ interface HermesAPI {
       model: string;
       baseUrl: string;
       createdAt: number;
+      contextWindow?: number;
     }>
   >;
   addModel: (
@@ -342,9 +345,19 @@ interface HermesAPI {
     model: string;
     baseUrl: string;
     createdAt: number;
+    contextWindow?: number;
   }>;
   removeModel: (id: string) => Promise<boolean>;
-  updateModel: (id: string, fields: Record<string, string>) => Promise<boolean>;
+  updateModel: (
+    id: string,
+    fields: Partial<{
+      name: string;
+      provider: string;
+      model: string;
+      baseUrl: string;
+      contextWindow: number;
+    }>,
+  ) => Promise<boolean>;
 
   // Claw3D
   claw3dStatus: () => Promise<{

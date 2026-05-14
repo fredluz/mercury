@@ -10,8 +10,8 @@ import { useI18n } from "./components/useI18n";
 
 type Screen = "splash" | "welcome" | "installing" | "setup" | "main";
 
-// Minimum time the splash stays visible so the brand animation plays
-// through. Tracks the splash logo fade-in duration in main.css.
+// Minimum time the splash stays visible so the brand lockup animation plays
+// through. Tracks the splash lockup fade-in duration in splash.css.
 const SPLASH_MIN_MS = 1300;
 
 function App(): React.JSX.Element {

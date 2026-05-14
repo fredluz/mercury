@@ -2,7 +2,7 @@
 
 **Status:** Approved (brainstorming) — pending implementation plan
 **Date:** 2026-04-30
-**Branch target:** `Aiacos/hermes-desktop:feat/winget-rpm-release` → PR upstream `fathah/hermes-desktop:main`
+**Branch target:** `FredLuz/mercury:feat/winget-rpm-release` → PR upstream `FredLuz/mercury:main`
 
 ## Goal
 
@@ -46,11 +46,11 @@ The default-true on dispatch is a safety net: a stray click in the Actions UI ca
 
 ### Identifiers and naming
 
-- **Winget `PackageIdentifier`:** `NousResearch.HermesDesktop` (stable, never renamed)
-- **Winget `Publisher`:** `Nous Research` (free-text; binaries hosted under `fathah/hermes-desktop`, which the moderation review will verify against the `InstallerUrl`)
-- **Winget `PackageName`:** `Hermes Agent` (matches `productName` in `electron-builder.yml`)
+- **Winget `PackageIdentifier`:** `FredLuz.Mercury`
+- **Winget `Publisher`:** `Fred Luz` (free-text; binaries hosted under `FredLuz/mercury`, which the moderation review will verify against the `InstallerUrl`)
+- **Winget `PackageName`:** `Mercury` (matches `productName` in `electron-builder.yml`)
 - **NSIS scope:** `oneClick: true`, `perMachine: false` — installs into `%LOCALAPPDATA%`, no UAC prompt, aligns with `winget install` default user scope and with the app's existing `~/.hermes` user-state model.
-- **RPM artifact name:** `hermes-desktop-<version>.rpm` (no spaces, no arch suffix — consistent with the existing `.deb` and `.AppImage` naming. The default `${productName}` would produce `Hermes Agent-...rpm` which breaks `dnf install ./file.rpm`. We explicitly only build `x86_64`, so the missing arch suffix is unambiguous in practice.).
+- **RPM artifact name:** `mercury-<version>.rpm` (no spaces, no arch suffix — consistent with the existing `.deb` and `.AppImage` naming. We explicitly only build `x86_64`, so the missing arch suffix is unambiguous in practice.).
 
 ## File changes
 
@@ -87,7 +87,7 @@ Concurrency block (`group: release`, `cancel-in-progress: true`) remains unchang
 - `linux.target`: add `rpm` (existing `AppImage`, `snap`, `deb` retained).
 - `linux.synopsis`: short one-line description (required by fpm/rpmbuild for valid RPM metadata).
 - `linux.description`: longer description.
-- `linux.vendor`: `Nous Research` (or repo owner of upstream; finalized during implementation).
+- `linux.vendor`: `Fred Luz`.
 - New `rpm:` block with `artifactName: ${name}-${version}.${ext}`.
 - `nsis:` block extended with explicit `oneClick: true` and `perMachine: false` (currently relies on electron-builder defaults; making them explicit prevents silent behavior change across electron-builder versions).
 
@@ -99,7 +99,7 @@ YAML manifest with placeholders: `{{VERSION}}`, `{{INSTALLER_URL}}`, `{{INSTALLE
 
 #### `build/winget/Locale.en-US.template.yaml`
 
-Locale manifest with placeholders: `{{VERSION}}`, `{{RELEASE_NOTES_URL}}`. Includes `Publisher: Nous Research`, `PublisherUrl: https://github.com/fathah/hermes-desktop`, `PackageName: Hermes Agent`, `License: MIT`, `LicenseUrl: https://github.com/fathah/hermes-desktop/blob/main/LICENSE`, `ShortDescription`, `Tags: [ai, agent, desktop, electron, llm]`.
+Locale manifest with placeholders: `{{VERSION}}`, `{{RELEASE_NOTES_URL}}`. Includes `Publisher: Fred Luz`, `PublisherUrl: https://github.com/FredLuz/mercury`, `PackageName: Mercury`, `License: MIT`, `LicenseUrl: https://github.com/FredLuz/mercury/blob/main/LICENSE`, `ShortDescription`, `Tags: [ai, agent, desktop, electron, llm]`.
 
 #### `build/winget/Version.template.yaml`
 
@@ -107,11 +107,11 @@ Root version manifest with placeholders: `{{VERSION}}`. Trivial: `PackageIdentif
 
 #### `scripts/generate-winget-manifests.mjs`
 
-Node ESM script (~50 lines, zero external deps). Reads `package.json` to get `version` and `name`. Locates `dist/<name>-<version>-setup.exe`. Computes SHA256 with `node:crypto` `createHash('sha256')` over the file. Reads each `*.template.yaml` from `build/winget/`. Replaces all `{{KEY}}` placeholders by string `replaceAll`. Writes output to `dist/winget/manifests/n/NousResearch/HermesDesktop/<version>/`:
+Node ESM script (~50 lines, zero external deps). Reads `package.json` to get `version` and `name`. Locates `dist/<name>-<version>-setup.exe`. Computes SHA256 with `node:crypto` `createHash('sha256')` over the file. Reads each `*.template.yaml` from `build/winget/`. Replaces all `{{KEY}}` placeholders by string `replaceAll`. Writes output to `dist/winget/manifests/f/FredLuz/Mercury/<version>/`:
 
-- `NousResearch.HermesDesktop.installer.yaml`
-- `NousResearch.HermesDesktop.locale.en-US.yaml`
-- `NousResearch.HermesDesktop.yaml`
+- `FredLuz.Mercury.installer.yaml`
+- `FredLuz.Mercury.locale.en-US.yaml`
+- `FredLuz.Mercury.yaml`
 
 The path mirrors the directory layout in `microsoft/winget-pkgs`, so the operator submitting the PR can `cp -r` directly.
 
@@ -123,10 +123,10 @@ Add script `"build:rpm": "npm run build && electron-builder --linux rpm"` for lo
 
 #### `README.md`
 
-Update the Install section's platform table to add Windows (`.exe` and, once accepted into winget-pkgs, `winget install NousResearch.HermesDesktop`) and Fedora (`.rpm`). Add a note that:
+Update the Install section's platform table to add Windows (`.exe` and, once accepted into winget-pkgs, `winget install FredLuz.Mercury`) and Fedora (`.rpm`). Add a note that:
 
 - The Windows build is unsigned; Windows SmartScreen will warn on first launch.
-- The `.rpm` is unsigned; install with `sudo dnf install ./hermes-desktop-<version>.x86_64.rpm` (or use `--nogpgcheck` if a system policy enforces signature checking).
+- The `.rpm` is unsigned; install with `sudo dnf install ./mercury-<version>.x86_64.rpm` (or use `--nogpgcheck` if a system policy enforces signature checking).
 - Auto-update on Linux is supported only for `.AppImage` builds; `.rpm` and `.deb` users must download new releases manually.
 
 ## Data flow
@@ -138,8 +138,8 @@ checkout
   → npm ci                  → node_modules + electron-builder install-app-deps
   → npm run build           → out/main + out/preload + out/renderer
   → electron-builder --win nsis --x64
-                            → dist/hermes-desktop-<version>-setup.exe
-                            → dist/hermes-desktop-<version>-setup.exe.blockmap
+                            → dist/mercury-<version>-setup.exe
+                            → dist/mercury-<version>-setup.exe.blockmap
                             → dist/latest.yml
   → upload-artifact "windows-artifacts"
 ```
@@ -149,9 +149,9 @@ checkout
 ```
 download-artifact "windows-artifacts" → dist/
 node scripts/generate-winget-manifests.mjs
-  → SHA256(dist/hermes-desktop-<version>-setup.exe)
+  → SHA256(dist/mercury-<version>-setup.exe)
   → fill 3 templates with VERSION, INSTALLER_URL, INSTALLER_SHA256, RELEASE_DATE
-  → write dist/winget/manifests/n/NousResearch/HermesDesktop/<version>/*.yaml
+  → write dist/winget/manifests/f/FredLuz/Mercury/<version>/*.yaml
 upload-artifact "winget-manifests-<version>"
 ```
 
@@ -163,9 +163,9 @@ checkout
   → npm run build
   → apt install rpm
   → electron-builder --linux AppImage deb rpm
-                            → dist/hermes-desktop-<version>.AppImage
-                            → dist/hermes-desktop-<version>.deb
-                            → dist/hermes-desktop-<version>.x86_64.rpm
+                            → dist/mercury-<version>.AppImage
+                            → dist/mercury-<version>.deb
+                            → dist/mercury-<version>.x86_64.rpm
                             → dist/latest-linux.yml
   → upload-artifact "linux-artifacts"
 ```
@@ -205,7 +205,7 @@ softprops/action-gh-release files=artifacts/* (excludes winget/ subdir)
 
 ### CI on fork
 
-9. Push `feat/winget-rpm-release` to `Aiacos/hermes-desktop`.
+9. Push `feat/winget-rpm-release` to `FredLuz/mercury`.
 10. Trigger `workflow_dispatch` from the Actions UI on `feat/winget-rpm-release` with `dry_run=true`.
 11. Verify all build jobs succeed:
     - `prepare` ✓
@@ -223,9 +223,9 @@ softprops/action-gh-release files=artifacts/* (excludes winget/ subdir)
 ## Open questions deferred to implementation
 
 - Exact wording of `linux.synopsis` and `linux.description` (will follow `package.json.description` style).
-- Final value of `linux.vendor` (`Nous Research` vs `fathah`).
+- Final value of `linux.vendor` (`Fred Luz`).
 - Whether to include `manifestVersion: 1.10.0` (current latest) or stick with `1.6.0` (more compatible with older `winget` clients). Default to `1.6.0` unless implementation reveals required fields.
-
+FredLuz.Mercury
 ## Out-of-scope follow-ups (future PRs, if desired)
 
 - Auto-submit winget PR via `vedantmgoyal2009/winget-releaser` action (requires GitHub PAT in upstream secrets).

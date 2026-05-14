@@ -1,5 +1,9 @@
 # Mercury
 
+<p align="center">
+  <img src="docs/assets/mercury-logo.png" alt="Mercury" width="520">
+</p>
+
 <br/>
 <p align="center">
   <a href="https://hermes-agent.nousresearch.com/docs/"><img src="https://img.shields.io/badge/Docs-hermes--agent.nousresearch.com-FFD700?style=for-the-badge" alt="Documentation"></a>

@@ -28,11 +28,10 @@
 }
 
 .sidebar-brand-lockup {
-  color: var(--text-primary);
-  font-size: 25px;
-  font-weight: 850;
-  line-height: 1;
-  letter-spacing: 0;
+  width: 132px;
+  height: auto;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(5, 5, 5, 0.12);
 }
 
 .sidebar-brand-icon {

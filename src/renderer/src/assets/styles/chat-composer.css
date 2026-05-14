@@ -164,20 +164,6 @@
   text-overflow: ellipsis;
 }
 
-.chat-header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.chat-token-counter {
-  font-size: 11px;
-  color: var(--text-muted);
-  background: var(--bg-tertiary);
-  padding: 2px 8px;
-  border-radius: 10px;
-}
-
 .chat-tool-progress {
   font-size: 13px;
   color: var(--text-secondary);

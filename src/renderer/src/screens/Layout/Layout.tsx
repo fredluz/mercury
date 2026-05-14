@@ -69,6 +69,9 @@ function Layout(): React.JSX.Element {
   const [view, setView] = useState<View>("chat");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [currentSessionTitle, setCurrentSessionTitle] = useState<string | null>(null);
+  const [sessionsRefreshToken, setSessionsRefreshToken] = useState(0);
+  const [conversationVersion, setConversationVersion] = useState(0);
   const [activeProfile, setActiveProfile] = useState("default");
   // Tabs lazy-mount on first visit, then stay mounted (display:none toggle).
   // Keeps IPC refetch / DOM rebuild off the tab-switch hot path.
@@ -136,6 +139,8 @@ function Layout(): React.JSX.Element {
     window.hermesAPI.abortChat();
     setMessages([]);
     setCurrentSessionId(null);
+    setCurrentSessionTitle(null);
+    setConversationVersion((value) => value + 1);
     goTo("chat");
   }, [goTo]);
 
@@ -157,10 +162,12 @@ function Layout(): React.JSX.Element {
     setActiveProfile(name);
     setMessages([]);
     setCurrentSessionId(null);
+    setCurrentSessionTitle(null);
+    setConversationVersion((value) => value + 1);
   }, []);
 
   const handleResumeSession = useCallback(
-    async (sessionId: string) => {
+    async (sessionId: string, title?: string | null) => {
       const dbMessages = await window.hermesAPI.getSessionMessages(sessionId);
       const chatMessages: ChatMessage[] = dbMessages.map((m) => ({
         id: `db-${m.id}`,
@@ -169,6 +176,8 @@ function Layout(): React.JSX.Element {
       }));
       setMessages(chatMessages);
       setCurrentSessionId(sessionId);
+      setCurrentSessionTitle(title?.trim() || null);
+      setConversationVersion((value) => value + 1);
       goTo("chat");
     },
     [goTo],
@@ -225,7 +234,19 @@ function Layout(): React.JSX.Element {
             messages={messages}
             setMessages={setMessages}
             sessionId={currentSessionId}
+            sessionTitle={currentSessionTitle}
+            conversationVersion={conversationVersion}
             profile={activeProfile}
+            onSessionResolved={setCurrentSessionId}
+            onSessionTitleChange={(title) => {
+              setCurrentSessionTitle(title);
+              setSessionsRefreshToken((value) => value + 1);
+            }}
+            onSessionReset={() => {
+              setCurrentSessionId(null);
+              setCurrentSessionTitle(null);
+              setConversationVersion((value) => value + 1);
+            }}
             onNewChat={handleNewChat}
           />
         </div>
@@ -239,6 +260,7 @@ function Layout(): React.JSX.Element {
                 onResumeSession={handleResumeSession}
                 onNewChat={handleNewChat}
                 currentSessionId={currentSessionId}
+                refreshToken={sessionsRefreshToken}
               />
             )}
           </div>

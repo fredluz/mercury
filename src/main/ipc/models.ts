@@ -4,7 +4,7 @@ import {
   setCredentialPool,
   getConnectionConfig,
 } from "../config";
-import { listModels, addModel, removeModel, updateModel } from "../models";
+import { listModels, addModel, removeModel, updateModel, type SavedModel } from "../models";
 import { sshListModels } from "../ssh-remote";
 
 export function registerModelsIpc(): void {
@@ -36,7 +36,10 @@ export function registerModelsIpc(): void {
   ipcMain.handle("remove-model", (_event, id: string) => removeModel(id));
   ipcMain.handle(
     "update-model",
-    (_event, id: string, fields: Record<string, string>) =>
-      updateModel(id, fields),
+    (
+      _event,
+      id: string,
+      fields: Partial<Pick<SavedModel, "name" | "provider" | "model" | "baseUrl" | "contextWindow">>,
+    ) => updateModel(id, fields),
   );
 }

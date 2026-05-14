@@ -1,6 +1,13 @@
 export default {
   title: "New Chat",
   sessionTitle: "Session {{id}}",
+  defaultAgent: "Default",
+  agentIdentity: "Agent: {{profile}}",
+  generatingTitle: "Generating title…",
+  untitledChat: "Untitled chat",
+  contextUsed: "{{percent}} context",
+  contextTooltip: "{{used}} of {{limit}} tokens used in {{model}}'s context window.",
+  contextTooltipEstimated: "Estimated: {{used}} of {{limit}} tokens used in {{model}}'s context window.",
   noModel: "No model set",
   auto: "Auto",
   commandsTitle: "Commands",

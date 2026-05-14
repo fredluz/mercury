@@ -127,6 +127,16 @@
     sans-serif;
   --font-mono:
     "SF Mono", "Fira Code", "JetBrains Mono", Menlo, Consolas, monospace;
+  --brand-cream: #f3e7d3;
+  --brand-cream-strong: #efe0c5;
+  --brand-ink: #050505;
+}
+
+.mercury-mark,
+.mercury-lockup {
+  display: block;
+  object-fit: contain;
+  background: var(--brand-cream);
 }
 
 /* ----- Body ----- */

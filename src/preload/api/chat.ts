@@ -1,4 +1,5 @@
 import { ipcRenderer } from "electron";
+import type { GenerateChatTitleRequest } from "../../shared/chat-metadata";
 import type { LocalChatTraceRequest, TraceEvent, TraceRun } from "../../shared/traces";
 
 export const chatApi = {
@@ -18,6 +19,9 @@ export const chatApi = {
     ),
 
   abortChat: (): Promise<void> => ipcRenderer.invoke("abort-chat"),
+
+  generateChatTitle: (request: GenerateChatTitleRequest): Promise<string> =>
+    ipcRenderer.invoke("generate-chat-title", request),
 
   recordLocalChatTrace: (request: LocalChatTraceRequest): Promise<TraceRun> =>
     ipcRenderer.invoke("record-local-chat-trace", request),

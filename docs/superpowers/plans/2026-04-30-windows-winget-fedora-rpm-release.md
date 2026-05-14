@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Extend the existing GitHub Actions release pipeline to produce a Windows NSIS installer + winget manifests, and a Fedora `.rpm`, alongside the existing macOS/Linux artifacts. End state: open a PR from `Aiacos/hermes-desktop:feat/winget-rpm-release` to `fathah/hermes-desktop:main`.
+**Goal:** Extend the existing GitHub Actions release pipeline to produce a Windows NSIS installer + winget manifests, and a Fedora `.rpm`, alongside the existing macOS/Linux artifacts. End state: open a PR from `FredLuz/mercury:feat/winget-rpm-release` to `FredLuz/mercury:main`.
 
 **Architecture:** Two new jobs added to `.github/workflows/release.yml` (Windows build + winget manifest generator), one existing job extended (Linux gets rpm), one job gated on a new `dry_run` input. Winget manifests are filled from YAML templates by a tested Node ESM script and uploaded as a CI artifact for manual submission to `microsoft/winget-pkgs`.
 
@@ -64,11 +64,11 @@ linux:
     - deb
     - rpm
   maintainer: electronjs.org
-  vendor: Nous Research
+  vendor: Fred Luz
   category: Utility
   synopsis: Self-improving AI assistant desktop app
   description: |
-    Hermes Desktop is a native desktop app for installing, configuring, and chatting
+    Mercury is a native desktop app for installing, configuring, and chatting
     with Hermes Agent — a self-improving AI assistant with tool use, multi-platform
     messaging, and a closed learning loop.
 appImage:
@@ -168,8 +168,8 @@ Expected: completes without errors, ~2-5 minutes. Final lines should mention wri
 Run: `ls -la dist/*.rpm && rpm -qpi dist/*.rpm | head -20`
 
 Expected:
-- A file `dist/hermes-desktop-0.2.3.rpm` (or current version) of non-trivial size (~120-200 MB)
-- `rpm -qpi` shows `Name: hermes-desktop`, `Version: 0.2.3`, `Vendor: Nous Research`, `License`, `Summary` matching our `synopsis`.
+- A file `dist/mercury-0.2.3.rpm` (or current version) of non-trivial size (~120-200 MB)
+- `rpm -qpi` shows `Name: mercury`, `Version: 0.2.3`, `Vendor: Fred Luz`, `License`, `Summary` matching our `synopsis`.
 
 If the RPM is missing or metadata is wrong, go back to Task 1 and fix.
 
@@ -214,7 +214,7 @@ Contents:
 ```yaml
 # Generated from this template by scripts/generate-winget-manifests.mjs.
 # Placeholders ({{...}}) are replaced at build time. Do not edit the generated copy in dist/.
-PackageIdentifier: NousResearch.HermesDesktop
+PackageIdentifier: FredLuz.Mercury
 PackageVersion: {{VERSION}}
 InstallerLocale: en-US
 InstallerType: nullsoft
@@ -236,19 +236,19 @@ Contents:
 
 ```yaml
 # Generated from this template by scripts/generate-winget-manifests.mjs.
-PackageIdentifier: NousResearch.HermesDesktop
+PackageIdentifier: FredLuz.Mercury
 PackageVersion: {{VERSION}}
 PackageLocale: en-US
-Publisher: Nous Research
-PublisherUrl: https://github.com/fathah/hermes-desktop
-PublisherSupportUrl: https://github.com/fathah/hermes-desktop/issues
-PackageName: Hermes Agent
-PackageUrl: https://github.com/fathah/hermes-desktop
+Publisher: Fred Luz
+PublisherUrl: https://github.com/FredLuz/mercury
+PublisherSupportUrl: https://github.com/FredLuz/mercury/issues
+PackageName: Mercury
+PackageUrl: https://github.com/FredLuz/mercury
 License: MIT
-LicenseUrl: https://github.com/fathah/hermes-desktop/blob/main/LICENSE
+LicenseUrl: https://github.com/FredLuz/mercury/blob/main/LICENSE
 ShortDescription: Self-improving AI assistant desktop app
 Description: |-
-  Hermes Desktop is a native desktop app for installing, configuring, and chatting
+  Mercury is a native desktop app for installing, configuring, and chatting
   with Hermes Agent — a self-improving AI assistant with tool use, multi-platform
   messaging, and a closed learning loop.
 Tags:
@@ -268,7 +268,7 @@ Contents:
 
 ```yaml
 # Generated from this template by scripts/generate-winget-manifests.mjs.
-PackageIdentifier: NousResearch.HermesDesktop
+PackageIdentifier: FredLuz.Mercury
 PackageVersion: {{VERSION}}
 DefaultLocale: en-US
 ManifestType: version
@@ -335,29 +335,29 @@ describe("generateWingetManifests", () => {
     const distDir = join(TEST_DIR, "dist");
     mkdirSync(distDir, { recursive: true });
     writeFileSync(
-      join(distDir, "hermes-desktop-9.9.9-setup.exe"),
+      join(distDir, "mercury-9.9.9-setup.exe"),
       "fake-installer-bytes",
     );
 
     generateWingetManifests({
       rootDir: TEST_DIR,
       version: "9.9.9",
-      name: "hermes-desktop",
-      publishOwner: "fathah",
+      name: "mercury",
+      publishOwner: "fredluz",
     });
 
     const outDir = join(
       distDir,
       "winget",
       "manifests",
-      "n",
-      "NousResearch",
-      "HermesDesktop",
+      "f",
+      "FredLuz",
+      "Mercury",
       "9.9.9",
     );
-    expect(existsSync(join(outDir, "NousResearch.HermesDesktop.installer.yaml"))).toBe(true);
-    expect(existsSync(join(outDir, "NousResearch.HermesDesktop.locale.en-US.yaml"))).toBe(true);
-    expect(existsSync(join(outDir, "NousResearch.HermesDesktop.yaml"))).toBe(true);
+    expect(existsSync(join(outDir, "FredLuz.Mercury.installer.yaml"))).toBe(true);
+    expect(existsSync(join(outDir, "FredLuz.Mercury.locale.en-US.yaml"))).toBe(true);
+    expect(existsSync(join(outDir, "FredLuz.Mercury.yaml"))).toBe(true);
   });
 
   it("replaces all placeholders in the installer manifest", () => {
@@ -365,31 +365,31 @@ describe("generateWingetManifests", () => {
     const distDir = join(TEST_DIR, "dist");
     mkdirSync(distDir, { recursive: true });
     writeFileSync(
-      join(distDir, "hermes-desktop-9.9.9-setup.exe"),
+      join(distDir, "mercury-9.9.9-setup.exe"),
       "fake-installer-bytes",
     );
 
     generateWingetManifests({
       rootDir: TEST_DIR,
       version: "9.9.9",
-      name: "hermes-desktop",
-      publishOwner: "fathah",
+      name: "mercury",
+      publishOwner: "fredluz",
     });
 
     const outFile = join(
       distDir,
       "winget",
       "manifests",
-      "n",
-      "NousResearch",
-      "HermesDesktop",
+      "f",
+      "FredLuz",
+      "Mercury",
       "9.9.9",
-      "NousResearch.HermesDesktop.installer.yaml",
+      "FredLuz.Mercury.installer.yaml",
     );
     const content = readFileSync(outFile, "utf-8");
     expect(content).toContain("Version: 9.9.9");
     expect(content).toContain(
-      "Url: https://github.com/fathah/hermes-desktop/releases/download/v9.9.9/hermes-desktop-9.9.9-setup.exe",
+      "Url: https://github.com/FredLuz/mercury/releases/download/v9.9.9/mercury-9.9.9-setup.exe",
     );
     expect(content).toMatch(/Sha: [A-F0-9]{64}/);
     expect(content).toMatch(/Date: \d{4}-\d{2}-\d{2}/);
@@ -401,30 +401,30 @@ describe("generateWingetManifests", () => {
     const distDir = join(TEST_DIR, "dist");
     mkdirSync(distDir, { recursive: true });
     writeFileSync(
-      join(distDir, "hermes-desktop-9.9.9-setup.exe"),
+      join(distDir, "mercury-9.9.9-setup.exe"),
       "fake-installer-bytes",
     );
 
     generateWingetManifests({
       rootDir: TEST_DIR,
       version: "9.9.9",
-      name: "hermes-desktop",
-      publishOwner: "fathah",
+      name: "mercury",
+      publishOwner: "fredluz",
     });
 
     const outFile = join(
       distDir,
       "winget",
       "manifests",
-      "n",
-      "NousResearch",
-      "HermesDesktop",
+      "f",
+      "FredLuz",
+      "Mercury",
       "9.9.9",
-      "NousResearch.HermesDesktop.locale.en-US.yaml",
+      "FredLuz.Mercury.locale.en-US.yaml",
     );
     const content = readFileSync(outFile, "utf-8");
     expect(content).toContain(
-      "Notes: https://github.com/fathah/hermes-desktop/releases/tag/v9.9.9",
+      "Notes: https://github.com/FredLuz/mercury/releases/tag/v9.9.9",
     );
     expect(content).not.toContain("{{");
   });
@@ -437,8 +437,8 @@ describe("generateWingetManifests", () => {
       generateWingetManifests({
         rootDir: TEST_DIR,
         version: "9.9.9",
-        name: "hermes-desktop",
-        publishOwner: "fathah",
+        name: "mercury",
+        publishOwner: "fredluz",
       }),
     ).toThrow(/installer not found/i);
   });
@@ -473,9 +473,9 @@ Contents:
 //
 // Fills the YAML templates in build/winget/ with the current version,
 // installer URL, and SHA256 of the NSIS installer in dist/, and writes
-// the result under dist/winget/manifests/n/NousResearch/HermesDesktop/<version>/.
+// the result under dist/winget/manifests/f/FredLuz/Mercury/<version>/.
 //
-// Run from CLI: VERSION=0.2.3 PUBLISH_OWNER=fathah node scripts/generate-winget-manifests.mjs
+// Run from CLI: VERSION=0.2.3 PUBLISH_OWNER=fredluz node scripts/generate-winget-manifests.mjs
 // Or import as ESM and call generateWingetManifests({ rootDir, version, name, publishOwner }).
 
 import { createHash } from "node:crypto";
@@ -498,9 +498,9 @@ export function generateWingetManifests({ rootDir, version, name, publishOwner }
     .toUpperCase();
   const releaseDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
   const installerUrl =
-    `https://github.com/${publishOwner}/hermes-desktop/releases/download/v${version}/${name}-${version}-setup.exe`;
+    `https://github.com/${publishOwner}/mercury/releases/download/v${version}/${name}-${version}-setup.exe`;
   const releaseNotesUrl =
-    `https://github.com/${publishOwner}/hermes-desktop/releases/tag/v${version}`;
+    `https://github.com/${publishOwner}/mercury/releases/tag/v${version}`;
 
   const replacements = {
     VERSION: version,
@@ -522,17 +522,17 @@ export function generateWingetManifests({ rootDir, version, name, publishOwner }
     "dist",
     "winget",
     "manifests",
-    "n",
-    "NousResearch",
-    "HermesDesktop",
+    "f",
+    "FredLuz",
+    "Mercury",
     version,
   );
   mkdirSync(outDir, { recursive: true });
 
   const files = [
-    ["Installer.template.yaml", "NousResearch.HermesDesktop.installer.yaml"],
-    ["Locale.en-US.template.yaml", "NousResearch.HermesDesktop.locale.en-US.yaml"],
-    ["Version.template.yaml", "NousResearch.HermesDesktop.yaml"],
+    ["Installer.template.yaml", "FredLuz.Mercury.installer.yaml"],
+    ["Locale.en-US.template.yaml", "FredLuz.Mercury.locale.en-US.yaml"],
+    ["Version.template.yaml", "FredLuz.Mercury.yaml"],
   ];
 
   for (const [tmplName, outName] of files) {
@@ -824,7 +824,7 @@ Replace the existing `publish` job:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
-          name: Hermes Desktop ${{ needs.prepare.outputs.tag }}
+          name: Mercury ${{ needs.prepare.outputs.tag }}
           generate_release_notes: true
           files: artifacts/*
 ```
@@ -858,7 +858,7 @@ with:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
-          name: Hermes Desktop ${{ needs.prepare.outputs.tag }}
+          name: Mercury ${{ needs.prepare.outputs.tag }}
           generate_release_notes: true
           files: |
             artifacts/*.dmg
@@ -916,7 +916,7 @@ Locate the current Install section (lines ~22-37):
 ```markdown
 ## Install
 
-Download the latest build from the [Releases](https://github.com/fathah/hermes-desktop/releases/) page.
+Download the latest build from the [Releases](https://github.com/FredLuz/mercury/releases/) page.
 
 | Platform | File                  |
 | -------- | --------------------- |
@@ -937,7 +937,7 @@ Replace the table and add a Linux/Windows notes block. The new section:
 ```markdown
 ## Install
 
-Download the latest build from the [Releases](https://github.com/fathah/hermes-desktop/releases/) page.
+Download the latest build from the [Releases](https://github.com/FredLuz/mercury/releases/) page.
 
 | Platform        | File                              |
 | --------------- | --------------------------------- |
@@ -952,7 +952,7 @@ Download the latest build from the [Releases](https://github.com/fathah/hermes-d
 Once the manifest has been accepted into [`microsoft/winget-pkgs`](https://github.com/microsoft/winget-pkgs), you can install with:
 
 ```powershell
-winget install NousResearch.HermesDesktop
+winget install FredLuz.Mercury
 ```
 
 Until then, download the `.exe` from the Releases page.
@@ -962,7 +962,7 @@ Until then, download the `.exe` from the Releases page.
 ### Fedora (RPM)
 
 ```bash
-sudo dnf install ./hermes-desktop-<version>.rpm
+sudo dnf install ./mercury-<version>.rpm
 ```
 
 > **Fedora users:** The `.rpm` is not GPG-signed. If your system enforces signature checking, append `--nogpgcheck` to the install command. Auto-update is not supported for `.rpm` builds (limitation of `electron-updater`); reinstall the new `.rpm` to update.
@@ -1033,13 +1033,13 @@ Expected: `nothing to commit, working tree clean`.
 
 ### Task 21: Push branch to Aiacos fork
 
-This step requires push access to `Aiacos/hermes-desktop` (the user's fork). If pushing requires interactive auth, the human operator runs the command.
+This step requires push access to `FredLuz/mercury` (the user's fork). If pushing requires interactive auth, the human operator runs the command.
 
 - [ ] **Step 1: Push**
 
 Run: `git push -u origin feat/winget-rpm-release`
 
-Expected: branch created on `origin` (which is `Aiacos/hermes-desktop` per `git remote -v`), tracking set up.
+Expected: branch created on `origin` (which is `FredLuz/mercury` per `git remote -v`), tracking set up.
 
 If push is rejected, resolve auth (e.g., `gh auth login` or SSH key) before retrying. Do not force-push.
 
@@ -1078,7 +1078,7 @@ Fix the issue, commit on the branch, push, and re-trigger. Do not proceed to PR 
 
 - [ ] **Step 1: Download the artifact**
 
-Run: `gh run download <run-id> -n winget-manifests-0.2.3 -D /tmp/winget-check && ls -la /tmp/winget-check/manifests/n/NousResearch/HermesDesktop/0.2.3/`
+Run: `gh run download <run-id> -n winget-manifests-0.2.3 -D /tmp/winget-check && ls -la /tmp/winget-check/manifests/f/FredLuz/Mercury/0.2.3/`
 
 (Replace `0.2.3` with the actual `version` from `package.json` if it changed.)
 
@@ -1086,12 +1086,12 @@ Expected: three `.yaml` files listed.
 
 - [ ] **Step 2: Visually inspect**
 
-Run: `cat /tmp/winget-check/manifests/n/NousResearch/HermesDesktop/0.2.3/*.yaml`
+Run: `cat /tmp/winget-check/manifests/f/FredLuz/Mercury/0.2.3/*.yaml`
 
 Expected:
 - No `{{...}}` placeholders left.
 - `InstallerSha256` is a 64-character uppercase hex string.
-- `InstallerUrl` points to the `fathah/hermes-desktop` releases path with the correct version.
+- `InstallerUrl` points to the `FredLuz/mercury` releases path with the correct version.
 - `ReleaseDate` is today's date (UTC) in `YYYY-MM-DD`.
 - `PackageVersion` matches `package.json`.
 
@@ -1105,13 +1105,13 @@ Run: `rm -rf /tmp/winget-check`
 
 ## Phase 7: Open PR upstream
 
-### Task 24: Open PR to `fathah/hermes-desktop:main`
+### Task 24: Open PR to `FredLuz/mercury:main`
 
 This is a "shared state" action visible to others. The human operator confirms before running.
 
 - [ ] **Step 1: Confirm PR target with the user**
 
-Ask the user: "Ready to open the PR from `Aiacos:feat/winget-rpm-release` to `fathah/hermes-desktop:main`? Or do you want to review the diff one more time first?"
+Ask the user: "Ready to open the PR from `Aiacos:feat/winget-rpm-release` to `FredLuz/mercury:main`? Or do you want to review the diff one more time first?"
 
 Wait for explicit confirmation.
 
@@ -1120,14 +1120,14 @@ Wait for explicit confirmation.
 Run:
 ```bash
 gh pr create \
-  --repo fathah/hermes-desktop \
+  --repo FredLuz/mercury \
   --base main \
   --head Aiacos:feat/winget-rpm-release \
   --title "ci: add Windows (winget) and Fedora (RPM) release artifacts" \
   --body "$(cat <<'EOF'
 ## Summary
 
-- Adds a `release_windows` job that builds an NSIS installer (`hermes-desktop-<version>-setup.exe`) on `windows-latest`.
+- Adds a `release_windows` job that builds an NSIS installer (`mercury-<version>-setup.exe`) on `windows-latest`.
 - Adds a `generate_winget` job that fills YAML manifest templates (`build/winget/*.template.yaml`) with the installer SHA256 and uploads them as the `winget-manifests-<version>` CI artifact, ready for manual submission to [`microsoft/winget-pkgs`](https://github.com/microsoft/winget-pkgs).
 - Extends the existing `release_linux` job to also build an `.rpm` for Fedora alongside the existing `.AppImage` and `.deb`.
 - Adds explicit `oneClick: true` / `perMachine: false` to NSIS (matches electron-builder defaults; pinning prevents future drift) and Linux packaging metadata (`vendor`, `synopsis`, `description`).
@@ -1192,4 +1192,4 @@ Done.
 - `generateWingetManifests({ rootDir, version, name, publishOwner })` — same signature in test (Task 7), implementation (Task 9), and CLI entrypoint.
 - `winget-manifests-${{ needs.prepare.outputs.version }}` — same artifact name in `generate_winget` job (Task 15) and in the CI inspection step (Task 23).
 - `is_dry_run` output — defined in Task 12, consumed in Task 16.
-- `publishOwner: "fathah"` — same in workflow env (Task 15) and CLI default (Task 9).
+- `publishOwner: "fredluz"` — same in workflow env (Task 15) and CLI default (Task 9).

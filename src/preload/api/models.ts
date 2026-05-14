@@ -27,7 +27,7 @@ export const modelsApi = {
     }>
   > => ipcRenderer.invoke("sync-session-cache"),
 
-  updateSessionTitle: (sessionId: string, title: string): Promise<void> =>
+  updateSessionTitle: (sessionId: string, title: string): Promise<boolean> =>
     ipcRenderer.invoke("update-session-title", sessionId, title),
 
   // Session search
@@ -65,6 +65,7 @@ export const modelsApi = {
       model: string;
       baseUrl: string;
       createdAt: number;
+      contextWindow?: number;
     }>
   > => ipcRenderer.invoke("list-models"),
 
@@ -80,13 +81,22 @@ export const modelsApi = {
     model: string;
     baseUrl: string;
     createdAt: number;
+    contextWindow?: number;
   }> => ipcRenderer.invoke("add-model", name, provider, model, baseUrl),
 
   removeModel: (id: string): Promise<boolean> =>
     ipcRenderer.invoke("remove-model", id),
 
-  updateModel: (id: string, fields: Record<string, string>): Promise<boolean> =>
-    ipcRenderer.invoke("update-model", id, fields),
+  updateModel: (
+    id: string,
+    fields: Partial<{
+      name: string;
+      provider: string;
+      model: string;
+      baseUrl: string;
+      contextWindow: number;
+    }>,
+  ): Promise<boolean> => ipcRenderer.invoke("update-model", id, fields),
 
   // Claw3D
   claw3dStatus: (): Promise<{

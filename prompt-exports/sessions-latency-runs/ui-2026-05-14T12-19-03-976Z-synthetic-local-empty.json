@@ -1,0 +1,183 @@
+{
+  "runId": "ui-2026-05-14T12-19-03-976Z-synthetic-local-empty",
+  "date": "2026-05-14T12:19:18.722Z",
+  "options": {
+    "caseName": "synthetic-local",
+    "cache": "empty",
+    "mountSamples": 5,
+    "searchSamples": 5,
+    "sessions": 5,
+    "messagesPerSession": 6,
+    "largeMessages": false,
+    "keepHomes": false
+  },
+  "queryLabel": "latencyneedle",
+  "dataset": {
+    "sessions": 5,
+    "messagesPerSession": 6,
+    "fts": true,
+    "largeMessages": false,
+    "cache": "empty"
+  },
+  "mount": [
+    {
+      "ok": true,
+      "ms": 312.309667,
+      "diagFile": "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-19-03-976Z-synthetic-local-empty-mount-0.ndjson"
+    },
+    {
+      "ok": true,
+      "ms": 302.14975000000004,
+      "diagFile": "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-19-03-976Z-synthetic-local-empty-mount-1.ndjson"
+    },
+    {
+      "ok": true,
+      "ms": 297.7020419999999,
+      "diagFile": "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-19-03-976Z-synthetic-local-empty-mount-2.ndjson"
+    },
+    {
+      "ok": true,
+      "ms": 307.046875,
+      "diagFile": "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-19-03-976Z-synthetic-local-empty-mount-3.ndjson"
+    },
+    {
+      "ok": true,
+      "ms": 300.377790999999,
+      "diagFile": "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-19-03-976Z-synthetic-local-empty-mount-4.ndjson"
+    }
+  ],
+  "search": {
+    "samples": [
+      {
+        "ok": true,
+        "ms": 326.3362500000003
+      },
+      {
+        "ok": true,
+        "ms": 326.0066659999993
+      },
+      {
+        "ok": true,
+        "ms": 328.83029200000055
+      },
+      {
+        "ok": true,
+        "ms": 331.11729099999866
+      },
+      {
+        "ok": true,
+        "ms": 329.31908400000066
+      }
+    ],
+    "diagFile": "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-19-03-976Z-synthetic-local-empty-search.ndjson"
+  },
+  "summary": {
+    "mountToFirstRenderableMs": {
+      "min": 297.7020419999999,
+      "median": 302.14975000000004,
+      "p95": 312.309667,
+      "max": 312.309667,
+      "mean": 303.9172249999998,
+      "stddev": 5.18667239153086
+    },
+    "rendererInputToResultsMs": {
+      "min": 326.0066659999993,
+      "median": 328.83029200000055,
+      "p95": 331.11729099999866,
+      "max": 331.11729099999866,
+      "mean": 328.3219165999999,
+      "stddev": 1.9167766481400799
+    },
+    "ipc": {
+      "list-cached-sessions": {
+        "totalMs": {
+          "min": 0.1647090000001299,
+          "median": 0.18599999999992178,
+          "p95": 0.2503750000000764,
+          "max": 0.2503750000000764,
+          "mean": 0.19401400000003832,
+          "stddev": 0.027436206200323963
+        },
+        "configMs": {
+          "min": 0.07204200000001038,
+          "median": 0.0967920000000504,
+          "p95": 0.12662500000010368,
+          "max": 0.12662500000010368,
+          "mean": 0.09670133333338526,
+          "stddev": 0.016170305281275686
+        },
+        "implMs": {
+          "min": 0.027708000000075117,
+          "median": 0.0335419999998976,
+          "p95": 0.04258399999980611,
+          "max": 0.04258399999980611,
+          "mean": 0.03459749999998015,
+          "stddev": 0.005899978693376332
+        },
+        "samples": 6
+      },
+      "sync-session-cache": {
+        "totalMs": {
+          "min": 2.484708999999839,
+          "median": 2.547709000000168,
+          "p95": 3.563334000000168,
+          "max": 3.563334000000168,
+          "mean": 2.7250488333333656,
+          "stddev": 0.38189928913766724
+        },
+        "configMs": {
+          "min": 0.050041999999848485,
+          "median": 0.061417000000119515,
+          "p95": 0.08237500000018372,
+          "max": 0.08237500000018372,
+          "mean": 0.06627783333332597,
+          "stddev": 0.011800362457971066
+        },
+        "implMs": {
+          "min": 2.4039999999999964,
+          "median": 2.453166999999894,
+          "p95": 3.4347080000000005,
+          "max": 3.4347080000000005,
+          "mean": 2.622881833333357,
+          "stddev": 0.3685060586998031
+        },
+        "samples": 6
+      },
+      "search-sessions": {
+        "totalMs": {
+          "min": 0.7976670000002741,
+          "median": 1.0026670000002014,
+          "p95": 1.3080829999998969,
+          "max": 1.3080829999998969,
+          "mean": 1.0671500000000378,
+          "stddev": 0.19367072109931055
+        },
+        "configMs": {
+          "min": 0.09341700000004494,
+          "median": 0.21133300000019517,
+          "p95": 0.2762079999997695,
+          "max": 0.2762079999997695,
+          "mean": 0.20404979999993883,
+          "stddev": 0.06595795300450975
+        },
+        "implMs": {
+          "min": 0.6602920000000267,
+          "median": 0.7415000000000873,
+          "p95": 0.9812090000000353,
+          "max": 0.9812090000000353,
+          "mean": 0.8161168000000544,
+          "stddev": 0.13284578173412917
+        },
+        "samples": 5
+      }
+    }
+  },
+  "diagFiles": [
+    "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-19-03-976Z-synthetic-local-empty-mount-0.ndjson",
+    "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-19-03-976Z-synthetic-local-empty-mount-1.ndjson",
+    "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-19-03-976Z-synthetic-local-empty-mount-2.ndjson",
+    "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-19-03-976Z-synthetic-local-empty-mount-3.ndjson",
+    "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-19-03-976Z-synthetic-local-empty-mount-4.ndjson",
+    "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-19-03-976Z-synthetic-local-empty-search.ndjson"
+  ]
+}

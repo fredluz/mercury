@@ -3,6 +3,7 @@ import { join } from "path";
 import { HERMES_HOME } from "./installer";
 import { safeWriteFile } from "./utils";
 import Database from "better-sqlite3";
+import { sanitizeChatTitle } from "../shared/chat-metadata";
 import { t } from "../shared/i18n";
 import { getAppLocale } from "./locale";
 
@@ -26,7 +27,7 @@ interface CacheData {
 }
 
 // Generate a short, readable title from the first user message (like ChatGPT/Claude)
-function generateTitle(message: string): string {
+export function generateTitle(message: string): string {
   if (!message || !message.trim())
     return t("sessions.newConversation", getAppLocale());
 
@@ -73,9 +74,9 @@ function writeCache(data: CacheData): void {
   }
 }
 
-function getDb(): Database.Database | null {
+function getDb(readonly = true): Database.Database | null {
   if (!existsSync(DB_PATH)) return null;
-  return new Database(DB_PATH, { readonly: true });
+  return new Database(DB_PATH, { readonly });
 }
 
 type SessionRow = {
@@ -92,9 +93,10 @@ function normalizeProfile(profile?: string): string {
   return value || "default";
 }
 
-function readSessionRow(sessionId: string): SessionRow | null {
-  const db = getDb();
-  if (!db) return null;
+function readSessionRow(
+  db: Database.Database,
+  sessionId: string,
+): SessionRow | null {
   try {
     return (
       (db
@@ -107,9 +109,49 @@ function readSessionRow(sessionId: string): SessionRow | null {
     );
   } catch {
     return null;
-  } finally {
-    db.close();
   }
+}
+
+function generateTitleFromFirstMessage(
+  db: Database.Database,
+  sessionId: string,
+): string {
+  try {
+    const msg = db
+      .prepare(
+        `SELECT content FROM messages
+         WHERE session_id = ? AND role = 'user' AND content IS NOT NULL
+         ORDER BY timestamp, id LIMIT 1`,
+      )
+      .get(sessionId) as { content: string } | undefined;
+    return msg
+      ? generateTitle(msg.content)
+      : t("sessions.newConversation", getAppLocale());
+  } catch {
+    return t("sessions.newConversation", getAppLocale());
+  }
+}
+
+function cachedSessionFromRow(
+  db: Database.Database | null,
+  row: SessionRow,
+  overrides: Partial<CachedSession> = {},
+): CachedSession {
+  const title =
+    overrides.title ||
+    row.title?.trim() ||
+    (db
+      ? generateTitleFromFirstMessage(db, row.id)
+      : t("sessions.newConversation", getAppLocale()));
+  return {
+    id: row.id,
+    title,
+    startedAt: row.started_at,
+    source: row.source,
+    messageCount: row.message_count,
+    model: row.model || "",
+    ...overrides,
+  };
 }
 
 // Sync from hermes DB to local cache — only fetches new/updated sessions
@@ -147,38 +189,16 @@ export function syncSessionCache(): CachedSession[] {
     for (const row of rows) {
       const existing = existingById.get(row.id);
       if (existing) {
-        // Update existing entry (message count may have changed)
+        // Update existing entry (message count/model/title may have changed)
         existing.messageCount = row.message_count;
+        existing.model = row.model || "";
+        if (row.title && row.title.trim()) {
+          existing.title = row.title.trim();
+        }
         continue;
       }
 
-      // Generate title from first user message
-      let title = row.title || "";
-      if (!title) {
-        try {
-          const msg = db
-            .prepare(
-              `SELECT content FROM messages
-               WHERE session_id = ? AND role = 'user' AND content IS NOT NULL
-               ORDER BY timestamp, id LIMIT 1`,
-            )
-            .get(row.id) as { content: string } | undefined;
-          title = msg
-            ? generateTitle(msg.content)
-            : t("sessions.newConversation", getAppLocale());
-        } catch {
-          title = t("sessions.newConversation", getAppLocale());
-        }
-      }
-
-      newSessions.push({
-        id: row.id,
-        title,
-        startedAt: row.started_at,
-        source: row.source,
-        messageCount: row.message_count,
-        model: row.model || "",
-      });
+      newSessions.push(cachedSessionFromRow(db, row));
     }
 
     // Merge: new sessions first (most recent), then existing
@@ -208,17 +228,53 @@ export function listCachedSessions(
   return cache.sessions.slice(offset, offset + limit);
 }
 
-// Update title for a specific session
+// Update title for a specific session in SQLite where available and in the
+// desktop cache. Returns true when either backing store was updated.
 export function updateSessionTitle(
   sessionId: string,
   title: string,
-): void {
-  const cache = readCache();
-  const idx = cache.sessions.findIndex((s) => s.id === sessionId);
-  if (idx >= 0) {
-    cache.sessions[idx].title = title;
-    writeCache(cache);
+): boolean {
+  const cleanSessionId = sessionId.trim();
+  const cleanTitle = sanitizeChatTitle(title, 120);
+  if (!cleanSessionId || !cleanTitle) return false;
+
+  let updated = false;
+  let row: ReturnType<typeof readSessionRow> = null;
+  const db = getDb(false);
+  if (db) {
+    try {
+      row = readSessionRow(db, cleanSessionId);
+      if (row) {
+        const changes = db
+          .prepare(`UPDATE sessions SET title = ? WHERE id = ?`)
+          .run(cleanTitle, cleanSessionId).changes;
+        updated = updated || changes > 0;
+        row = { ...row, title: cleanTitle };
+      }
+    } catch {
+      // Older or partial DBs may not have sessions.title yet. Cache updates
+      // below are still useful and should not fail the IPC call.
+    } finally {
+      db.close();
+    }
   }
+
+  const cache = readCache();
+  const idx = cache.sessions.findIndex((s) => s.id === cleanSessionId);
+  if (idx >= 0) {
+    cache.sessions[idx].title = cleanTitle;
+    writeCache(cache);
+    return true;
+  }
+
+  if (row) {
+    cache.sessions.push(cachedSessionFromRow(null, row, { title: cleanTitle }));
+    cache.sessions.sort((a, b) => b.startedAt - a.startedAt);
+    writeCache(cache);
+    updated = true;
+  }
+
+  return updated;
 }
 
 export function updateSessionProfile(
@@ -229,6 +285,16 @@ export function updateSessionProfile(
   if (!cleanSessionId) return false;
   const cleanProfile = normalizeProfile(profile);
 
+  let row: ReturnType<typeof readSessionRow> = null;
+  const db = getDb();
+  if (db) {
+    try {
+      row = readSessionRow(db, cleanSessionId);
+    } finally {
+      db.close();
+    }
+  }
+
   const cache = readCache();
   const idx = cache.sessions.findIndex((s) => s.id === cleanSessionId);
   if (idx >= 0) {
@@ -237,18 +303,10 @@ export function updateSessionProfile(
     return true;
   }
 
-  const row = readSessionRow(cleanSessionId);
   if (!row) return false;
-
-  cache.sessions.push({
-    id: row.id,
-    title: row.title?.trim() || t("sessions.newConversation", getAppLocale()),
-    startedAt: row.started_at,
-    source: row.source,
-    messageCount: row.message_count,
-    model: row.model || "",
-    profile: cleanProfile,
-  });
+  cache.sessions.push(
+    cachedSessionFromRow(null, row, { profile: cleanProfile }),
+  );
   cache.sessions.sort((a, b) => b.startedAt - a.startedAt);
   writeCache(cache);
   return true;

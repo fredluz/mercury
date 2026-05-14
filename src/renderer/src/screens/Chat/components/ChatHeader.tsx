@@ -1,10 +1,12 @@
 import type React from "react";
 import { Plus, Trash2 as Trash, Zap } from "lucide-react";
-import type { ChatMessage, ChatUsage } from "../types";
+import type { ChatContextUsage, ChatMessage } from "../types";
 
 interface ChatHeaderProps {
   sessionId: string | null;
-  usage: ChatUsage | null;
+  sessionTitle?: string | null;
+  titlePending: boolean;
+  contextUsage: ChatContextUsage | null;
   fastMode: boolean;
   messages: ChatMessage[];
   profile?: string;
@@ -14,9 +16,22 @@ interface ChatHeaderProps {
   t: (key: string, values?: Record<string, string>) => string;
 }
 
+function formatPercent(percent: number): string {
+  if (percent <= 0) return "0%";
+  if (percent < 1) return "<1%";
+  if (percent >= 100) return "100%+";
+  return `${Math.round(percent)}%`;
+}
+
+function formatNumber(value: number): string {
+  return Math.round(value).toLocaleString();
+}
+
 export function ChatHeader({
   sessionId,
-  usage,
+  sessionTitle,
+  titlePending,
+  contextUsage,
   fastMode,
   messages,
   profile,
@@ -25,21 +40,50 @@ export function ChatHeader({
   onClear,
   t,
 }: ChatHeaderProps): React.JSX.Element {
+  const cleanTitle = sessionTitle?.trim();
+  const title = cleanTitle
+    ? cleanTitle
+    : titlePending
+      ? t("chat.generatingTitle")
+      : messages.length === 0
+        ? t("chat.title")
+        : t("chat.untitledChat");
+  const profileName = profile && profile !== "default" ? profile : t("chat.defaultAgent");
+  const contextPercent = contextUsage ? formatPercent(contextUsage.percent) : null;
+  const contextTooltip = contextUsage
+    ? t(
+        contextUsage.source === "explicit" || contextUsage.source === "known-model"
+          ? "chat.contextTooltip"
+          : "chat.contextTooltipEstimated",
+        {
+          used: formatNumber(contextUsage.usedTokens),
+          limit: formatNumber(contextUsage.contextWindow),
+          model: contextUsage.model,
+        },
+      )
+    : "";
+
   return (
     <div className="chat-header">
       <div className="chat-header-left">
-        <div className="chat-header-title">
-          {sessionId ? t("chat.sessionTitle", { id: sessionId.slice(-6) }) : t("chat.title")}
-        </div>
-        {usage && (
-          <span
-            className="chat-token-counter"
-            title={`Prompt: ${usage.promptTokens.toLocaleString()} | Completion: ${usage.completionTokens.toLocaleString()}${usage.cost != null ? ` | Cost: $${usage.cost.toFixed(4)}` : ""}`}
+        <div className="chat-header-title-row">
+          <div
+            className={`chat-header-title ${titlePending && !cleanTitle ? "chat-header-title-pending" : ""}`}
+            title={sessionId ? `${title} · ${sessionId}` : title}
           >
-            {usage.totalTokens.toLocaleString()} tokens
-            {usage.cost != null && <span className="chat-cost"> · ${usage.cost.toFixed(4)}</span>}
+            {title}
+          </div>
+        </div>
+        <div className="chat-header-meta">
+          <span className="chat-agent-identity">
+            {t("chat.agentIdentity", { profile: profileName })}
           </span>
-        )}
+          {contextUsage && contextPercent && (
+            <span className="chat-context-counter" title={contextTooltip}>
+              {t("chat.contextUsed", { percent: contextPercent })}
+            </span>
+          )}
+        </div>
       </div>
       <div className="chat-header-actions">
         <div className="chat-fast-wrapper">

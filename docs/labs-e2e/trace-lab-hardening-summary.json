@@ -1,0 +1,129 @@
+{
+  "date": "2026-05-14T00:04:49.873Z",
+  "provider": "openai-codex",
+  "model": "gpt-5.5",
+  "credentialSource": "local ~/.hermes/auth.json openai-codex",
+  "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-trace-hardening-FkqKF6",
+  "imageScenarioEnabled": true,
+  "scenarios": [
+    {
+      "name": "Normal conversation",
+      "marker": "TRACE_HARDEN_NORMAL_OK",
+      "prompt": "Reply with exactly: TRACE_HARDEN_NORMAL_OK",
+      "runId": "cd168d23-71d8-4c0f-bae2-59b780e2bc1f",
+      "status": "pass",
+      "missing": [],
+      "dependencies": [],
+      "runStatus": "completed",
+      "eventTypes": [
+        "message.agent.delta",
+        "message.user",
+        "run.completed",
+        "run.started",
+        "usage.recorded"
+      ],
+      "usage": {
+        "promptTokens": 18529,
+        "completionTokens": 27,
+        "totalTokens": 18556
+      }
+    },
+    {
+      "name": "Resumed/history conversation",
+      "marker": "TRACE_HARDEN_RESUME_OK",
+      "prompt": "Reference TRACE_HARDEN_NORMAL_OK and reply with exactly: TRACE_HARDEN_RESUME_OK",
+      "runId": "19219f07-b705-42e6-87a1-65adadd96ae1",
+      "status": "pass",
+      "missing": [],
+      "dependencies": [],
+      "runStatus": "completed",
+      "eventTypes": [
+        "message.agent.delta",
+        "message.history.loaded",
+        "message.user",
+        "run.completed",
+        "run.started",
+        "session.resumed",
+        "usage.recorded"
+      ],
+      "usage": {
+        "promptTokens": 18563,
+        "completionTokens": 32,
+        "totalTokens": 18595
+      }
+    },
+    {
+      "name": "Tool call",
+      "marker": "TRACE_HARDEN_TOOL_OK",
+      "prompt": "Use the terminal tool to run pwd only. Then reply with exactly: TRACE_HARDEN_TOOL_OK",
+      "runId": "6a72e36d-d197-4232-8701-559dabbed70b",
+      "status": "pass",
+      "missing": [],
+      "dependencies": [],
+      "runStatus": "completed",
+      "eventTypes": [
+        "message.agent.delta",
+        "message.history.loaded",
+        "message.user",
+        "run.completed",
+        "run.started",
+        "session.resumed",
+        "tool.completed",
+        "tool.started",
+        "usage.recorded"
+      ],
+      "usage": {
+        "promptTokens": 37294,
+        "completionTokens": 102,
+        "totalTokens": 37396
+      }
+    },
+    {
+      "name": "Delegation/sub-agent",
+      "marker": "TRACE_HARDEN_DELEGATION_OK",
+      "prompt": "Delegate a short subtask to summarize the word Mercury in one sentence. Then reply with exactly: TRACE_HARDEN_DELEGATION_OK",
+      "runId": "7c143bac-0eca-480e-aa97-a155d831aded",
+      "status": "pass",
+      "missing": [],
+      "dependencies": [],
+      "runStatus": "completed",
+      "eventTypes": [
+        "delegation.completed",
+        "delegation.started",
+        "message.agent.delta",
+        "message.history.loaded",
+        "message.user",
+        "run.completed",
+        "run.started",
+        "session.resumed",
+        "usage.recorded"
+      ],
+      "usage": {
+        "promptTokens": 37565,
+        "completionTokens": 171,
+        "totalTokens": 37736
+      }
+    },
+    {
+      "name": "Harness aborted before completion",
+      "marker": null,
+      "runId": null,
+      "status": "fail",
+      "missing": [
+        "locator.waitFor: Target page, context or browser has been closed\nCall log:\n\u001b[2m  - waiting for locator('.chat-message-agent .chat-bubble-agent').filter({ hasText: 'TRACE_HARDEN_IMAGE_OK' }) to be visible\u001b[22m\n"
+      ],
+      "dependencies": [],
+      "runStatus": null,
+      "eventTypes": [],
+      "usage": null,
+      "classification": "harness-failure"
+    }
+  ],
+  "traceLab": [],
+  "dependencies": [],
+  "artifactPaths": {
+    "reportPath": "/Users/fredluz/Code/mercury/docs/labs-e2e/trace-lab-hardening-report.md",
+    "summaryPath": "/Users/fredluz/Code/mercury/docs/labs-e2e/trace-lab-hardening-summary.json",
+    "screenshotPath": "/Users/fredluz/Code/mercury/docs/labs-e2e/trace-lab-hardening.png"
+  }
+}

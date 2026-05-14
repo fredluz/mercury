@@ -1,6 +1,13 @@
 export default {
   title: "Novo Chat",
   sessionTitle: "Sessão {{id}}",
+  defaultAgent: "Padrão",
+  agentIdentity: "Agente: {{profile}}",
+  generatingTitle: "Gerando título…",
+  untitledChat: "Chat sem título",
+  contextUsed: "{{percent}} de contexto",
+  contextTooltip: "{{used}} de {{limit}} tokens usados na janela de contexto de {{model}}.",
+  contextTooltipEstimated: "Estimado: {{used}} de {{limit}} tokens usados na janela de contexto de {{model}}.",
   noModel: "Nenhum modelo definido",
   auto: "Auto",
   commandsTitle: "Comandos",

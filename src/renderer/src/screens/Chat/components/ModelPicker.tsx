@@ -14,7 +14,12 @@ interface ModelPickerProps {
   setShowModelPicker: (value: boolean) => void;
   setCustomModelInput: (value: string) => void;
   loadModelConfig: () => Promise<void>;
-  selectModel: (provider: string, model: string, baseUrl: string) => void;
+  selectModel: (
+    provider: string,
+    model: string,
+    baseUrl: string,
+    contextWindow?: number,
+  ) => void;
   handleCustomModelSubmit: () => void;
   t: (key: string) => string;
 }
@@ -56,7 +61,7 @@ export function ModelPicker({
                 <button
                   key={`${m.provider}:${m.model}`}
                   className={`chat-model-option ${currentModel === m.model && currentProvider === m.provider ? "active" : ""}`}
-                  onClick={() => selectModel(m.provider, m.model, m.baseUrl)}
+                  onClick={() => selectModel(m.provider, m.model, m.baseUrl, m.contextWindow)}
                 >
                   <span className="chat-model-option-label">{m.label}</span>
                   <span className="chat-model-option-id">{m.model}</span>

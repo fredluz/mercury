@@ -1,0 +1,176 @@
+{
+  "runId": "ui-2026-05-14T12-23-46-293Z-current-config-warm",
+  "date": "2026-05-14T12:23:54.181Z",
+  "options": {
+    "caseName": "current-config",
+    "cache": "warm",
+    "mountSamples": 0,
+    "searchSamples": 10,
+    "warmups": 2,
+    "query": {
+      "redacted": true,
+      "length": 1,
+      "sha256_12": "ca978112ca1b"
+    },
+    "sessions": 5,
+    "messagesPerSession": 6,
+    "largeMessages": false,
+    "keepHomes": false
+  },
+  "queryLabel": {
+    "redacted": true,
+    "length": 1,
+    "sha256_12": "ca978112ca1b"
+  },
+  "visibleSpinnerPath": "active search after Sessions mount/content is visible",
+  "dataset": {
+    "sessions": "unknown-current-config",
+    "messagesPerSession": "unknown-current-config",
+    "fts": "unknown",
+    "largeMessages": "unknown",
+    "cache": "current"
+  },
+  "mount": [],
+  "search": {
+    "samples": [
+      {
+        "ok": true,
+        "ms": 332.9591660000001
+      },
+      {
+        "ok": true,
+        "ms": 335.12341600000036
+      },
+      {
+        "ok": true,
+        "ms": 354.59379100000024
+      },
+      {
+        "ok": true,
+        "ms": 340.9067079999995
+      },
+      {
+        "ok": true,
+        "ms": 351.1062499999998
+      },
+      {
+        "ok": true,
+        "ms": 353.3378329999996
+      },
+      {
+        "ok": true,
+        "ms": 361.0243330000003
+      },
+      {
+        "ok": true,
+        "ms": 349.7230410000002
+      },
+      {
+        "ok": true,
+        "ms": 353.85795899999994
+      },
+      {
+        "ok": true,
+        "ms": 360.3455840000006
+      }
+    ],
+    "diagFile": "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-23-46-293Z-current-config-warm-search.ndjson"
+  },
+  "summary": {
+    "mountToFirstRenderableMs": null,
+    "rendererInputToResultsMs": {
+      "min": 332.9591660000001,
+      "median": 353.3378329999996,
+      "p95": 361.0243330000003,
+      "max": 361.0243330000003,
+      "mean": 349.29780810000005,
+      "stddev": 9.308358684306326
+    },
+    "ipc": {
+      "list-cached-sessions": {
+        "totalMs": {
+          "min": 0.169999999999618,
+          "median": 0.169999999999618,
+          "p95": 0.169999999999618,
+          "max": 0.169999999999618,
+          "mean": 0.169999999999618,
+          "stddev": 0
+        },
+        "configMs": {
+          "min": 0.05945799999972223,
+          "median": 0.05945799999972223,
+          "p95": 0.05945799999972223,
+          "max": 0.05945799999972223,
+          "mean": 0.05945799999972223,
+          "stddev": 0
+        },
+        "implMs": {
+          "min": 0.03479199999992488,
+          "median": 0.03479199999992488,
+          "p95": 0.03479199999992488,
+          "max": 0.03479199999992488,
+          "mean": 0.03479199999992488,
+          "stddev": 0
+        },
+        "samples": 1
+      },
+      "sync-session-cache": {
+        "totalMs": {
+          "min": 109.8163340000001,
+          "median": 109.8163340000001,
+          "p95": 109.8163340000001,
+          "max": 109.8163340000001,
+          "mean": 109.8163340000001,
+          "stddev": 0
+        },
+        "configMs": {
+          "min": 0.02275000000008731,
+          "median": 0.02275000000008731,
+          "p95": 0.02275000000008731,
+          "max": 0.02275000000008731,
+          "mean": 0.02275000000008731,
+          "stddev": 0
+        },
+        "implMs": {
+          "min": 109.75241700000015,
+          "median": 109.75241700000015,
+          "p95": 109.75241700000015,
+          "max": 109.75241700000015,
+          "mean": 109.75241700000015,
+          "stddev": 0
+        },
+        "samples": 1
+      },
+      "search-sessions": {
+        "totalMs": {
+          "min": 16.761207999999897,
+          "median": 17.59375,
+          "p95": 60.917041000000154,
+          "max": 60.917041000000154,
+          "mean": 21.635819416666664,
+          "stddev": 11.950785699311087
+        },
+        "configMs": {
+          "min": 0.03579199999967386,
+          "median": 0.04300000000012005,
+          "p95": 0.0672919999997248,
+          "max": 0.0672919999997248,
+          "mean": 0.04495841666664546,
+          "stddev": 0.008617284534212318
+        },
+        "implMs": {
+          "min": 16.69224999999915,
+          "median": 17.51720900000055,
+          "p95": 60.80754100000013,
+          "max": 60.80754100000013,
+          "mean": 21.557496666666754,
+          "stddev": 11.940098376929027
+        },
+        "samples": 12
+      }
+    }
+  },
+  "diagFiles": [
+    "prompt-exports/sessions-latency-runs/ui-2026-05-14T12-23-46-293Z-current-config-warm-search.ndjson"
+  ]
+}
