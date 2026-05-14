@@ -54,6 +54,7 @@ function Chat({
     onSessionStarted,
     onSessionResolved,
     onSessionTitleChange,
+    onSessionReset,
     onNewChat,
   });
 
@@ -69,10 +70,7 @@ function Chat({
         profile={profile}
         onFastModeChange={chat.setFastMode}
         onNewChat={onNewChat}
-        onClear={() => {
-          chat.handleClear();
-          onSessionReset?.();
-        }}
+        onClear={chat.handleClear}
         t={t}
       />
 

@@ -1,9 +1,10 @@
 import Database from "better-sqlite3";
-import { join } from "path";
 import { existsSync } from "fs";
-import { HERMES_HOME } from "./installer";
-
-const DB_PATH = join(HERMES_HOME, "state.db");
+import {
+  discoverSessionProfileScopes,
+  getSessionProfileScope,
+  type SessionProfileScope,
+} from "./session-db";
 
 export interface SessionSummary {
   id: string;
@@ -35,17 +36,20 @@ export interface SearchResult {
   profile?: string;
 }
 
-function getDb(): Database.Database | null {
-  if (!existsSync(DB_PATH)) return null;
-  return new Database(DB_PATH, { readonly: true });
+function getDb(scope: SessionProfileScope): Database.Database | null {
+  if (!existsSync(scope.dbPath)) return null;
+  return new Database(scope.dbPath, { readonly: true });
 }
 
-export function listSessions(limit = 30, offset = 0): SessionSummary[] {
-  const db = getDb();
+function listSessionsForScope(
+  scope: SessionProfileScope,
+  limit: number,
+  offset: number,
+): SessionSummary[] {
+  const db = getDb(scope);
   if (!db) return [];
 
   try {
-    // Simple query without correlated subquery — titles come from session cache
     const rows = db
       .prepare(
         `SELECT
@@ -79,18 +83,39 @@ export function listSessions(limit = 30, offset = 0): SessionSummary[] {
       model: r.model || "",
       title: r.title,
       preview: "",
+      profile: scope.profile,
     }));
+  } catch {
+    return [];
   } finally {
     db.close();
   }
 }
 
-export function searchSessions(query: string, limit = 20): SearchResult[] {
-  const db = getDb();
+export function listSessions(
+  limit = 30,
+  offset = 0,
+  profile?: string,
+): SessionSummary[] {
+  if (profile?.trim()) {
+    return listSessionsForScope(getSessionProfileScope(profile), limit, offset);
+  }
+
+  const rows = discoverSessionProfileScopes()
+    .flatMap((scope) => listSessionsForScope(scope, limit + offset, 0))
+    .sort((a, b) => b.startedAt - a.startedAt);
+  return rows.slice(offset, offset + limit);
+}
+
+function searchSessionsForScope(
+  scope: SessionProfileScope,
+  query: string,
+  limit: number,
+): SearchResult[] {
+  const db = getDb(scope);
   if (!db) return [];
 
   try {
-    // Check if FTS table exists
     const tableCheck = db
       .prepare(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='messages_fts'",
@@ -99,7 +124,6 @@ export function searchSessions(query: string, limit = 20): SearchResult[] {
 
     if (!tableCheck) return [];
 
-    // Sanitize query for FTS5: wrap each word with quotes for safety, add * for prefix
     const sanitized = query
       .trim()
       .split(/\s+/)
@@ -144,6 +168,7 @@ export function searchSessions(query: string, limit = 20): SearchResult[] {
       messageCount: r.message_count,
       model: r.model || "",
       snippet: r.snippet || "",
+      profile: scope.profile,
     }));
   } catch {
     return [];
@@ -152,28 +177,61 @@ export function searchSessions(query: string, limit = 20): SearchResult[] {
   }
 }
 
-export function getSessionTitle(sessionId: string): string | null {
-  const db = getDb();
+export function searchSessions(
+  query: string,
+  limit = 20,
+  profile?: string,
+): SearchResult[] {
+  if (profile?.trim()) {
+    return searchSessionsForScope(getSessionProfileScope(profile), query, limit);
+  }
+
+  return discoverSessionProfileScopes()
+    .flatMap((scope) => searchSessionsForScope(scope, query, limit))
+    .sort((a, b) => b.startedAt - a.startedAt)
+    .slice(0, limit);
+}
+
+export function getSessionTitle(
+  sessionId: string,
+  profile?: string,
+): string | null {
+  for (const scope of profile?.trim()
+    ? [getSessionProfileScope(profile)]
+    : discoverSessionProfileScopes()) {
+    const db = getDb(scope);
+    if (!db) continue;
+
+    try {
+      const row = db
+        .prepare(`SELECT title FROM sessions WHERE id = ?`)
+        .get(sessionId) as { title: string | null } | undefined;
+      if (row) {
+        const title = row.title?.trim();
+        return title || null;
+      }
+    } catch {
+      return null;
+    } finally {
+      db.close();
+    }
+  }
+  return null;
+}
+
+function getSessionMessagesForScope(
+  scope: SessionProfileScope,
+  sessionId: string,
+): SessionMessage[] | null {
+  const db = getDb(scope);
   if (!db) return null;
 
   try {
-    const row = db
-      .prepare(`SELECT title FROM sessions WHERE id = ?`)
-      .get(sessionId) as { title: string | null } | undefined;
-    const title = row?.title?.trim();
-    return title || null;
-  } catch {
-    return null;
-  } finally {
-    db.close();
-  }
-}
+    const session = db
+      .prepare(`SELECT id FROM sessions WHERE id = ?`)
+      .get(sessionId) as { id: string } | undefined;
+    if (!session) return null;
 
-export function getSessionMessages(sessionId: string): SessionMessage[] {
-  const db = getDb();
-  if (!db) return [];
-
-  try {
     const rows = db
       .prepare(
         `SELECT id, role, content, timestamp
@@ -194,7 +252,24 @@ export function getSessionMessages(sessionId: string): SessionMessage[] {
       content: r.content,
       timestamp: r.timestamp,
     }));
+  } catch {
+    return null;
   } finally {
     db.close();
   }
+}
+
+export function getSessionMessages(
+  sessionId: string,
+  profile?: string,
+): SessionMessage[] {
+  const scopes = profile?.trim()
+    ? [getSessionProfileScope(profile)]
+    : discoverSessionProfileScopes();
+
+  for (const scope of scopes) {
+    const messages = getSessionMessagesForScope(scope, sessionId);
+    if (messages) return messages;
+  }
+  return [];
 }

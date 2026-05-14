@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { join } from "path";
-import { mkdirSync, rmSync, existsSync, readFileSync } from "fs";
+import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "fs";
 
 // vi.hoisted runs before module imports, so we can't reference imported
 // helpers here — use the bare Node modules via require.
@@ -35,6 +35,7 @@ vi.mock("../src/main/locale", () => ({
 
 import Database from "better-sqlite3";
 import {
+  listCachedSessions,
   syncSessionCache,
   updateSessionProfile,
   updateSessionTitle,
@@ -42,6 +43,12 @@ import {
 
 const CACHE_FILE = join(TEST_HOME, "desktop", "sessions.json");
 const DB_PATH = join(TEST_HOME, "state.db");
+
+function dbPathForProfile(profile?: string): string {
+  return profile && profile !== "default"
+    ? join(TEST_HOME, "profiles", profile, "state.db")
+    : DB_PATH;
+}
 
 function seedDb(
   sessions: Array<{
@@ -53,8 +60,11 @@ function seedDb(
     title?: string | null;
     firstUserMessage?: string;
   }>,
+  profile?: string,
 ): void {
-  const db = new Database(DB_PATH);
+  const dbPath = dbPathForProfile(profile);
+  mkdirSync(join(dbPath, ".."), { recursive: true });
+  const db = new Database(dbPath);
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
@@ -135,6 +145,7 @@ describe("syncSessionCache", () => {
     expect(result[1].id).toBe("s1");
     expect(result[0].title).toContain("RAII");
     expect(result[1].title).toContain("Python decorator");
+    expect(result.every((row) => row.profile === "default")).toBe(true);
     expect(existsSync(CACHE_FILE)).toBe(true);
   });
 
@@ -284,15 +295,18 @@ describe("syncSessionCache", () => {
 
   it("records the Mercury profile used for a session in the desktop cache", () => {
     const now = Math.floor(Date.now() / 1000);
-    seedDb([
-      {
-        id: "profiled-session",
-        started_at: now,
-        message_count: 2,
-        model: "gpt-5.5",
-        firstUserMessage: "which profile handled this",
-      },
-    ]);
+    seedDb(
+      [
+        {
+          id: "profiled-session",
+          started_at: now,
+          message_count: 2,
+          model: "gpt-5.5",
+          firstUserMessage: "which profile handled this",
+        },
+      ],
+      "youtube-optimizer",
+    );
 
     expect(updateSessionProfile("profiled-session", "youtube-optimizer")).toBe(true);
 
@@ -310,28 +324,34 @@ describe("syncSessionCache", () => {
 
   it("preserves recorded profile metadata during later cache syncs", () => {
     const future = Math.floor(Date.now() / 1000) + 600;
-    seedDb([
-      {
-        id: "profile-preserved",
-        started_at: future,
-        message_count: 1,
-        firstUserMessage: "remember the profile",
-      },
-    ]);
+    seedDb(
+      [
+        {
+          id: "profile-preserved",
+          started_at: future,
+          message_count: 1,
+          firstUserMessage: "remember the profile",
+        },
+      ],
+      "research-agent",
+    );
     syncSessionCache();
     updateSessionProfile("profile-preserved", "research-agent");
 
-    seedDb([
-      {
-        id: "profile-preserved",
-        started_at: future,
-        message_count: 3,
-        title: "Updated Title",
-        firstUserMessage: "remember the profile",
-      },
-    ]);
+    seedDb(
+      [
+        {
+          id: "profile-preserved",
+          started_at: future,
+          message_count: 3,
+          title: "Updated Title",
+          firstUserMessage: "remember the profile",
+        },
+      ],
+      "research-agent",
+    );
 
-    const result = syncSessionCache();
+    const result = syncSessionCache("research-agent");
     expect(result[0]).toEqual(
       expect.objectContaining({
         id: "profile-preserved",
@@ -340,6 +360,113 @@ describe("syncSessionCache", () => {
         title: "Updated Title",
       }),
     );
+  });
+
+  it("syncs named profile DBs with explicit profile metadata", () => {
+    const now = Math.floor(Date.now() / 1000);
+    seedDb([
+      {
+        id: "default-session",
+        started_at: now,
+        firstUserMessage: "default profile message",
+      },
+    ]);
+    seedDb(
+      [
+        {
+          id: "named-session",
+          started_at: now + 10,
+          firstUserMessage: "named profile message",
+        },
+      ],
+      "research-agent",
+    );
+
+    const result = syncSessionCache();
+    expect(result.map((row) => [row.id, row.profile])).toEqual([
+      ["named-session", "research-agent"],
+      ["default-session", "default"],
+    ]);
+    expect(listCachedSessions(10, 0, "research-agent")).toEqual([
+      expect.objectContaining({ id: "named-session", profile: "research-agent" }),
+    ]);
+  });
+
+  it("backfills legacy missing profile rows to the DB-owning profile", () => {
+    const now = Math.floor(Date.now() / 1000);
+    seedDb(
+      [
+        {
+          id: "legacy-named",
+          started_at: now,
+          title: "Named legacy",
+          firstUserMessage: "legacy named",
+        },
+      ],
+      "research-agent",
+    );
+    mkdirSync(join(TEST_HOME, "desktop"), { recursive: true });
+    writeFileSync(
+      CACHE_FILE,
+      JSON.stringify({
+        sessions: [
+          {
+            id: "legacy-named",
+            title: "Old cache",
+            startedAt: now,
+            source: "cli",
+            messageCount: 1,
+            model: "gpt-4o",
+          },
+        ],
+        lastSync: now,
+      }),
+    );
+
+    expect(syncSessionCache()).toEqual([
+      expect.objectContaining({
+        id: "legacy-named",
+        profile: "research-agent",
+        title: "Named legacy",
+      }),
+    ]);
+  });
+
+  it("keeps duplicate session ids separate across profiles", () => {
+    const now = Math.floor(Date.now() / 1000);
+    seedDb([
+      {
+        id: "same-id",
+        started_at: now,
+        title: "Default copy",
+        firstUserMessage: "default copy",
+      },
+    ]);
+    seedDb(
+      [
+        {
+          id: "same-id",
+          started_at: now + 10,
+          title: "Named copy",
+          firstUserMessage: "named copy",
+        },
+      ],
+      "research-agent",
+    );
+
+    const result = syncSessionCache();
+    expect(result).toHaveLength(2);
+    expect(result).toEqual([
+      expect.objectContaining({ id: "same-id", profile: "research-agent", title: "Named copy" }),
+      expect.objectContaining({ id: "same-id", profile: "default", title: "Default copy" }),
+    ]);
+
+    expect(updateSessionTitle("same-id", "Named Updated", "research-agent")).toBe(true);
+    const afterTitle = listCachedSessions(10);
+    expect(afterTitle).toEqual([
+      expect.objectContaining({ id: "same-id", profile: "research-agent", title: "Named Updated" }),
+      expect.objectContaining({ id: "same-id", profile: "default", title: "Default copy" }),
+    ]);
   });
 
   it("handles a large existing cache without quadratic blowup (issue #16)", () => {

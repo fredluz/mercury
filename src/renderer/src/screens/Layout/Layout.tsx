@@ -70,6 +70,7 @@ function Layout(): React.JSX.Element {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [currentSessionTitle, setCurrentSessionTitle] = useState<string | null>(null);
+  const [currentSessionProfile, setCurrentSessionProfile] = useState<string | null>(null);
   const [sessionsRefreshToken, setSessionsRefreshToken] = useState(0);
   const [conversationVersion, setConversationVersion] = useState(0);
   const [activeProfile, setActiveProfile] = useState("default");
@@ -140,6 +141,7 @@ function Layout(): React.JSX.Element {
     setMessages([]);
     setCurrentSessionId(null);
     setCurrentSessionTitle(null);
+    setCurrentSessionProfile(null);
     setConversationVersion((value) => value + 1);
     goTo("chat");
   }, [goTo]);
@@ -163,24 +165,29 @@ function Layout(): React.JSX.Element {
     setMessages([]);
     setCurrentSessionId(null);
     setCurrentSessionTitle(null);
+    setCurrentSessionProfile(null);
     setConversationVersion((value) => value + 1);
   }, []);
 
   const handleResumeSession = useCallback(
-    async (sessionId: string, title?: string | null) => {
-      const dbMessages = await window.hermesAPI.getSessionMessages(sessionId);
+    async (sessionId: string, title?: string | null, profile?: string) => {
+      const rowProfile = profile?.trim() || undefined;
+      const nextProfile = rowProfile || activeProfile;
+      const dbMessages = await window.hermesAPI.getSessionMessages(sessionId, rowProfile);
       const chatMessages: ChatMessage[] = dbMessages.map((m) => ({
         id: `db-${m.id}`,
         role: m.role === "user" ? "user" : "agent",
         content: m.content,
       }));
+      if (rowProfile) setActiveProfile(rowProfile);
       setMessages(chatMessages);
       setCurrentSessionId(sessionId);
       setCurrentSessionTitle(title?.trim() || null);
+      setCurrentSessionProfile(nextProfile);
       setConversationVersion((value) => value + 1);
       goTo("chat");
     },
-    [goTo],
+    [activeProfile, goTo],
   );
 
   return (
@@ -237,7 +244,10 @@ function Layout(): React.JSX.Element {
             sessionTitle={currentSessionTitle}
             conversationVersion={conversationVersion}
             profile={activeProfile}
-            onSessionResolved={setCurrentSessionId}
+            onSessionResolved={(sessionId) => {
+              setCurrentSessionId(sessionId);
+              setCurrentSessionProfile(activeProfile);
+            }}
             onSessionTitleChange={(title) => {
               setCurrentSessionTitle(title);
               setSessionsRefreshToken((value) => value + 1);
@@ -245,6 +255,7 @@ function Layout(): React.JSX.Element {
             onSessionReset={() => {
               setCurrentSessionId(null);
               setCurrentSessionTitle(null);
+              setCurrentSessionProfile(null);
               setConversationVersion((value) => value + 1);
             }}
             onNewChat={handleNewChat}
@@ -260,6 +271,7 @@ function Layout(): React.JSX.Element {
                 onResumeSession={handleResumeSession}
                 onNewChat={handleNewChat}
                 currentSessionId={currentSessionId}
+                currentSessionProfile={currentSessionProfile}
                 refreshToken={sessionsRefreshToken}
               />
             )}

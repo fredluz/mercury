@@ -16,26 +16,40 @@ payload = json.load(sys.stdin)
 profile = payload.get("profile")
 limit = max(1, min(200, int(payload.get("limit") or 30)))
 offset = max(0, int(payload.get("offset") or 0))
-db = os.path.expanduser(f"~/.hermes/profiles/{profile}/state.db" if profile and profile != "default" else "~/.hermes/state.db")
-if not os.path.exists(db):
-    print("[]"); sys.exit(0)
-conn = sqlite3.connect(db)
-conn.row_factory = sqlite3.Row
-rows = conn.execute(
-    "SELECT id, source, started_at, ended_at, message_count, model, title "
-    "FROM sessions ORDER BY started_at DESC LIMIT ? OFFSET ?",
-    (limit, offset)
-).fetchall()
+hermes_home = os.path.expanduser("~/.hermes")
+def scopes():
+    if profile:
+        name = "default" if profile == "default" else profile
+        home = hermes_home if name == "default" else os.path.join(hermes_home, "profiles", name)
+        return [(name, os.path.join(home, "state.db"))]
+    result = [("default", os.path.join(hermes_home, "state.db"))]
+    profiles_dir = os.path.join(hermes_home, "profiles")
+    if os.path.isdir(profiles_dir):
+        for name in sorted(os.listdir(profiles_dir)):
+            if name.startswith("."): continue
+            home = os.path.join(profiles_dir, name)
+            if os.path.isdir(home): result.append((name, os.path.join(home, "state.db")))
+    return result
 result = []
-for r in rows:
-    result.append({
-        "id": r["id"], "source": r["source"] or "cli",
-        "startedAt": r["started_at"], "endedAt": r["ended_at"],
-        "messageCount": r["message_count"] or 0, "model": r["model"] or "",
-        "title": r["title"], "preview": ""
-    })
-print(json.dumps(result))
-conn.close()
+for profile_name, db in scopes():
+    if not os.path.exists(db): continue
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT id, source, started_at, ended_at, message_count, model, title "
+        "FROM sessions ORDER BY started_at DESC LIMIT ? OFFSET ?",
+        (limit + offset, 0)
+    ).fetchall()
+    for r in rows:
+        result.append({
+            "id": r["id"], "source": r["source"] or "cli",
+            "startedAt": r["started_at"], "endedAt": r["ended_at"],
+            "messageCount": r["message_count"] or 0, "model": r["model"] or "",
+            "title": r["title"], "preview": "", "profile": profile_name
+        })
+    conn.close()
+result.sort(key=lambda r: r["startedAt"] or 0, reverse=True)
+print(json.dumps(result[offset:offset + limit]))
 `;
   try {
     const out = await sshPython(config, script, pythonJsonInput({ profile, limit, offset }));
@@ -55,17 +69,34 @@ import sqlite3, json, os, sys
 payload = json.load(sys.stdin)
 profile = payload.get("profile")
 session_id = payload.get("sessionId") or ""
-db = os.path.expanduser(f"~/.hermes/profiles/{profile}/state.db" if profile and profile != "default" else "~/.hermes/state.db")
-if not os.path.exists(db):
-    print("[]"); sys.exit(0)
-conn = sqlite3.connect(db)
-conn.row_factory = sqlite3.Row
-rows = conn.execute(
-    "SELECT id, role, content, timestamp FROM messages WHERE session_id=? ORDER BY id ASC",
-    (session_id,)
-).fetchall()
-print(json.dumps([{"id": r["id"], "role": r["role"], "content": r["content"] or "", "timestamp": r["timestamp"]} for r in rows]))
-conn.close()
+hermes_home = os.path.expanduser("~/.hermes")
+def scopes():
+    if profile:
+        name = "default" if profile == "default" else profile
+        home = hermes_home if name == "default" else os.path.join(hermes_home, "profiles", name)
+        return [(name, os.path.join(home, "state.db"))]
+    result = [("default", os.path.join(hermes_home, "state.db"))]
+    profiles_dir = os.path.join(hermes_home, "profiles")
+    if os.path.isdir(profiles_dir):
+        for name in sorted(os.listdir(profiles_dir)):
+            if name.startswith("."): continue
+            home = os.path.join(profiles_dir, name)
+            if os.path.isdir(home): result.append((name, os.path.join(home, "state.db")))
+    return result
+for _profile_name, db in scopes():
+    if not os.path.exists(db): continue
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    found = conn.execute("SELECT id FROM sessions WHERE id=?", (session_id,)).fetchone()
+    if not found:
+        conn.close(); continue
+    rows = conn.execute(
+        "SELECT id, role, content, timestamp FROM messages WHERE session_id=? AND role IN ('user', 'assistant') AND content IS NOT NULL ORDER BY timestamp, id",
+        (session_id,)
+    ).fetchall()
+    print(json.dumps([{"id": r["id"], "role": r["role"], "content": r["content"] or "", "timestamp": r["timestamp"]} for r in rows]))
+    conn.close(); sys.exit(0)
+print("[]")
 `;
   try {
     const out = await sshPython(config, script, pythonJsonInput({ profile, sessionId }));
@@ -87,22 +118,38 @@ payload = json.load(sys.stdin)
 profile = payload.get("profile")
 query = payload.get("query") or ""
 limit = max(1, min(200, int(payload.get("limit") or 20)))
-db = os.path.expanduser(f"~/.hermes/profiles/{profile}/state.db" if profile and profile != "default" else "~/.hermes/state.db")
-if not os.path.exists(db):
-    print("[]"); sys.exit(0)
-conn = sqlite3.connect(db)
-conn.row_factory = sqlite3.Row
-try:
-    rows = conn.execute(
-        "SELECT DISTINCT s.id, s.title, s.started_at, s.source, s.message_count, s.model, m.content as snippet "
-        "FROM sessions s JOIN messages m ON m.session_id = s.id "
-        "WHERE m.content LIKE ? ORDER BY s.started_at DESC LIMIT ?",
-        (f"%{query}%", limit)
-    ).fetchall()
-    print(json.dumps([{"sessionId": r["id"], "title": r["title"], "startedAt": r["started_at"], "source": r["source"] or "cli", "messageCount": r["message_count"] or 0, "model": r["model"] or "", "snippet": (r["snippet"] or "")[:200]} for r in rows]))
-except Exception as e:
-    print("[]")
-conn.close()
+hermes_home = os.path.expanduser("~/.hermes")
+def scopes():
+    if profile:
+        name = "default" if profile == "default" else profile
+        home = hermes_home if name == "default" else os.path.join(hermes_home, "profiles", name)
+        return [(name, os.path.join(home, "state.db"))]
+    result = [("default", os.path.join(hermes_home, "state.db"))]
+    profiles_dir = os.path.join(hermes_home, "profiles")
+    if os.path.isdir(profiles_dir):
+        for name in sorted(os.listdir(profiles_dir)):
+            if name.startswith("."): continue
+            home = os.path.join(profiles_dir, name)
+            if os.path.isdir(home): result.append((name, os.path.join(home, "state.db")))
+    return result
+result = []
+for profile_name, db in scopes():
+    if not os.path.exists(db): continue
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT s.id, s.title, s.started_at, s.source, s.message_count, s.model, m.content as snippet "
+            "FROM sessions s JOIN messages m ON m.session_id = s.id "
+            "WHERE m.content LIKE ? ORDER BY s.started_at DESC LIMIT ?",
+            (f"%{query}%", limit)
+        ).fetchall()
+        result.extend([{"sessionId": r["id"], "title": r["title"], "startedAt": r["started_at"], "source": r["source"] or "cli", "messageCount": r["message_count"] or 0, "model": r["model"] or "", "snippet": (r["snippet"] or "")[:200], "profile": profile_name} for r in rows])
+    except Exception:
+        pass
+    conn.close()
+result.sort(key=lambda r: r["startedAt"] or 0, reverse=True)
+print(json.dumps(result[:limit]))
 `;
   try {
     const out = await sshPython(config, script, pythonJsonInput({ profile, query, limit }));

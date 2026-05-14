@@ -5,6 +5,7 @@ export const modelsApi = {
   listCachedSessions: (
     limit?: number,
     offset?: number,
+    profile?: string,
   ): Promise<
     Array<{
       id: string;
@@ -13,10 +14,11 @@ export const modelsApi = {
       source: string;
       messageCount: number;
       model: string;
+      profile?: string;
     }>
-  > => ipcRenderer.invoke("list-cached-sessions", limit, offset),
+  > => ipcRenderer.invoke("list-cached-sessions", limit, offset, profile),
 
-  syncSessionCache: (): Promise<
+  syncSessionCache: (profile?: string): Promise<
     Array<{
       id: string;
       title: string;
@@ -24,16 +26,22 @@ export const modelsApi = {
       source: string;
       messageCount: number;
       model: string;
+      profile?: string;
     }>
-  > => ipcRenderer.invoke("sync-session-cache"),
+  > => ipcRenderer.invoke("sync-session-cache", profile),
 
-  updateSessionTitle: (sessionId: string, title: string): Promise<boolean> =>
-    ipcRenderer.invoke("update-session-title", sessionId, title),
+  updateSessionTitle: (
+    sessionId: string,
+    title: string,
+    profile?: string,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("update-session-title", sessionId, title, profile),
 
   // Session search
   searchSessions: (
     query: string,
     limit?: number,
+    profile?: string,
   ): Promise<
     Array<{
       sessionId: string;
@@ -43,8 +51,9 @@ export const modelsApi = {
       messageCount: number;
       model: string;
       snippet: string;
+      profile?: string;
     }>
-  > => ipcRenderer.invoke("search-sessions", query, limit),
+  > => ipcRenderer.invoke("search-sessions", query, limit, profile),
 
   // Credential Pool
   getCredentialPool: (): Promise<

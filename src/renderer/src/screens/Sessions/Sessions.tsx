@@ -24,9 +24,10 @@ interface SearchResult {
 }
 
 interface SessionsProps {
-  onResumeSession: (sessionId: string, title?: string | null) => void;
+  onResumeSession: (sessionId: string, title?: string | null, profile?: string) => void;
   onNewChat: () => void;
   currentSessionId: string | null;
+  currentSessionProfile?: string | null;
   refreshToken?: number;
 }
 
@@ -111,6 +112,23 @@ function formatProfile(profile?: string): string {
   return clean || "unknown profile";
 }
 
+function sessionRowKey(sessionId: string, profile?: string): string {
+  return `${profile?.trim() || "unknown"}:${sessionId}`;
+}
+
+function isActiveSession(
+  currentSessionId: string | null,
+  currentSessionProfile: string | null | undefined,
+  rowSessionId: string,
+  rowProfile?: string,
+): boolean {
+  if (currentSessionId !== rowSessionId) return false;
+  const activeProfile = currentSessionProfile?.trim();
+  const profile = rowProfile?.trim();
+  if (activeProfile) return profile === activeProfile;
+  return !profile;
+}
+
 // Memoized session card
 const SessionCard = memo(function SessionCard({
   session,
@@ -159,6 +177,7 @@ function Sessions({
   onResumeSession,
   onNewChat,
   currentSessionId,
+  currentSessionProfile,
   refreshToken,
 }: SessionsProps): React.JSX.Element {
   const { t } = useI18n();
@@ -262,9 +281,9 @@ function Sessions({
           <div className="sessions-list">
             {searchResults.map((r) => (
               <button
-                key={r.sessionId}
-                className={`sessions-card ${currentSessionId === r.sessionId ? "sessions-card--active" : ""}`}
-                onClick={() => onResumeSession(r.sessionId, r.title)}
+                key={sessionRowKey(r.sessionId, r.profile)}
+                className={`sessions-card ${isActiveSession(currentSessionId, currentSessionProfile, r.sessionId, r.profile) ? "sessions-card--active" : ""}`}
+                onClick={() => onResumeSession(r.sessionId, r.title, r.profile)}
               >
                 <div className="sessions-card-main">
                   <span className="sessions-card-title">
@@ -310,13 +329,13 @@ function Sessions({
               <div className="sessions-group-label">{t(`sessions.${group.label}`)}</div>
               {group.sessions.map((s) => (
                 <SessionCard
-                  key={s.id}
+                  key={sessionRowKey(s.id, s.profile)}
                   session={s}
-                  isActive={currentSessionId === s.id}
+                  isActive={isActiveSession(currentSessionId, currentSessionProfile, s.id, s.profile)}
                   showFullDate={
                     group.label === "thisWeek" || group.label === "earlier"
                   }
-                  onClick={() => onResumeSession(s.id, s.title)}
+                  onClick={() => onResumeSession(s.id, s.title, s.profile)}
                 />
               ))}
             </div>

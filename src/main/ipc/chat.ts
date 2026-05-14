@@ -406,7 +406,11 @@ export function registerChatIpc({
     await prepareChatBackend(normalizedRequest.profile);
     const title = await resolveChatTitle(normalizedRequest);
     if (normalizedRequest.sessionId && title) {
-      updateSessionTitle(normalizedRequest.sessionId, title);
+      updateSessionTitle(
+        normalizedRequest.sessionId,
+        title,
+        normalizedRequest.profile,
+      );
     }
     return title;
   });

@@ -31,6 +31,7 @@ export const navigationApi = {
   listSessions: (
     limit?: number,
     offset?: number,
+    profile?: string,
   ): Promise<
     Array<{
       id: string;
@@ -41,11 +42,13 @@ export const navigationApi = {
       model: string;
       title: string | null;
       preview: string;
+      profile?: string;
     }>
-  > => ipcRenderer.invoke("list-sessions", limit, offset),
+  > => ipcRenderer.invoke("list-sessions", limit, offset, profile),
 
   getSessionMessages: (
     sessionId: string,
+    profile?: string,
   ): Promise<
     Array<{
       id: number;
@@ -53,7 +56,7 @@ export const navigationApi = {
       content: string;
       timestamp: number;
     }>
-  > => ipcRenderer.invoke("get-session-messages", sessionId),
+  > => ipcRenderer.invoke("get-session-messages", sessionId, profile),
 
   // Profiles
   listProfiles: (): Promise<

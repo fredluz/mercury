@@ -30,6 +30,7 @@ interface UseChatControllerArgs {
   onSessionStarted?: () => void;
   onSessionResolved?: (sessionId: string) => void;
   onSessionTitleChange?: (title: string) => void;
+  onSessionReset?: () => void;
   onNewChat?: () => void;
 }
 
@@ -43,6 +44,7 @@ export function useChatController({
   onSessionStarted,
   onSessionResolved,
   onSessionTitleChange,
+  onSessionReset,
   onNewChat,
 }: UseChatControllerArgs): ChatController {
   const { t } = useI18n();
@@ -302,14 +304,14 @@ export function useChatController({
 
   useEffect(() => {
     if (messages.length === 0) {
-      setHermesSessionId(null);
+      if (!sessionId) setHermesSessionId(null);
       setUsage(null);
       setActivityGroups([]);
       activeActivityGroupIdRef.current = null;
       titleRequestSeqRef.current += 1;
       setTitleGenerationPending(false);
     }
-  }, [messages]);
+  }, [messages, sessionId]);
 
   useEffect(() => {
     loadModelConfig();
@@ -413,6 +415,11 @@ export function useChatController({
     return () => window.removeEventListener("keydown", handleShortcut);
   }, [onNewChat]);
 
+  const getResumeSessionId = useCallback(
+    (): string | undefined => hermesSessionId || sessionIdRef.current || undefined,
+    [hermesSessionId],
+  );
+
   async function selectModel(
     provider: string,
     model: string,
@@ -492,6 +499,8 @@ export function useChatController({
     activeActivityGroupIdRef.current = null;
     activeSendRunSeqRef.current = null;
     finalizedSendRunSeqRef.current = null;
+    sessionIdRef.current = null;
+    onSessionReset?.();
   }
 
   async function handleSend(): Promise<void> {
@@ -516,6 +525,7 @@ export function useChatController({
     const requestSeq = titleRequestSeqRef.current;
     const historyMessages = messages.map((m) => ({ role: m.role, content: m.content }));
     const runSeq = beginChatRun();
+    const resumeSessionId = getResumeSessionId();
     setMessages((prev) => [...prev, userMessage]);
     beginActivityGroup(userMessage.id);
     onSessionStarted?.();
@@ -523,10 +533,10 @@ export function useChatController({
       const result = await window.hermesAPI.sendMessage(
         text,
         profile,
-        hermesSessionId || undefined,
+        resumeSessionId,
         historyMessages,
       );
-      const resolvedSessionId = result.sessionId || hermesSessionId || undefined;
+      const resolvedSessionId = result.sessionId || resumeSessionId;
       const shouldApplyResult = isSendRunCurrentOrFinalized(runSeq);
       if (shouldApplyResult && resolvedSessionId) {
         setHermesSessionId(resolvedSessionId);
@@ -561,13 +571,14 @@ export function useChatController({
     if (inputRef.current) inputRef.current.style.height = "auto";
     const userMessage: ChatMessage = { id: `user-btw-${Date.now()}`, role: "user", content: `💭 ${text}` };
     const runSeq = beginChatRun();
+    const resumeSessionId = getResumeSessionId();
     setMessages((prev) => [...prev, userMessage]);
     beginActivityGroup(userMessage.id);
     try {
       await window.hermesAPI.sendMessage(
         `/btw ${text}`,
         profile,
-        hermesSessionId || undefined,
+        resumeSessionId,
         messages.map((m) => ({ role: m.role, content: m.content })),
       );
       finalizeChatRun(runSeq, "completed");
@@ -651,12 +662,12 @@ export function useChatController({
     setMessages((prev) => [...prev, userMessage]);
     beginActivityGroup(userMessage.id);
     window.hermesAPI
-      .sendMessage("/approve", profile, hermesSessionId || undefined, messages.map((m) => ({ role: m.role, content: m.content })))
+      .sendMessage("/approve", profile, getResumeSessionId(), messages.map((m) => ({ role: m.role, content: m.content })))
       .then(() => finalizeChatRun(runSeq, "completed"))
       .catch((error) => {
         if (finalizeChatRun(runSeq, "failed")) appendFallbackSendError(error);
       });
-  }, [appendFallbackSendError, beginActivityGroup, beginChatRun, finalizeChatRun, profile, hermesSessionId, setMessages, messages]);
+  }, [appendFallbackSendError, beginActivityGroup, beginChatRun, finalizeChatRun, getResumeSessionId, profile, setMessages, messages]);
 
   const handleDeny = useCallback(() => {
     const userMessage: ChatMessage = { id: `user-deny-${Date.now()}`, role: "user", content: "/deny" };
@@ -665,12 +676,12 @@ export function useChatController({
     setMessages((prev) => [...prev, userMessage]);
     beginActivityGroup(userMessage.id);
     window.hermesAPI
-      .sendMessage("/deny", profile, hermesSessionId || undefined, messages.map((m) => ({ role: m.role, content: m.content })))
+      .sendMessage("/deny", profile, getResumeSessionId(), messages.map((m) => ({ role: m.role, content: m.content })))
       .then(() => finalizeChatRun(runSeq, "completed"))
       .catch((error) => {
         if (finalizeChatRun(runSeq, "failed")) appendFallbackSendError(error);
       });
-  }, [appendFallbackSendError, beginActivityGroup, beginChatRun, finalizeChatRun, profile, hermesSessionId, setMessages, messages]);
+  }, [appendFallbackSendError, beginActivityGroup, beginChatRun, finalizeChatRun, getResumeSessionId, profile, setMessages, messages]);
 
   const contextUsage = useMemo(() => {
     const usedTokens = usage?.lastTotalTokens ?? 0;

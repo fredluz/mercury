@@ -72,6 +72,17 @@ const preloadMethods = extractPreloadMethods(preloadSrc);
 const typeMethods = extractTypeMethods(preloadTypes);
 
 describe("Preload API Surface", () => {
+  it("session APIs expose profile-aware signatures and row metadata", () => {
+    expect(preloadSrc).toContain('ipcRenderer.invoke("get-session-messages", sessionId, profile)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("list-sessions", limit, offset, profile)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("list-cached-sessions", limit, offset, profile)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("sync-session-cache", profile)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("search-sessions", query, limit, profile)');
+    expect(preloadTypes).toContain("getSessionMessages: (sessionId: string, profile?: string)");
+    expect(preloadTypes).toContain("syncSessionCache: (profile?: string)");
+    expect(preloadTypes.match(/profile\?: string;/g)?.length ?? 0).toBeGreaterThan(3);
+  });
+
   it("preload exposes methods", () => {
     expect(preloadMethods.length).toBeGreaterThan(30);
   });

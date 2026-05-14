@@ -61,6 +61,15 @@ const mainChannels = extractIpcHandleChannels(mainSrc);
 const preloadChannels = extractPreloadInvokeChannels(preloadSrc);
 
 describe("IPC Handler ↔ Preload Consistency", () => {
+  it("session handlers pass optional profile arguments", () => {
+    expect(mainSrc).toContain("listSessions(limit, offset, profile)");
+    expect(mainSrc).toContain("getSessionMessages(sessionId, profile)");
+    expect(mainSrc).toContain("listCachedSessions(limit, offset, profile)");
+    expect(mainSrc).toContain("syncSessionCache(profile)");
+    expect(mainSrc).toContain("updateSessionTitle(sessionId, title, profile)");
+    expect(mainSrc).toContain("searchSessions(safeQuery, limit, profile)");
+  });
+
   it("main process registers IPC handlers", () => {
     expect(mainChannels.length).toBeGreaterThan(30);
   });

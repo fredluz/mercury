@@ -27,6 +27,7 @@ import {
 } from "../ssh-remote";
 
 type SessionsDiagChannel =
+  | "get-session-messages"
   | "list-cached-sessions"
   | "sync-session-cache"
   | "search-sessions";
@@ -62,13 +63,20 @@ function attachCachedProfiles<
 >(results: T[]): T[] {
   const profiles = new Map(
     listCachedSessions(Number.MAX_SAFE_INTEGER).map((session) => [
-      session.id,
+      `${session.profile || "default"}\u0000${session.id}`,
       session.profile,
     ]),
   );
+  const idOnlyProfiles = new Map<string, string | undefined>();
+  for (const session of listCachedSessions(Number.MAX_SAFE_INTEGER)) {
+    if (!idOnlyProfiles.has(session.id)) idOnlyProfiles.set(session.id, session.profile);
+  }
   return results.map((result) => ({
     ...result,
-    profile: result.profile || profiles.get(result.sessionId),
+    profile:
+      result.profile ||
+      profiles.get(`${result.profile || "default"}\u0000${result.sessionId}`) ||
+      idOnlyProfiles.get(result.sessionId),
   }));
 }
 
@@ -108,19 +116,32 @@ async function withSessionsDiag<T>(
 
 export function registerSessionsIpc(): void {
   // Sessions
-  ipcMain.handle("list-sessions", (_event, limit?: number, offset?: number) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshListSessions(conn.ssh, limit, offset);
-    return listSessions(limit, offset);
-  });
+  ipcMain.handle(
+    "list-sessions",
+    (_event, limit?: number, offset?: number, profile?: string) => {
+      const conn = getConnectionConfig();
+      if (conn.mode === "ssh" && conn.ssh)
+        return sshListSessions(conn.ssh, limit, offset, profile);
+      return listSessions(limit, offset, profile);
+    },
+  );
 
-  ipcMain.handle("get-session-messages", (_event, sessionId: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshGetSessionMessages(conn.ssh, sessionId);
-    return getSessionMessages(sessionId);
-  });
+  ipcMain.handle(
+    "get-session-messages",
+    async (_event, sessionId: string, profile?: string) => {
+      const conn = getConnectionConfig();
+      const mode = conn.mode;
+      return withSessionsDiag(
+        "get-session-messages",
+        { mode, sessionId, profile, hasProfile: Boolean(profile?.trim()) },
+        async () => {
+          if (conn.mode === "ssh" && conn.ssh)
+            return sshGetSessionMessages(conn.ssh, sessionId, profile);
+          return getSessionMessages(sessionId, profile);
+        },
+      );
+    },
+  );
 
   // Profiles
   ipcMain.handle("list-profiles", async () => {
@@ -148,7 +169,7 @@ export function registerSessionsIpc(): void {
   // Session cache (fast local cache with generated titles)
   ipcMain.handle(
     "list-cached-sessions",
-    async (_event, limit?: number, offset?: number) => {
+    async (_event, limit?: number, offset?: number, profile?: string) => {
       const configStart = performance.now();
       const conn = getConnectionConfig();
       const configMs = performance.now() - configStart;
@@ -158,6 +179,8 @@ export function registerSessionsIpc(): void {
         configMs,
         limit,
         offset,
+        profile,
+        hasProfile: Boolean(profile?.trim()),
       };
       return withSessionsDiag(
         "list-cached-sessions",
@@ -166,8 +189,8 @@ export function registerSessionsIpc(): void {
           const implStart = performance.now();
           try {
             if (conn.mode === "ssh" && conn.ssh)
-              return await sshListCachedSessions(conn.ssh, limit, offset);
-            return listCachedSessions(limit, offset);
+              return await sshListCachedSessions(conn.ssh, limit, offset, profile);
+            return listCachedSessions(limit, offset, profile);
           } finally {
             diagMeta.implMs = performance.now() - implStart;
           }
@@ -176,12 +199,17 @@ export function registerSessionsIpc(): void {
       );
     },
   );
-  ipcMain.handle("sync-session-cache", async () => {
+  ipcMain.handle("sync-session-cache", async (_event, profile?: string) => {
     const configStart = performance.now();
     const conn = getConnectionConfig();
     const configMs = performance.now() - configStart;
     const mode = conn.mode;
-    const diagMeta: Record<string, unknown> = { mode, configMs };
+    const diagMeta: Record<string, unknown> = {
+      mode,
+      configMs,
+      profile,
+      hasProfile: Boolean(profile?.trim()),
+    };
     return withSessionsDiag(
       "sync-session-cache",
       diagMeta,
@@ -189,8 +217,8 @@ export function registerSessionsIpc(): void {
         const implStart = performance.now();
         try {
           if (conn.mode === "ssh" && conn.ssh)
-            return await sshListCachedSessions(conn.ssh, 50);
-          return syncSessionCache();
+            return await sshListCachedSessions(conn.ssh, 50, 0, profile);
+          return syncSessionCache(profile);
         } finally {
           diagMeta.implMs = performance.now() - implStart;
         }
@@ -200,14 +228,14 @@ export function registerSessionsIpc(): void {
   });
   ipcMain.handle(
     "update-session-title",
-    (_event, sessionId: string, title: string) =>
-      updateSessionTitle(sessionId, title),
+    (_event, sessionId: string, title: string, profile?: string) =>
+      updateSessionTitle(sessionId, title, profile),
   );
 
   // Session search
   ipcMain.handle(
     "search-sessions",
-    async (_event, query: string, limit?: number) => {
+    async (_event, query: string, limit?: number, profile?: string) => {
       const safeQuery = typeof query === "string" ? query : "";
       const configStart = performance.now();
       const conn = getConnectionConfig();
@@ -218,6 +246,8 @@ export function registerSessionsIpc(): void {
         configMs,
         queryLength: safeQuery.length,
         limit,
+        profile,
+        hasProfile: Boolean(profile?.trim()),
       };
       return withSessionsDiag(
         "search-sessions",
@@ -226,8 +256,8 @@ export function registerSessionsIpc(): void {
           const implStart = performance.now();
           try {
             if (conn.mode === "ssh" && conn.ssh)
-              return await sshSearchSessions(conn.ssh, safeQuery, limit);
-            return attachCachedProfiles(searchSessions(safeQuery, limit));
+              return await sshSearchSessions(conn.ssh, safeQuery, limit, profile);
+            return attachCachedProfiles(searchSessions(safeQuery, limit, profile));
           } finally {
             diagMeta.implMs = performance.now() - implStart;
           }

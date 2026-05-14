@@ -74,15 +74,18 @@ function installHermesApiMock(): void {
 
 function useControllerProbe({
   conversationVersion = 0,
+  sessionId,
   onSessionResolved,
 }: {
   conversationVersion?: number;
+  sessionId?: string | null;
   onSessionResolved?: (sessionId: string) => void;
 } = {}) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const controller = useChatController({
     messages,
     setMessages,
+    sessionId,
     conversationVersion,
     profile: "default",
     onSessionResolved,
@@ -198,6 +201,72 @@ describe("useChatController send lifecycle", () => {
       await waitFor(() => expect(result.current.controller.isLoading).toBe(false));
     },
   );
+
+  it("preserves an external empty resume session id for the next send", async () => {
+    sendMessageMock().mockResolvedValueOnce({ response: "", sessionId: undefined });
+    const { result } = renderHook(() => useControllerProbe({ sessionId: "resume-empty" }));
+
+    await act(async () => {
+      result.current.controller.setInput("continue");
+    });
+    await act(async () => {
+      await result.current.controller.handleSend();
+    });
+
+    expect(sendMessageMock()).toHaveBeenCalledWith("continue", "default", "resume-empty", []);
+    expect(result.current.controller.hermesSessionId).toBe("resume-empty");
+  });
+
+  it.each([
+    ["handleQuickAsk", "quick question", "/btw quick question"],
+    ["handleApprove", "", "/approve"],
+    ["handleDeny", "", "/deny"],
+  ] as const)("uses an external empty resume session id for %s", async (handlerName, input, expectedMessage) => {
+    sendMessageMock().mockResolvedValueOnce({ response: "", sessionId: undefined });
+    const { result } = renderHook(() => useControllerProbe({ sessionId: "resume-empty" }));
+
+    if (input) {
+      await act(async () => {
+        result.current.controller.setInput(input);
+      });
+    }
+    await act(async () => {
+      await result.current.controller[handlerName]();
+    });
+
+    expect(sendMessageMock()).toHaveBeenCalledWith(expectedMessage, "default", "resume-empty", []);
+  });
+
+  it("does not reuse an external resume session id after explicit clear", async () => {
+    function useResettableControllerProbe() {
+      const [messages, setMessages] = useState<ChatMessage[]>([]);
+      const [sessionId, setSessionId] = useState<string | null>("resume-empty");
+      const controller = useChatController({
+        messages,
+        setMessages,
+        sessionId,
+        conversationVersion: 0,
+        profile: "default",
+        onSessionReset: () => setSessionId(null),
+      });
+      return { controller };
+    }
+
+    sendMessageMock().mockResolvedValueOnce({ response: "", sessionId: "session-new" });
+    const { result } = renderHook(() => useResettableControllerProbe());
+
+    act(() => {
+      result.current.controller.handleClear();
+    });
+    await act(async () => {
+      result.current.controller.setInput("new thread");
+    });
+    await act(async () => {
+      await result.current.controller.handleSend();
+    });
+
+    expect(sendMessageMock()).toHaveBeenCalledWith("new thread", "default", undefined, []);
+  });
 
   it("clears loading on conversation reset and ignores the stale send result", async () => {
     const send = deferred<{ response: string; sessionId?: string }>();

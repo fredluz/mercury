@@ -10,6 +10,15 @@ type IpcHandler = (
   history?: Array<{ role: string; content: string }>,
 ) => Promise<{ response: string; sessionId?: string }>;
 
+type GenerateTitleHandler = (
+  event: unknown,
+  request: {
+    profile?: string;
+    sessionId?: string;
+    messages: Array<{ role: "user" | "agent" | "assistant"; content: string }>;
+  },
+) => Promise<string>;
+
 type FakeSender = {
   send: ReturnType<typeof vi.fn>;
   isDestroyed: ReturnType<typeof vi.fn>;
@@ -275,6 +284,36 @@ describe("chat IPC lifecycle hardening", () => {
     expect(sentChannels(event.sender, "chat-done")).toEqual([
       ["chat-done", "session-without-trace-run"],
     ]);
+  });
+
+  it("passes profile when persisting generated chat titles", async () => {
+    await setupHandler();
+    const handler = mocks.handlers.get("generate-chat-title") as
+      | GenerateTitleHandler
+      | undefined;
+    expect(handler).toBeTypeOf("function");
+    mocks.generateChatTitle.mockResolvedValue("Profile Aware Title");
+
+    await expect(
+      handler!({}, {
+        profile: " research-agent ",
+        sessionId: " session-title-1 ",
+        messages: [{ role: "user", content: "Summarize this session" }],
+      }),
+    ).resolves.toBe("Profile Aware Title");
+
+    expect(mocks.generateChatTitle).toHaveBeenCalledWith({
+      profile: "research-agent",
+      sessionId: "session-title-1",
+      messages: [{ role: "user", content: "Summarize this session" }],
+    });
+    expect(mocks.updateSessionTitle).toHaveBeenCalledTimes(1);
+    expect(mocks.updateSessionTitle).toHaveBeenNthCalledWith(
+      1,
+      "session-title-1",
+      "Profile Aware Title",
+      "research-agent",
+    );
   });
 
   it("still sends chat-error and rejects when error side effects throw", async () => {

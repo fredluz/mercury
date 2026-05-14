@@ -37,7 +37,7 @@ Current local persistent files used by the documented subsystems include:
 | `<HERMES_HOME>/auth.json` | `src/main/config.ts` | Credential pool under `credential_pool`. |
 | `<HERMES_HOME>/models.json` | `src/main/models.ts` | Saved model library. Seeded from defaults when missing. |
 | `<profileHome>/state.db` | `src/main/sessions.ts`, `src/main/session-cache.ts`, `src/main/memory.ts` | Hermes SQLite session/message database read by desktop. |
-| `<HERMES_HOME>/desktop/sessions.json` | `src/main/session-cache.ts` | Desktop session cache with generated titles and `lastSync`. |
+| `<HERMES_HOME>/desktop/sessions.json` | `src/main/session-cache.ts` | Desktop session cache with generated titles, row `profile` metadata, global `lastSync`, and per-profile `profileSync`. |
 | `<profileHome>/memories/MEMORY.md` | `src/main/memory.ts`, `src/main/ssh/memory-soul.ts` | Memory entries separated by `\n§\n`. |
 | `<profileHome>/memories/USER.md` | `src/main/memory.ts`, `src/main/ssh/memory-soul.ts` | User profile text. |
 | `<profileHome>/SOUL.md` | `src/main/soul.ts`, `src/main/ssh/memory-soul.ts` | Persona/soul text. |
@@ -117,19 +117,21 @@ Current behavior:
 
 ## Sessions and SQLite state
 
-`src/main/sessions.ts` reads the Hermes SQLite DB at:
+`src/main/sessions.ts` reads Hermes SQLite DBs through the profile-aware path contract:
 
 ```text
-<HERMES_HOME>/state.db
+<profileHome>/state.db
 ```
+
+That means the default profile reads `<HERMES_HOME>/state.db`, while named profiles read `<HERMES_HOME>/profiles/<profile>/state.db`.
 
 Current local session functions:
 
-- `listSessions(limit = 30, offset = 0)` reads `sessions`, ordered by `started_at DESC`, and returns summary fields with empty `preview`.
-- `getSessionMessages(sessionId)` reads user/assistant messages from `messages`, ordered by `timestamp, id`.
-- `searchSessions(query, limit = 20)` requires a `messages_fts` table; it sanitizes query terms for FTS5 and returns distinct session snippets ordered by rank.
+- `listSessions(limit = 30, offset = 0, profile?)` reads `sessions`, ordered globally by `started_at DESC`, and returns summary fields with empty `preview` and a `profile` field. When `profile` is omitted, it aggregates default plus discovered named profile DBs; when supplied, it reads only that profile DB.
+- `getSessionMessages(sessionId, profile?)` reads user/assistant messages from `messages`, ordered by `timestamp, id`. When `profile` is supplied it reads that profile DB only; otherwise it searches default and named profile DBs deterministically for the session id.
+- `searchSessions(query, limit = 20, profile?)` requires a `messages_fts` table; it sanitizes query terms for FTS5 and returns distinct session snippets with `profile` metadata. When `profile` is omitted it searches all discovered profile DBs and combines the results.
 
-SSH session functions in `src/main/ssh/sessions-profiles.ts` run Python over SSH against remote `~/.hermes/state.db` or profile `state.db`.
+SSH session functions in `src/main/ssh/sessions-profiles.ts` mirror this behavior against remote `~/.hermes/state.db` and `~/.hermes/profiles/<profile>/state.db`, including profile passthrough for list, message retrieval, and search.
 
 ## Session cache
 
@@ -145,6 +147,7 @@ Cache shape:
 interface CacheData {
   sessions: CachedSession[];
   lastSync: number;
+  profileSync?: Record<string, number>;
 }
 ```
 
@@ -156,19 +159,24 @@ interface CacheData {
 - `source`
 - `messageCount`
 - `model`
+- `profile` — normalized profile identity (`"default"` for the default DB, otherwise the named profile)
 
 Current sync behavior:
 
-- Reads from local `<HERMES_HOME>/state.db` if it exists; otherwise returns cached sessions.
-- Fetches sessions newer than `lastSync - 300`, or all sessions on first sync.
-- Uses a `Map` keyed by session id to update existing sessions without O(N²) behavior.
+- Reads from profile-specific local `<profileHome>/state.db` files when they exist; otherwise returns cached sessions.
+- `syncSessionCache(profile?)` syncs only the requested profile when supplied, or default plus discovered named profiles when omitted.
+- Tracks a global `lastSync` and per-profile `profileSync` timestamps. It fetches sessions newer than each profile's sync timestamp minus a small overlap, or all sessions for a profile on first sync/backfill.
+- Backfills legacy cache rows without `profile` metadata and normalizes cache identity by `(profile, id)`, so duplicate session ids in different profiles can coexist.
+- Uses maps keyed by the composite cache key to update existing sessions without O(N²) behavior.
 - Generates titles from the first user message when the DB session title is missing.
 - Sorts all cached sessions by `startedAt` descending.
-- Updates `lastSync` to current epoch seconds and writes the cache.
+- `listCachedSessions(limit, offset, profile?)` filters by profile only when one is supplied; otherwise it returns the global cross-profile cache.
+- `updateSessionTitle(sessionId, title, profile?)` and generated-title chat IPC side effects pass profile so the profile DB row and matching cache row are updated together.
+- `updateSessionProfile(sessionId, profile?)` treats profile as session identity and inserts/updates the matching cache row with profile metadata after chat completion returns a session id.
 
-`tests/session-cache-sync.test.ts` verifies first sync, incremental updates, no duplicate sessions, append behavior, and the large-cache performance regression case.
+`tests/session-cache-sync.test.ts` verifies first sync, incremental updates, no duplicate sessions, append behavior, named-profile cache metadata/backfill, duplicate ids across profiles, title/profile updates, and the large-cache performance regression case.
 
-In SSH mode, `src/main/ipc/sessions.ts` maps `list-cached-sessions` and `sync-session-cache` to `sshListCachedSessions(...)`, which derives cached-session-shaped rows from remote sessions rather than reading/writing the local desktop cache.
+In SSH mode, `src/main/ipc/sessions.ts` maps `list-cached-sessions` and `sync-session-cache` to `sshListCachedSessions(...)`, which derives cached-session-shaped rows with profile metadata from remote sessions rather than reading/writing the local desktop cache.
 
 ## Memory and user profile files
 
@@ -229,7 +237,8 @@ At the time of this doc, backup/import and MCP server listing do not branch to S
 For storage/profile changes, run targeted tests based on the touched area:
 
 ```bash
-npm run test -- tests/session-cache-sync.test.ts
+npm run test -- tests/session-cache-sync.test.ts tests/sessions-profile-db.test.ts
+npm run test -- tests/chat-ipc-lifecycle.test.ts
 npm run test -- tests/skills-import.test.ts
 npm run test -- tests/ipc-handlers.test.ts tests/preload-api-surface.test.ts
 npm run typecheck

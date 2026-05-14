@@ -6,10 +6,16 @@ import Database from "better-sqlite3";
 import { sanitizeChatTitle } from "../shared/chat-metadata";
 import { t } from "../shared/i18n";
 import { getAppLocale } from "./locale";
+import {
+  discoverSessionProfileScopes,
+  getSessionProfileScope,
+  normalizeSessionProfile,
+  sessionCacheKey,
+  type SessionProfileScope,
+} from "./session-db";
 
 const CACHE_DIR = join(HERMES_HOME, "desktop");
 const CACHE_FILE = join(CACHE_DIR, "sessions.json");
-const DB_PATH = join(HERMES_HOME, "state.db");
 
 export interface CachedSession {
   id: string;
@@ -24,6 +30,7 @@ export interface CachedSession {
 interface CacheData {
   sessions: CachedSession[];
   lastSync: number;
+  profileSync?: Record<string, number>;
 }
 
 // Generate a short, readable title from the first user message (like ChatGPT/Claude)
@@ -31,22 +38,14 @@ export function generateTitle(message: string): string {
   if (!message || !message.trim())
     return t("sessions.newConversation", getAppLocale());
 
-  // Clean up the message
   let text = message.trim();
-
-  // Remove markdown formatting
   text = text.replace(/[#*_`~\[\]()]/g, "");
-  // Remove URLs
   text = text.replace(/https?:\/\/\S+/g, "");
-  // Remove extra whitespace
   text = text.replace(/\s+/g, " ").trim();
 
   if (!text) return t("sessions.newConversation", getAppLocale());
-
-  // If short enough, use as-is
   if (text.length <= 50) return text;
 
-  // Take first meaningful chunk — aim for ~40-50 chars at word boundary
   const words = text.split(" ");
   let title = "";
   for (const word of words) {
@@ -59,10 +58,15 @@ export function generateTitle(message: string): string {
 
 function readCache(): CacheData {
   try {
-    if (!existsSync(CACHE_FILE)) return { sessions: [], lastSync: 0 };
-    return JSON.parse(readFileSync(CACHE_FILE, "utf-8"));
+    if (!existsSync(CACHE_FILE)) return { sessions: [], lastSync: 0, profileSync: {} };
+    const parsed = JSON.parse(readFileSync(CACHE_FILE, "utf-8")) as CacheData;
+    return {
+      sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
+      lastSync: Number(parsed.lastSync) || 0,
+      profileSync: parsed.profileSync || {},
+    };
   } catch {
-    return { sessions: [], lastSync: 0 };
+    return { sessions: [], lastSync: 0, profileSync: {} };
   }
 }
 
@@ -74,9 +78,12 @@ function writeCache(data: CacheData): void {
   }
 }
 
-function getDb(readonly = true): Database.Database | null {
-  if (!existsSync(DB_PATH)) return null;
-  return new Database(DB_PATH, { readonly });
+function getDb(
+  scope: SessionProfileScope,
+  readonly = true,
+): Database.Database | null {
+  if (!existsSync(scope.dbPath)) return null;
+  return new Database(scope.dbPath, { readonly });
 }
 
 type SessionRow = {
@@ -87,11 +94,6 @@ type SessionRow = {
   model: string;
   title: string | null;
 };
-
-function normalizeProfile(profile?: string): string {
-  const value = profile?.trim();
-  return value || "default";
-}
 
 function readSessionRow(
   db: Database.Database,
@@ -135,6 +137,7 @@ function generateTitleFromFirstMessage(
 function cachedSessionFromRow(
   db: Database.Database | null,
   row: SessionRow,
+  profile: string,
   overrides: Partial<CachedSession> = {},
 ): CachedSession {
   const title =
@@ -150,18 +153,46 @@ function cachedSessionFromRow(
     source: row.source,
     messageCount: row.message_count,
     model: row.model || "",
+    profile,
     ...overrides,
   };
 }
 
-// Sync from hermes DB to local cache — only fetches new/updated sessions
-export function syncSessionCache(): CachedSession[] {
-  const cache = readCache();
-  const db = getDb();
-  if (!db) return cache.sessions;
+function normalizeCachedSessionProfile(session: CachedSession): string {
+  return normalizeSessionProfile(session.profile);
+}
+
+function matchingCacheIndex(
+  sessions: CachedSession[],
+  sessionId: string,
+  profile?: string,
+): number {
+  if (profile?.trim()) {
+    const key = sessionCacheKey(sessionId, profile);
+    return sessions.findIndex(
+      (session) =>
+        sessionCacheKey(session.id, normalizeCachedSessionProfile(session)) === key,
+    );
+  }
+  return sessions.findIndex((session) => session.id === sessionId);
+}
+
+function sortSessions(sessions: CachedSession[]): CachedSession[] {
+  return sessions.sort((a, b) => b.startedAt - a.startedAt);
+}
+
+function syncScope(
+  cache: CacheData,
+  scope: SessionProfileScope,
+  forceFull: boolean,
+): void {
+  const db = getDb(scope);
+  if (!db) return;
 
   try {
-    // Fetch sessions newer than last sync, or all if first sync
+    const profileSync = cache.profileSync || {};
+    const lastProfileSync = profileSync[scope.profile] || 0;
+    const since = forceFull || lastProfileSync <= 0 ? 0 : lastProfileSync - 300;
     const rows = db
       .prepare(
         `SELECT s.id, s.started_at, s.source, s.message_count, s.model, s.title
@@ -169,63 +200,145 @@ export function syncSessionCache(): CachedSession[] {
          WHERE s.started_at > ?
          ORDER BY s.started_at DESC`,
       )
-      .all(cache.lastSync > 0 ? cache.lastSync - 300 : 0) as Array<{
-      id: string;
-      started_at: number;
-      source: string;
-      message_count: number;
-      model: string;
-      title: string | null;
-    }>;
+      .all(since) as SessionRow[];
 
-    // Index existing sessions by id once so the per-row update below is
-    // O(1) instead of O(N). Without this, syncing N existing sessions
-    // against N new rows is O(N²) and visibly slows app startup once a
-    // user has accumulated thousands of sessions (issue #16).
-    const existingById = new Map<string, CachedSession>();
-    for (const s of cache.sessions) existingById.set(s.id, s);
-    const newSessions: CachedSession[] = [];
-
-    for (const row of rows) {
-      const existing = existingById.get(row.id);
-      if (existing) {
-        // Update existing entry (message count/model/title may have changed)
-        existing.messageCount = row.message_count;
-        existing.model = row.model || "";
-        if (row.title && row.title.trim()) {
-          existing.title = row.title.trim();
-        }
-        continue;
-      }
-
-      newSessions.push(cachedSessionFromRow(db, row));
+    const existingByKey = new Map<string, CachedSession>();
+    for (const session of cache.sessions) {
+      const normalizedProfile = normalizeCachedSessionProfile(session);
+      session.profile = normalizedProfile;
+      existingByKey.set(sessionCacheKey(session.id, normalizedProfile), session);
     }
 
-    // Merge: new sessions first (most recent), then existing
-    const allSessions = [...newSessions, ...cache.sessions];
-    // Sort by startedAt descending
-    allSessions.sort((a, b) => b.startedAt - a.startedAt);
+    for (const row of rows) {
+      const key = sessionCacheKey(row.id, scope.profile);
+      const existing = existingByKey.get(key);
+      if (existing) {
+        existing.profile = scope.profile;
+        existing.startedAt = row.started_at;
+        existing.source = row.source;
+        existing.messageCount = row.message_count;
+        existing.model = row.model || "";
+        if (row.title && row.title.trim()) existing.title = row.title.trim();
+        continue;
+      }
+      const created = cachedSessionFromRow(db, row, scope.profile);
+      cache.sessions.push(created);
+      existingByKey.set(key, created);
+    }
 
-    const updated: CacheData = {
-      sessions: allSessions,
-      lastSync: Math.floor(Date.now() / 1000),
+    cache.profileSync = {
+      ...profileSync,
+      [scope.profile]: Math.floor(Date.now() / 1000),
     };
-    writeCache(updated);
-    return updated.sessions;
-  } catch {
-    return cache.sessions;
   } finally {
     db.close();
   }
+}
+
+function dedupeCacheSessions(sessions: CachedSession[]): CachedSession[] {
+  const byKey = new Map<string, CachedSession>();
+  for (const session of sessions) {
+    session.profile = normalizeCachedSessionProfile(session);
+    byKey.set(sessionCacheKey(session.id, session.profile), session);
+  }
+  return sortSessions([...byKey.values()]);
+}
+
+function discoverKnownSessionProfiles(
+  scopes: SessionProfileScope[],
+): Map<string, Set<string>> {
+  const profilesById = new Map<string, Set<string>>();
+  for (const scope of scopes) {
+    const db = getDb(scope);
+    if (!db) continue;
+    try {
+      const rows = db.prepare(`SELECT id FROM sessions`).all() as Array<{ id: string }>;
+      for (const row of rows) {
+        const profiles = profilesById.get(row.id) || new Set<string>();
+        profiles.add(scope.profile);
+        profilesById.set(row.id, profiles);
+      }
+    } catch {
+      // Ignore malformed DBs during legacy metadata backfill.
+    } finally {
+      db.close();
+    }
+  }
+  return profilesById;
+}
+
+function dropMisprofiledLegacyDefaults(
+  sessions: CachedSession[],
+  profilesById: Map<string, Set<string>>,
+): CachedSession[] {
+  return sessions.filter((session) => {
+    const profile = normalizeCachedSessionProfile(session);
+    const knownProfiles = profilesById.get(session.id);
+    if (!knownProfiles || knownProfiles.size === 0) return true;
+    if (knownProfiles.has(profile)) return true;
+    return !(profile === "default" && knownProfiles.size > 0);
+  });
+}
+
+// Sync from hermes DB(s) to local cache — only fetches new/updated sessions per profile.
+export function syncSessionCache(profile?: string): CachedSession[] {
+  const cache = readCache();
+  const requestedProfile = profile?.trim()
+    ? normalizeSessionProfile(profile)
+    : undefined;
+  const scopes = requestedProfile
+    ? [getSessionProfileScope(requestedProfile)]
+    : discoverSessionProfileScopes();
+  const hasMissingProfile = cache.sessions.some((session) => !session.profile);
+  const hasMissingProfileSync = scopes.some(
+    (scope) => !(cache.profileSync || {})[scope.profile],
+  );
+  const forceFull = hasMissingProfile || hasMissingProfileSync;
+
+  try {
+    for (const scope of scopes) {
+      try {
+        syncScope(cache, scope, forceFull);
+      } catch {
+        // One malformed profile DB should not prevent other profiles from syncing.
+      }
+    }
+    if (forceFull && !requestedProfile) {
+      cache.sessions = dropMisprofiledLegacyDefaults(
+        cache.sessions,
+        discoverKnownSessionProfiles(scopes),
+      );
+    }
+    cache.sessions = dedupeCacheSessions(cache.sessions);
+    cache.lastSync = Math.floor(Date.now() / 1000);
+    cache.profileSync = cache.profileSync || {};
+    writeCache(cache);
+  } catch {
+    // Preserve old cache if a partial sync fails.
+  }
+
+  return requestedProfile
+    ? cache.sessions.filter(
+        (session) => normalizeCachedSessionProfile(session) === requestedProfile,
+      )
+    : cache.sessions;
 }
 
 // Fast read from cache only (no DB access)
 export function listCachedSessions(
   limit = 50,
   offset = 0,
+  profile?: string,
 ): CachedSession[] {
+  const requestedProfile = profile?.trim()
+    ? normalizeSessionProfile(profile)
+    : undefined;
   const cache = readCache();
-  return cache.sessions.slice(offset, offset + limit);
+  const sessions = dedupeCacheSessions(cache.sessions).filter(
+    (session) =>
+      !requestedProfile || normalizeCachedSessionProfile(session) === requestedProfile,
+  );
+  return sessions.slice(offset, offset + limit);
 }
 
 // Update title for a specific session in SQLite where available and in the
@@ -233,23 +346,33 @@ export function listCachedSessions(
 export function updateSessionTitle(
   sessionId: string,
   title: string,
+  profile?: string,
 ): boolean {
   const cleanSessionId = sessionId.trim();
   const cleanTitle = sanitizeChatTitle(title, 120);
   if (!cleanSessionId || !cleanTitle) return false;
 
+  const requestedProfile = profile?.trim()
+    ? normalizeSessionProfile(profile)
+    : undefined;
+  const scopes = requestedProfile
+    ? [getSessionProfileScope(requestedProfile)]
+    : discoverSessionProfileScopes();
   let updated = false;
-  let row: ReturnType<typeof readSessionRow> = null;
-  const db = getDb(false);
-  if (db) {
+  let insertedRow: { row: SessionRow; profile: string } | null = null;
+
+  for (const scope of scopes) {
+    const db = getDb(scope, false);
+    if (!db) continue;
     try {
-      row = readSessionRow(db, cleanSessionId);
+      const row = readSessionRow(db, cleanSessionId);
       if (row) {
         const changes = db
           .prepare(`UPDATE sessions SET title = ? WHERE id = ?`)
           .run(cleanTitle, cleanSessionId).changes;
         updated = updated || changes > 0;
-        row = { ...row, title: cleanTitle };
+        insertedRow = { row: { ...row, title: cleanTitle }, profile: scope.profile };
+        if (requestedProfile) break;
       }
     } catch {
       // Older or partial DBs may not have sessions.title yet. Cache updates
@@ -260,18 +383,36 @@ export function updateSessionTitle(
   }
 
   const cache = readCache();
-  const idx = cache.sessions.findIndex((s) => s.id === cleanSessionId);
-  if (idx >= 0) {
-    cache.sessions[idx].title = cleanTitle;
-    writeCache(cache);
-    return true;
+  let cacheUpdated = false;
+  if (requestedProfile) {
+    const idx = matchingCacheIndex(cache.sessions, cleanSessionId, requestedProfile);
+    if (idx >= 0) {
+      cache.sessions[idx].title = cleanTitle;
+      cache.sessions[idx].profile = requestedProfile;
+      cacheUpdated = true;
+    }
+  } else {
+    for (const session of cache.sessions) {
+      if (session.id !== cleanSessionId) continue;
+      session.title = cleanTitle;
+      session.profile = normalizeCachedSessionProfile(session);
+      cacheUpdated = true;
+    }
   }
 
-  if (row) {
-    cache.sessions.push(cachedSessionFromRow(null, row, { title: cleanTitle }));
-    cache.sessions.sort((a, b) => b.startedAt - a.startedAt);
+  if (!cacheUpdated && insertedRow) {
+    cache.sessions.push(
+      cachedSessionFromRow(null, insertedRow.row, insertedRow.profile, {
+        title: cleanTitle,
+      }),
+    );
+    cacheUpdated = true;
+  }
+
+  if (cacheUpdated) {
+    cache.sessions = dedupeCacheSessions(cache.sessions);
     writeCache(cache);
-    updated = true;
+    return true;
   }
 
   return updated;
@@ -283,10 +424,11 @@ export function updateSessionProfile(
 ): boolean {
   const cleanSessionId = sessionId.trim();
   if (!cleanSessionId) return false;
-  const cleanProfile = normalizeProfile(profile);
+  const cleanProfile = normalizeSessionProfile(profile);
+  const scope = getSessionProfileScope(cleanProfile);
 
   let row: ReturnType<typeof readSessionRow> = null;
-  const db = getDb();
+  const db = getDb(scope);
   if (db) {
     try {
       row = readSessionRow(db, cleanSessionId);
@@ -296,18 +438,22 @@ export function updateSessionProfile(
   }
 
   const cache = readCache();
-  const idx = cache.sessions.findIndex((s) => s.id === cleanSessionId);
+  const idx = matchingCacheIndex(cache.sessions, cleanSessionId, cleanProfile);
   if (idx >= 0) {
     cache.sessions[idx].profile = cleanProfile;
+    if (row) {
+      cache.sessions[idx] = cachedSessionFromRow(null, row, cleanProfile, {
+        title: cache.sessions[idx].title,
+      });
+    }
+    cache.sessions = dedupeCacheSessions(cache.sessions);
     writeCache(cache);
     return true;
   }
 
   if (!row) return false;
-  cache.sessions.push(
-    cachedSessionFromRow(null, row, { profile: cleanProfile }),
-  );
-  cache.sessions.sort((a, b) => b.startedAt - a.startedAt);
+  cache.sessions.push(cachedSessionFromRow(null, row, cleanProfile));
+  cache.sessions = dedupeCacheSessions(cache.sessions);
   writeCache(cache);
   return true;
 }
