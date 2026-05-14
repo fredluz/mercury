@@ -33,7 +33,8 @@ import type { IpcRegistrationContext } from "./types";
 type ChatResponse = { response: string; sessionId?: string };
 
 type ActiveChatRun = {
-  traceRunId: string;
+  runToken: string;
+  traceRunId?: string;
   abort: () => void;
   settleAbort: () => void;
 };
@@ -50,20 +51,46 @@ function isLiveChatActivityEvent(type: TraceEventType): boolean {
   );
 }
 
+function reportBestEffortFailure(label: string, error: unknown): void {
+  console.warn(`[chat-ipc] Non-critical ${label} failed`, error);
+}
+
+function runBestEffort<T>(label: string, fn: () => T): T | undefined {
+  try {
+    return fn();
+  } catch (error) {
+    reportBestEffortFailure(label, error);
+    return undefined;
+  }
+}
+
+function safeSend(sender: WebContents, channel: string, ...args: unknown[]): void {
+  if (sender.isDestroyed()) return;
+  try {
+    sender.send(channel, ...args);
+  } catch (error) {
+    reportBestEffortFailure(`IPC send ${channel}`, error);
+  }
+}
+
 function sendChatTraceEvent(
   sender: WebContents,
   event: TraceEvent | null,
 ): void {
-  if (!event || !isLiveChatActivityEvent(event.type) || sender.isDestroyed()) return;
-  sender.send("chat-trace-event", event);
+  if (!event || !isLiveChatActivityEvent(event.type)) return;
+  safeSend(sender, "chat-trace-event", event);
 }
 
 function abortCurrentRun(detail: string): void {
   if (!activeChatRun) return;
   const run = activeChatRun;
   activeChatRun = null;
-  run.abort();
-  finishTraceRun(run.traceRunId, "aborted", undefined, detail);
+  runBestEffort("chat abort", () => run.abort());
+  if (run.traceRunId) {
+    runBestEffort("trace abort finalization", () =>
+      finishTraceRun(run.traceRunId!, "aborted", undefined, detail),
+    );
+  }
   run.settleAbort();
 }
 
@@ -110,11 +137,40 @@ export function registerChatIpc({
       let fullResponse = "";
       let recordedAgentStart = false;
       const chatStartTime = Date.now();
-      const traceRun = createTraceRun(message, profile);
+      const traceRun = runBestEffort("trace run creation", () =>
+        createTraceRun(message, profile),
+      );
+      const traceRunId = traceRun?.id;
+      const runToken =
+        traceRunId ??
+        `chat-${chatStartTime}-${Math.random().toString(36).slice(2)}`;
+      const recordChatTraceEvent = (
+        label: string,
+        type: TraceEventType,
+        title: string,
+        detail?: string,
+        metadata?: Record<string, unknown>,
+      ): TraceEvent | null | undefined => {
+        if (!traceRunId) return undefined;
+        return runBestEffort(label, () =>
+          recordTraceEvent(traceRunId, type, title, detail, metadata),
+        );
+      };
+      const finishChatTraceRun = (
+        label: string,
+        status: "completed" | "failed" | "aborted",
+        sessionId?: string,
+        detail?: string,
+      ): void => {
+        if (!traceRunId) return;
+        runBestEffort(label, () =>
+          finishTraceRun(traceRunId, status, sessionId, detail),
+        );
+      };
 
       if (resumeSessionId) {
-        recordTraceEvent(
-          traceRun.id,
+        recordChatTraceEvent(
+          "trace session resume",
           "session.resumed",
           "Session resumed",
           resumeSessionId,
@@ -122,8 +178,8 @@ export function registerChatIpc({
         );
       }
       if (history?.length) {
-        recordTraceEvent(
-          traceRun.id,
+        recordChatTraceEvent(
+          "trace history loaded",
           "message.history.loaded",
           "History loaded",
           `${history.length} previous messages included.`,
@@ -154,7 +210,7 @@ export function registerChatIpc({
         settled = true;
         rejectChat(reason);
       };
-      const isActiveRun = (): boolean => activeChatRun?.traceRunId === traceRun.id;
+      const isActiveRun = (): boolean => activeChatRun?.runToken === runToken;
       const shouldIgnoreCallback = (): boolean =>
         settled || (activeChatRun !== null && !isActiveRun());
       let skipNextLegacyToolTrace = false;
@@ -168,118 +224,137 @@ export function registerChatIpc({
               fullResponse += chunk;
               if (!recordedAgentStart && chunk.trim()) {
                 recordedAgentStart = true;
-                recordTraceEvent(
-                  traceRun.id,
+                recordChatTraceEvent(
+                  "trace agent start",
                   "message.agent.delta",
                   "Agent response started",
                   chunk.trim().slice(0, 180),
                 );
               }
-              event.sender.send("chat-chunk", chunk);
+              safeSend(event.sender, "chat-chunk", chunk);
             },
             onDone: (sessionId) => {
               if (shouldIgnoreCallback()) return;
               if (isActiveRun()) activeChatRun = null;
               if (fullResponse.trim()) {
-                recordTraceEvent(
-                  traceRun.id,
+                recordChatTraceEvent(
+                  "trace agent completion",
                   "message.agent.delta",
                   "Agent response completed",
                   fullResponse.trim().slice(0, 320),
                 );
               }
-              for (const artifactEvent of extractArtifactEventsFromText(fullResponse)) {
-                const recordedEvent = recordTraceEvent(
-                  traceRun.id,
+              const artifactEvents =
+                runBestEffort("artifact extraction", () =>
+                  extractArtifactEventsFromText(fullResponse),
+                ) ?? [];
+              for (const artifactEvent of artifactEvents) {
+                const recordedEvent = recordChatTraceEvent(
+                  "trace artifact event",
                   artifactEvent.type,
                   artifactEvent.title,
                   artifactEvent.detail,
                   artifactEvent.metadata,
                 );
-                sendChatTraceEvent(event.sender, recordedEvent);
+                sendChatTraceEvent(event.sender, recordedEvent ?? null);
               }
-              finishTraceRun(
-                traceRun.id,
+              finishChatTraceRun(
+                "trace completion finalization",
                 "completed",
                 sessionId,
                 "Hermes returned a completed response.",
               );
               if (sessionId) {
-                updateSessionProfile(sessionId, profile);
+                runBestEffort("session profile update", () =>
+                  updateSessionProfile(sessionId, profile),
+                );
               }
-              event.sender.send("chat-done", sessionId || "");
+              safeSend(event.sender, "chat-done", sessionId || "");
               settleResolved({ response: fullResponse, sessionId });
               // Desktop notification when window is not focused and response took >10s
-              if (
-                getMainWindow() &&
-                !getMainWindow()!.isFocused() &&
-                Date.now() - chatStartTime > 10000
-              ) {
-                const preview = fullResponse
-                  .replace(/[#*_`~\n]+/g, " ")
-                  .trim()
-                  .slice(0, 80);
-                new Notification({
-                  title: "Mercury",
-                  body: preview || "Response ready",
-                }).show();
-              }
+              runBestEffort("completion notification", () => {
+                const mainWindow = getMainWindow();
+                if (
+                  mainWindow &&
+                  !mainWindow.isFocused() &&
+                  Date.now() - chatStartTime > 10000
+                ) {
+                  const preview = fullResponse
+                    .replace(/[#*_`~\n]+/g, " ")
+                    .trim()
+                    .slice(0, 80);
+                  new Notification({
+                    title: "Mercury",
+                    body: preview || "Response ready",
+                  }).show();
+                }
+              });
             },
             onError: (error) => {
               if (shouldIgnoreCallback()) return;
               if (isActiveRun()) activeChatRun = null;
-              const recordedError = recordTraceEvent(
-                traceRun.id,
+              const recordedError = recordChatTraceEvent(
+                "trace transport error",
                 "transport.error",
                 "Transport error",
                 error,
                 { source: "chat" },
               );
-              sendChatTraceEvent(event.sender, recordedError);
-              finishTraceRun(traceRun.id, "failed", undefined, error);
-              event.sender.send("chat-error", error);
+              sendChatTraceEvent(event.sender, recordedError ?? null);
+              finishChatTraceRun(
+                "trace failure finalization",
+                "failed",
+                undefined,
+                error,
+              );
+              safeSend(event.sender, "chat-error", error);
               settleRejected(new Error(error));
               // Notify on error too if window not focused
-              if (getMainWindow() && !getMainWindow()!.isFocused()) {
-                new Notification({
-                  title: "Mercury — Error",
-                  body: error.slice(0, 100),
-                }).show();
-              }
+              runBestEffort("error notification", () => {
+                const mainWindow = getMainWindow();
+                if (mainWindow && !mainWindow.isFocused()) {
+                  new Notification({
+                    title: "Mercury — Error",
+                    body: error.slice(0, 100),
+                  }).show();
+                }
+              });
             },
             onTraceEvent: (traceEvent) => {
               if (shouldIgnoreCallback()) return;
               if (traceEvent.type.startsWith("tool.") || traceEvent.type.startsWith("delegation.")) {
                 skipNextLegacyToolTrace = true;
               }
-              const recordedEvent = recordTraceEvent(
-                traceRun.id,
+              const recordedEvent = recordChatTraceEvent(
+                "trace callback event",
                 traceEvent.type,
                 traceEvent.title,
                 traceEvent.detail,
                 traceEvent.metadata,
               );
-              sendChatTraceEvent(event.sender, recordedEvent);
+              sendChatTraceEvent(event.sender, recordedEvent ?? null);
             },
             onToolProgress: (tool) => {
               if (shouldIgnoreCallback()) return;
               if (skipNextLegacyToolTrace) {
                 skipNextLegacyToolTrace = false;
               } else {
-                const recordedEvent = recordTraceEvent(
-                  traceRun.id,
+                const recordedEvent = recordChatTraceEvent(
+                  "trace tool progress",
                   "tool.progress",
                   "Tool progress",
                   tool,
                 );
-                sendChatTraceEvent(event.sender, recordedEvent);
+                sendChatTraceEvent(event.sender, recordedEvent ?? null);
               }
-              event.sender.send("chat-tool-progress", tool);
+              safeSend(event.sender, "chat-tool-progress", tool);
             },
             onUsage: (usage) => {
               if (shouldIgnoreCallback()) return;
-              recordTraceUsage(traceRun.id, usage);
-              event.sender.send("chat-usage", usage);
+              if (traceRunId) {
+                runBestEffort("trace usage", () => recordTraceUsage(traceRunId, usage));
+              }
+              safeSend(event.sender, "chat-usage", usage);
             },
           },
           profile,
@@ -287,24 +362,34 @@ export function registerChatIpc({
           history,
         );
 
-        activeChatRun = {
-          traceRunId: traceRun.id,
-          abort: handle.abort,
-          settleAbort: () => {
-            if (!event.sender.isDestroyed()) {
-              event.sender.send("chat-done", "");
-            }
-            settleResolved({ response: fullResponse });
-          },
-        };
+        if (!settled) {
+          activeChatRun = {
+            runToken,
+            traceRunId,
+            abort: handle.abort,
+            settleAbort: () => {
+              safeSend(event.sender, "chat-done", "");
+              settleResolved({ response: fullResponse });
+            },
+          };
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        const recordedError = recordTraceEvent(traceRun.id, "transport.error", "Transport error", message, {
-          source: "chat-send",
-        });
-        sendChatTraceEvent(event.sender, recordedError);
-        finishTraceRun(traceRun.id, "failed", undefined, message);
-        event.sender.send("chat-error", message);
+        const recordedError = recordChatTraceEvent(
+          "trace send setup error",
+          "transport.error",
+          "Transport error",
+          message,
+          { source: "chat-send" },
+        );
+        sendChatTraceEvent(event.sender, recordedError ?? null);
+        finishChatTraceRun(
+          "trace send setup failure finalization",
+          "failed",
+          undefined,
+          message,
+        );
+        safeSend(event.sender, "chat-error", message);
         settleRejected(error);
       }
 

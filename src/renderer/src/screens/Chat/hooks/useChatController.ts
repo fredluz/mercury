@@ -81,12 +81,22 @@ export function useChatController({
   const sessionIdRef = useRef<string | null>(sessionId ?? null);
   const sessionTitleRef = useRef<string | null>(sessionTitle ?? null);
   const titleRequestSeqRef = useRef(0);
+  const sendRunSeqRef = useRef(0);
+  const activeSendRunSeqRef = useRef<number | null>(null);
+  const finalizedSendRunSeqRef = useRef<number | null>(null);
+  const cancelledSendRunSeqsRef = useRef<Set<number>>(new Set());
+  const currentContextInfoRef = useRef(currentContextInfo);
+  const currentModelRef = useRef(currentModel);
+  const currentProviderRef = useRef(currentProvider);
 
   isLoadingRef.current = isLoading;
   messagesRef.current = messages;
   profileRef.current = profile;
   sessionIdRef.current = sessionId ?? hermesSessionId;
   sessionTitleRef.current = sessionTitle ?? null;
+  currentContextInfoRef.current = currentContextInfo;
+  currentModelRef.current = currentModel;
+  currentProviderRef.current = currentProvider;
 
   const filteredSlashCommands = useMemo(
     () =>
@@ -106,6 +116,11 @@ export function useChatController({
     setUsage(null);
     setActivityGroups([]);
     activeActivityGroupIdRef.current = null;
+    const activeRunSeq = activeSendRunSeqRef.current;
+    if (activeRunSeq != null) cancelledSendRunSeqsRef.current.add(activeRunSeq);
+    activeSendRunSeqRef.current = null;
+    finalizedSendRunSeqRef.current = null;
+    setIsLoading(false);
   }, [conversationVersion, profile]);
 
   useEffect(() => {
@@ -175,6 +190,61 @@ export function useChatController({
     );
     activeActivityGroupIdRef.current = null;
   }, []);
+
+  const beginChatRun = useCallback((): number => {
+    const runSeq = sendRunSeqRef.current + 1;
+    sendRunSeqRef.current = runSeq;
+    activeSendRunSeqRef.current = runSeq;
+    finalizedSendRunSeqRef.current = null;
+    cancelledSendRunSeqsRef.current.delete(runSeq);
+    setIsLoading(true);
+    return runSeq;
+  }, []);
+
+  const finalizeChatRun = useCallback(
+    (runSeq: number, status: ChatActivityGroupStatus): boolean => {
+      if (activeSendRunSeqRef.current !== runSeq) return false;
+      activeSendRunSeqRef.current = null;
+      finalizedSendRunSeqRef.current = runSeq;
+      markActiveActivityGroup(status);
+      setIsLoading(false);
+      return true;
+    },
+    [markActiveActivityGroup],
+  );
+
+  const finalizeActiveChatRun = useCallback(
+    (status: ChatActivityGroupStatus): void => {
+      const runSeq = activeSendRunSeqRef.current;
+      activeSendRunSeqRef.current = null;
+      if (runSeq != null) finalizedSendRunSeqRef.current = runSeq;
+      markActiveActivityGroup(status);
+      setIsLoading(false);
+    },
+    [markActiveActivityGroup],
+  );
+
+  const cancelActiveChatRun = useCallback(
+    (status: ChatActivityGroupStatus): void => {
+      const runSeq = activeSendRunSeqRef.current;
+      if (runSeq != null) cancelledSendRunSeqsRef.current.add(runSeq);
+      finalizeActiveChatRun(status);
+    },
+    [finalizeActiveChatRun],
+  );
+
+  const isSendRunCurrentOrFinalized = useCallback((runSeq: number): boolean => {
+    if (cancelledSendRunSeqsRef.current.has(runSeq)) return false;
+    return activeSendRunSeqRef.current === runSeq || finalizedSendRunSeqRef.current === runSeq;
+  }, []);
+
+  const appendFallbackSendError = useCallback(
+    (error: unknown): void => {
+      const message = error instanceof Error ? error.message : String(error || "Unknown error");
+      setMessages((prev) => [...prev, { id: `error-${Date.now()}`, role: "agent", content: `Error: ${message}` }]);
+    },
+    [setMessages],
+  );
 
   const toggleActivityGroup = useCallback((groupId: string): void => {
     setActivityGroups((prev) =>
@@ -286,17 +356,15 @@ export function useChatController({
     const cleanupTraceEvent = window.hermesAPI.onChatTraceEvent(appendActivityEvent);
     const cleanupDone = window.hermesAPI.onChatDone((sessionId) => {
       if (sessionId) setHermesSessionId(sessionId);
-      markActiveActivityGroup("completed");
-      setIsLoading(false);
+      finalizeActiveChatRun("completed");
     });
     const cleanupError = window.hermesAPI.onChatError((error) => {
       setMessages((prev) => [...prev, { id: `error-${Date.now()}`, role: "agent", content: `Error: ${error}` }]);
-      markActiveActivityGroup("failed");
-      setIsLoading(false);
+      finalizeActiveChatRun("failed");
     });
     const cleanupUsage = window.hermesAPI.onChatUsage((u) => {
-      const contextInfo = currentContextInfo;
-      const contextModel = currentModel || currentProvider;
+      const contextInfo = currentContextInfoRef.current;
+      const contextModel = currentModelRef.current || currentProviderRef.current;
       setUsage((prev) => ({
         promptTokens: (prev?.promptTokens || 0) + u.promptTokens,
         completionTokens: (prev?.completionTokens || 0) + u.completionTokens,
@@ -317,7 +385,7 @@ export function useChatController({
       cleanupError();
       cleanupUsage();
     };
-  }, [appendActivityEvent, markActiveActivityGroup, setMessages, currentContextInfo, currentModel, currentProvider]);
+  }, [appendActivityEvent, finalizeActiveChatRun, setMessages]);
 
   useEffect(() => scrollToBottom(), [messages, activityGroups, scrollToBottom]);
 
@@ -414,8 +482,7 @@ export function useChatController({
   function handleClear(): void {
     if (isLoading) {
       window.hermesAPI.abortChat();
-      markActiveActivityGroup("aborted");
-      setIsLoading(false);
+      cancelActiveChatRun("aborted");
     }
     setMessages([]);
     setHermesSessionId(null);
@@ -423,6 +490,8 @@ export function useChatController({
     setTitleGenerationPending(false);
     setActivityGroups([]);
     activeActivityGroupIdRef.current = null;
+    activeSendRunSeqRef.current = null;
+    finalizedSendRunSeqRef.current = null;
   }
 
   async function handleSend(): Promise<void> {
@@ -446,7 +515,7 @@ export function useChatController({
     const userMessage: ChatMessage = { id: `user-${Date.now()}`, role: "user", content: text };
     const requestSeq = titleRequestSeqRef.current;
     const historyMessages = messages.map((m) => ({ role: m.role, content: m.content }));
-    setIsLoading(true);
+    const runSeq = beginChatRun();
     setMessages((prev) => [...prev, userMessage]);
     beginActivityGroup(userMessage.id);
     onSessionStarted?.();
@@ -458,7 +527,8 @@ export function useChatController({
         historyMessages,
       );
       const resolvedSessionId = result.sessionId || hermesSessionId || undefined;
-      if (resolvedSessionId) {
+      const shouldApplyResult = isSendRunCurrentOrFinalized(runSeq);
+      if (shouldApplyResult && resolvedSessionId) {
         setHermesSessionId(resolvedSessionId);
         sessionIdRef.current = resolvedSessionId;
         onSessionResolved?.(resolvedSessionId);
@@ -476,9 +546,11 @@ export function useChatController({
             ]
           : []),
       ];
-      await requestGeneratedTitleOnce(resolvedSessionId, titleMessages, requestSeq);
-    } catch {
-      // Error already handled by onChatError IPC listener — avoid duplicate
+      finalizeChatRun(runSeq, "completed");
+      if (shouldApplyResult) await requestGeneratedTitleOnce(resolvedSessionId, titleMessages, requestSeq);
+    } catch (error) {
+      // Error is usually handled by onChatError IPC listener; only show fallback when no terminal IPC arrived.
+      if (finalizeChatRun(runSeq, "failed")) appendFallbackSendError(error);
     }
   }
 
@@ -488,7 +560,7 @@ export function useChatController({
     setInput("");
     if (inputRef.current) inputRef.current.style.height = "auto";
     const userMessage: ChatMessage = { id: `user-btw-${Date.now()}`, role: "user", content: `💭 ${text}` };
-    setIsLoading(true);
+    const runSeq = beginChatRun();
     setMessages((prev) => [...prev, userMessage]);
     beginActivityGroup(userMessage.id);
     try {
@@ -498,8 +570,10 @@ export function useChatController({
         hermesSessionId || undefined,
         messages.map((m) => ({ role: m.role, content: m.content })),
       );
-    } catch {
-      // Error already handled by onChatError IPC listener — avoid duplicate
+      finalizeChatRun(runSeq, "completed");
+    } catch (error) {
+      // Error is usually handled by onChatError IPC listener; only show fallback when no terminal IPC arrived.
+      if (finalizeChatRun(runSeq, "failed")) appendFallbackSendError(error);
     }
   }
 
@@ -566,32 +640,37 @@ export function useChatController({
 
   function handleAbort(): void {
     window.hermesAPI.abortChat();
-    markActiveActivityGroup("aborted");
-    setIsLoading(false);
+    cancelActiveChatRun("aborted");
     setTimeout(() => inputRef.current?.focus(), 50);
   }
 
   const handleApprove = useCallback(() => {
     const userMessage: ChatMessage = { id: `user-approve-${Date.now()}`, role: "user", content: "/approve" };
     setInput("");
-    setIsLoading(true);
+    const runSeq = beginChatRun();
     setMessages((prev) => [...prev, userMessage]);
     beginActivityGroup(userMessage.id);
     window.hermesAPI
       .sendMessage("/approve", profile, hermesSessionId || undefined, messages.map((m) => ({ role: m.role, content: m.content })))
-      .catch(() => setIsLoading(false));
-  }, [beginActivityGroup, profile, hermesSessionId, setMessages, messages]);
+      .then(() => finalizeChatRun(runSeq, "completed"))
+      .catch((error) => {
+        if (finalizeChatRun(runSeq, "failed")) appendFallbackSendError(error);
+      });
+  }, [appendFallbackSendError, beginActivityGroup, beginChatRun, finalizeChatRun, profile, hermesSessionId, setMessages, messages]);
 
   const handleDeny = useCallback(() => {
     const userMessage: ChatMessage = { id: `user-deny-${Date.now()}`, role: "user", content: "/deny" };
     setInput("");
-    setIsLoading(true);
+    const runSeq = beginChatRun();
     setMessages((prev) => [...prev, userMessage]);
     beginActivityGroup(userMessage.id);
     window.hermesAPI
       .sendMessage("/deny", profile, hermesSessionId || undefined, messages.map((m) => ({ role: m.role, content: m.content })))
-      .catch(() => setIsLoading(false));
-  }, [beginActivityGroup, profile, hermesSessionId, setMessages, messages]);
+      .then(() => finalizeChatRun(runSeq, "completed"))
+      .catch((error) => {
+        if (finalizeChatRun(runSeq, "failed")) appendFallbackSendError(error);
+      });
+  }, [appendFallbackSendError, beginActivityGroup, beginChatRun, finalizeChatRun, profile, hermesSessionId, setMessages, messages]);
 
   const contextUsage = useMemo(() => {
     const usedTokens = usage?.lastTotalTokens ?? 0;
