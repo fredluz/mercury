@@ -3,6 +3,7 @@ import { dirname, join } from "path";
 import { randomUUID } from "crypto";
 import { HERMES_HOME } from "./installer";
 import type {
+  LocalChatTraceRequest,
   SkillTrainingRun,
   TraceEvent,
   TraceEventType,
@@ -13,6 +14,11 @@ import type {
 const STORE_PATH = join(HERMES_HOME, "desktop-traces.json");
 const MAX_RUNS = 200;
 const MAX_AGENT_DELTA_EVENTS_PER_RUN = 80;
+const SECRET_KEY_RE = /api[_-]?key|token|authorization|secret|password|credential/i;
+const SECRET_TEXT_RE =
+  /(api[_-]?key|token|authorization|secret|password|credential)(\s*[:=]\s*)([^\s,;]+)/gi;
+const MAX_METADATA_STRING_LENGTH = 2000;
+const MAX_DETAIL_LENGTH = 2000;
 
 interface TraceStoreData {
   version: 1;
@@ -52,6 +58,44 @@ function compactText(value: string, max = 180): string {
   return text.length > max ? `${text.slice(0, max - 1)}...` : text;
 }
 
+function sanitizeText(value: string, max = MAX_DETAIL_LENGTH): string {
+  return compactText(value.replace(SECRET_TEXT_RE, "$1$2[redacted]"), max);
+}
+
+function sanitizeMetadata(
+  metadata?: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  if (!metadata) return undefined;
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (SECRET_KEY_RE.test(key)) continue;
+    sanitized[key] = sanitizeValue(value);
+  }
+  return sanitized;
+}
+
+function sanitizeValue(value: unknown): unknown {
+  if (value == null || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    return sanitizeText(value, MAX_METADATA_STRING_LENGTH);
+  }
+  if (Array.isArray(value)) {
+    return compactText(
+      JSON.stringify(value.map((item) => sanitizeValue(item))),
+      MAX_METADATA_STRING_LENGTH,
+    );
+  }
+  if (typeof value === "object") {
+    return compactText(
+      JSON.stringify(sanitizeMetadata(value as Record<string, unknown>) || {}),
+      MAX_METADATA_STRING_LENGTH,
+    );
+  }
+  return compactText(String(value), MAX_METADATA_STRING_LENGTH);
+}
+
 function appendEvent(
   data: TraceStoreData,
   runId: string,
@@ -77,9 +121,9 @@ function appendEvent(
     runId,
     type,
     timestamp: Date.now(),
-    title,
-    detail,
-    metadata,
+    title: sanitizeText(title, 180),
+    detail: detail ? sanitizeText(detail) : undefined,
+    metadata: sanitizeMetadata(metadata),
   };
   run.events.push(event);
   run.updatedAt = event.timestamp;
@@ -118,6 +162,35 @@ export function recordTraceEvent(
   const data = readStore();
   appendEvent(data, runId, type, title, detail, metadata);
   writeStore(data);
+}
+
+export function createLocalChatTrace(
+  request: LocalChatTraceRequest,
+): TraceRun {
+  if (!request || typeof request.command !== "string") {
+    throw new Error("Local chat trace requires a command string.");
+  }
+  const command = compactText(request.command, MAX_DETAIL_LENGTH);
+  const run = createTraceRun(command || "Local command", request.profile);
+  recordTraceEvent(run.id, "slash.local", "Local command", command, {
+    ...(request.metadata || {}),
+    command,
+  });
+  if (request.responsePreview?.trim()) {
+    recordTraceEvent(
+      run.id,
+      "message.agent.delta",
+      "Local response",
+      compactText(request.responsePreview, 320),
+    );
+  }
+  finishTraceRun(
+    run.id,
+    "completed",
+    undefined,
+    "Handled locally in Mercury.",
+  );
+  return getTraceRun(run.id) || run;
 }
 
 export function recordTraceUsage(runId: string, usage: TraceUsage): void {

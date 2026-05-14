@@ -46,6 +46,30 @@
   color: var(--accent-text);
 }
 
+.trace-event-icon.tool-failed,
+.trace-event-icon.delegation-failed,
+.trace-event-icon.transport-error,
+.trace-event-icon.run-failed,
+.trace-event-icon.run-aborted {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.trace-event-icon.tool-completed,
+.trace-event-icon.delegation-completed,
+.trace-event-icon.run-completed,
+.trace-event-icon.skill-promoted {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.trace-event-icon.artifact-created,
+.trace-event-icon.approval-requested,
+.trace-event-icon.approval-resolved {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
 .trace-event-copy {
   display: grid;
   gap: 4px;
@@ -110,6 +134,79 @@
   margin: 0;
   color: var(--text-secondary);
   line-height: 1.45;
+}
+
+.trace-artifact-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--warning), var(--border) 68%);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warning-bg), var(--bg-primary) 54%);
+}
+
+.trace-artifact-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.trace-artifact-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.trace-artifact-copy strong {
+  color: var(--text-primary);
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.trace-artifact-copy small,
+.trace-artifact-unavailable {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.trace-artifact-copy p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.trace-artifact-open {
+  grid-column: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.trace-artifact-open:hover {
+  border-color: var(--border-focus);
+  background: var(--accent-subtle);
+}
+
+.trace-artifact-unavailable {
+  grid-column: 2;
 }
 
 .event-metadata {

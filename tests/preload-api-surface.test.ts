@@ -139,6 +139,11 @@ describe("New APIs from v0.8/v0.9 features", () => {
     expect(preloadMethods).toContain("importSkillMarkdown");
     expect(typeMethods).toContain("importSkillMarkdown");
   });
+
+  it("has local chat trace API", () => {
+    expect(preloadMethods).toContain("recordLocalChatTrace");
+    expect(typeMethods).toContain("recordLocalChatTrace");
+  });
 });
 
 // ─── Legacy APIs still present ──────────────────────────
@@ -170,6 +175,7 @@ describe("Legacy APIs preserved (backward compat)", () => {
     "onChatToolProgress",
     "onChatUsage",
     "onChatError",
+    "recordLocalChatTrace",
     // Gateway
     "startGateway",
     "stopGateway",

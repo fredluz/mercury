@@ -29,6 +29,16 @@ export async function executeLocalCommand(
       ...prev,
       { id: `agent-local-${Date.now()}`, role: "agent", content },
     ]);
+    void window.hermesAPI
+      .recordLocalChatTrace({
+        command: cmdText.trim(),
+        profile: ctx.profile,
+        responsePreview: content,
+        metadata: { command: cmd, source: "renderer-local-slash" },
+      })
+      .catch((error) => {
+        console.warn("Failed to record local chat trace", error);
+      });
   };
 
   switch (cmd) {

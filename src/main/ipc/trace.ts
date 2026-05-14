@@ -1,5 +1,7 @@
 import { ipcMain } from "electron";
+import type { LocalChatTraceRequest } from "../../shared/traces";
 import {
+  createLocalChatTrace,
   getTraceRun,
   listSkillTrainingRuns,
   listTraceRuns,
@@ -12,4 +14,8 @@ export function registerTraceIpc(): void {
     getTraceRun(runId),
   );
   ipcMain.handle("list-skill-training-runs", () => listSkillTrainingRuns());
+  ipcMain.handle(
+    "record-local-chat-trace",
+    (_event, request: LocalChatTraceRequest) => createLocalChatTrace(request),
+  );
 }

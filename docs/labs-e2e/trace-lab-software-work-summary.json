@@ -1,0 +1,48 @@
+{
+  "date": "2026-05-14T00:42:39.080Z",
+  "provider": "openai-codex",
+  "model": "gpt-5.5",
+  "credentialSource": "local ~/.hermes/auth.json openai-codex",
+  "hermesHome": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-trace-software-work-7WLPBQ",
+  "workspaceDir": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-sw-workspace-UvoVxS",
+  "tracePath": "/var/folders/yl/6991_2tx48j101frnnd3fl6m0000gn/T/mercury-trace-software-work-7WLPBQ/desktop-traces.json",
+  "status": "pass",
+  "result": {
+    "status": "pass",
+    "missing": [],
+    "blocked": [],
+    "runId": "f5b0c126-c5c4-4835-854c-293d56719365",
+    "runStatus": "completed",
+    "eventTypes": [
+      "artifact.created",
+      "message.agent.delta",
+      "message.user",
+      "run.completed",
+      "run.started",
+      "tool.progress"
+    ],
+    "usage": null,
+    "files": [
+      "README.md",
+      "assets/moon-moth.png",
+      "game.js",
+      "index.html",
+      "styles.css"
+    ],
+    "imageFiles": [
+      "assets/moon-moth.png"
+    ],
+    "artifactEvidence": true,
+    "imageToolEvidence": true,
+    "blockedInRun": false
+  },
+  "traceLab": {
+    "status": "pass",
+    "query": "TRACE_SW_WORK_OK"
+  },
+  "artifactPaths": {
+    "reportPath": "/Users/fredluz/Code/mercury/docs/labs-e2e/trace-lab-software-work-report.md",
+    "summaryPath": "/Users/fredluz/Code/mercury/docs/labs-e2e/trace-lab-software-work-summary.json",
+    "screenshotPath": "/Users/fredluz/Code/mercury/docs/labs-e2e/trace-lab-software-work.png"
+  }
+}

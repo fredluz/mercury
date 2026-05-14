@@ -110,6 +110,7 @@ describe("New IPC handlers from v0.8/v0.9 features", () => {
     "list-mcp-servers",
     "discover-memory-providers",
     "import-skill-markdown",
+    "record-local-chat-trace",
   ];
 
   for (const ch of newChannels) {

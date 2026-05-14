@@ -1,4 +1,5 @@
 import { ipcRenderer } from "electron";
+import type { LocalChatTraceRequest, TraceRun } from "../../shared/traces";
 
 export const chatApi = {
   // Chat
@@ -17,6 +18,9 @@ export const chatApi = {
     ),
 
   abortChat: (): Promise<void> => ipcRenderer.invoke("abort-chat"),
+
+  recordLocalChatTrace: (request: LocalChatTraceRequest): Promise<TraceRun> =>
+    ipcRenderer.invoke("record-local-chat-trace", request),
 
   onChatChunk: (callback: (chunk: string) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, chunk: string): void =>

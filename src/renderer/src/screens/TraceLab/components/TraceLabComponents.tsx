@@ -1,8 +1,8 @@
 import type React from "react";
-import { Activity, ArrowRight, Clock3, HelpCircle, MessageSquareText } from "lucide-react";
+import { Activity, ArrowRight, Clock3, ExternalLink, FileImage, HelpCircle, MessageSquareText } from "lucide-react";
 import type { SkillTrainingRun, TraceEvent, TraceRun } from "../../../../../shared/traces";
 import { EVENT_ICONS, EVENT_LABELS } from "../trace-lab.types";
-import { buildRunMap, explainEvent, formatSkillScore, formatTime } from "../trace-lab.helpers";
+import { buildRunMap, explainEvent, formatSkillScore, formatTime, safeStringify } from "../trace-lab.helpers";
 
 export function SkillTraceSummary({
   skillRuns,
@@ -132,7 +132,7 @@ export function TraceEventRow({
       onClick={onSelect}
     >
       <span className="trace-event-time">{formatTime(event.timestamp)}</span>
-      <span className={`trace-event-icon ${event.type.replace(".", "-")}`}>
+      <span className={`trace-event-icon ${event.type.replace(/\./g, "-")}`}>
         <Icon size={15} />
       </span>
       <span className="trace-event-copy">
@@ -152,6 +152,7 @@ export function EventInspector({
 }): React.JSX.Element {
   const metadata = event.metadata ? Object.entries(event.metadata) : [];
   const narrative = explainEvent(run, event);
+  const artifact = event.type === "artifact.created" ? getArtifactDetails(event) : null;
   return (
     <section className="event-inspector">
       <div className="trace-explainer-card primary">
@@ -175,11 +176,14 @@ export function EventInspector({
       </div>
 
       <div className="trace-raw-event">
-        <span className={`trace-event-type ${event.type.replace(".", "-")}`}>
+        <span className={`trace-event-type ${event.type.replace(/\./g, "-")}`}>
           {event.type}
         </span>
         <p>{event.detail || "No additional detail was recorded."}</p>
       </div>
+
+      {artifact ? <ArtifactInspector artifact={artifact} /> : null}
+
       <div className="event-metadata">
         {metadata.length === 0 ? (
           <span>No metadata</span>
@@ -187,13 +191,98 @@ export function EventInspector({
           metadata.map(([key, value]) => (
             <div key={key}>
               <span>{key}</span>
-              <strong>{String(value)}</strong>
+              <strong>{formatMetadataValue(value)}</strong>
             </div>
           ))
         )}
       </div>
     </section>
   );
+}
+
+type ArtifactDetails = {
+  type: string;
+  reference: string;
+  openTarget?: string;
+  source?: string;
+};
+
+function ArtifactInspector({ artifact }: { artifact: ArtifactDetails }): React.JSX.Element {
+  function openArtifact(): void {
+    if (!artifact.openTarget) return;
+    void window.hermesAPI.openExternal(artifact.openTarget).catch((error) => {
+      console.warn("Failed to open trace artifact", error);
+    });
+  }
+
+  return (
+    <div className="trace-artifact-card">
+      <span className="trace-artifact-icon">
+        <FileImage size={17} />
+      </span>
+      <div className="trace-artifact-copy">
+        <strong>{artifact.type} artifact</strong>
+        {artifact.source ? <small>{artifact.source}</small> : null}
+        <p>{artifact.reference}</p>
+      </div>
+      {artifact.openTarget ? (
+        <button className="trace-artifact-open" onClick={openArtifact}>
+          <ExternalLink size={14} />
+          Open artifact
+        </button>
+      ) : (
+        <span className="trace-artifact-unavailable">Display only</span>
+      )}
+    </div>
+  );
+}
+
+function getArtifactDetails(event: TraceEvent): ArtifactDetails | null {
+  const metadata = event.metadata || {};
+  const url = metadata.url;
+  const path = metadata.path;
+  const artifact = metadata.artifact;
+  const output = metadata.output;
+  const result = metadata.result;
+  const reference = firstString(url, path, artifact, output, result, event.detail);
+  if (!reference) return null;
+  const artifactType = firstString(metadata.artifactType, metadata.type) || "Generated";
+  const openTarget = artifactOpenTarget(url, path, reference);
+  return {
+    type: artifactType,
+    reference,
+    openTarget,
+    source: firstString(metadata.source),
+  };
+}
+
+function artifactOpenTarget(
+  url: unknown,
+  path: unknown,
+  reference: string,
+): string | undefined {
+  const target = firstString(url, path, reference);
+  if (!target) return undefined;
+  if (/^https?:\/\//i.test(target) || /^file:\/\//i.test(target)) return target;
+  if (target.startsWith("/")) return `file://${encodeURI(target)}`;
+  if (/^[A-Za-z]:[\\/]/.test(target)) {
+    return `file:///${encodeURI(target.replace(/\\/g, "/"))}`;
+  }
+  return undefined;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function formatMetadataValue(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return safeStringify(value);
 }
 
 export function EmptyState({

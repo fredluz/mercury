@@ -3,6 +3,7 @@ import https from "https";
 import { getModelConfig } from "../config";
 import { getApiUrl, getRemoteAuthHeader } from "./connection";
 import type { ChatCallbacks, ChatHandle } from "./types";
+import { normalizeHermesStreamEvent } from "./trace-events";
 
 export function sendMessageViaApi(
   message: string,
@@ -106,15 +107,18 @@ export function sendMessageViaApi(
 
   /** Handle a custom SSE event (non-data lines with `event:` prefix). */
   function processCustomEvent(eventType: string, data: string): void {
-    if (eventType === "hermes.tool.progress" && cb.onToolProgress) {
-      try {
-        const payload = JSON.parse(data);
+    try {
+      const payload = JSON.parse(data);
+      for (const traceEvent of normalizeHermesStreamEvent(eventType, payload)) {
+        cb.onTraceEvent?.(traceEvent);
+      }
+      if (eventType === "hermes.tool.progress" && cb.onToolProgress) {
         const label = payload.label || payload.tool || "";
         const emoji = payload.emoji || "";
         cb.onToolProgress(emoji ? `${emoji} ${label}` : label);
-      } catch {
-        /* malformed — skip */
       }
+    } catch {
+      /* malformed — skip */
     }
   }
 

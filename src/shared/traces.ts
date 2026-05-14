@@ -2,7 +2,20 @@ export type TraceEventType =
   | "run.started"
   | "message.user"
   | "message.agent.delta"
+  | "message.history.loaded"
+  | "session.resumed"
+  | "slash.local"
   | "tool.progress"
+  | "tool.started"
+  | "tool.completed"
+  | "tool.failed"
+  | "delegation.started"
+  | "delegation.completed"
+  | "delegation.failed"
+  | "artifact.created"
+  | "approval.requested"
+  | "approval.resolved"
+  | "transport.error"
   | "usage.recorded"
   | "run.completed"
   | "run.failed"
@@ -11,6 +24,13 @@ export type TraceEventType =
   | "skill.eval"
   | "skill.promoted"
   | "skill.rejected";
+
+export interface LocalChatTraceRequest {
+  command: string;
+  profile?: string;
+  responsePreview?: string;
+  metadata?: Record<string, unknown>;
+}
 
 export interface TraceUsage {
   promptTokens: number;

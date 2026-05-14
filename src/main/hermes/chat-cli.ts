@@ -4,6 +4,7 @@ import { HERMES_HOME, HERMES_PYTHON, HERMES_REPO, HERMES_SCRIPT, getEnhancedPath
 import { getModelConfig, readEnv } from "../config";
 import { stripAnsi } from "../utils";
 import type { ChatCallbacks, ChatHandle } from "./types";
+import { normalizeCliProgressLine } from "./trace-events";
 
 const LOCAL_PROVIDERS = new Set([
   "custom",
@@ -150,6 +151,9 @@ export function sendMessageViaCli(
     for (const line of lines) {
       const t = line.trim();
       if (t && NOISE_PATTERNS.some((p) => p.test(t))) continue;
+      for (const traceEvent of normalizeCliProgressLine(t)) {
+        cb.onTraceEvent?.(traceEvent);
+      }
       result.push(line);
     }
 
@@ -163,6 +167,8 @@ export function sendMessageViaCli(
   proc.stdout?.on("data", processOutput);
 
   let stderrBuffer = "";
+  let sawTransportError = false;
+  let transportErrorDetail = "";
   proc.stderr?.on("data", (data: Buffer) => {
     const text = stripAnsi(data.toString());
     if (
@@ -178,6 +184,14 @@ export function sendMessageViaCli(
         text,
       )
     ) {
+      sawTransportError = true;
+      transportErrorDetail = text.trim();
+      cb.onTraceEvent?.({
+        type: "transport.error",
+        title: "CLI transport error",
+        detail: text.trim().slice(0, 500),
+        metadata: { source: "cli-stderr" },
+      });
       hasOutput = true;
       cb.onChunk(text);
     } else {
@@ -187,10 +201,10 @@ export function sendMessageViaCli(
   });
 
   proc.on("close", (code) => {
-    if (code === 0 || hasOutput) {
+    if (code === 0 || (hasOutput && !sawTransportError)) {
       cb.onDone(capturedSessionId || undefined);
     } else {
-      const detail = stderrBuffer.trim();
+      const detail = transportErrorDetail || stderrBuffer.trim();
       cb.onError(
         detail
           ? `Hermes exited with code ${code}: ${detail}`

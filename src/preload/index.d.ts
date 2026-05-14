@@ -4,7 +4,11 @@ import type {
   SkillMarkdownImportRequest,
   SkillMarkdownImportResult,
 } from "../shared/skills";
-import type { SkillTrainingRun, TraceRun } from "../shared/traces";
+import type {
+  LocalChatTraceRequest,
+  SkillTrainingRun,
+  TraceRun,
+} from "../shared/traces";
 
 interface InstallStatus {
   installed: boolean;
@@ -108,6 +112,7 @@ interface HermesAPI {
     history?: Array<{ role: string; content: string }>,
   ) => Promise<{ response: string; sessionId?: string }>;
   abortChat: () => Promise<void>;
+  recordLocalChatTrace: (request: LocalChatTraceRequest) => Promise<TraceRun>;
   onChatChunk: (callback: (chunk: string) => void) => () => void;
   onChatDone: (callback: (sessionId?: string) => void) => () => void;
   onChatToolProgress: (callback: (tool: string) => void) => () => void;

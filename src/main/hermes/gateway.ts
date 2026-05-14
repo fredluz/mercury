@@ -22,7 +22,7 @@ export async function sendMessage(
 
   // Remote mode: always use API, no CLI fallback
   if (isRemoteMode()) {
-    return sendMessageViaApi(message, cb, profile, resumeSessionId);
+    return sendMessageViaApi(message, cb, profile, resumeSessionId, history);
   }
 
   // Check API server availability (cache the result, re-check periodically)

@@ -7,6 +7,7 @@ import {
   setSshRemoteApiKey,
   isRemoteMode,
 } from "../hermes";
+import { extractArtifactEventsFromText } from "../hermes/trace-events";
 import { startSshTunnel, isSshTunnelHealthy } from "../ssh-tunnel";
 import { getConnectionConfig } from "../config";
 import {
@@ -22,14 +23,27 @@ import {
 } from "../ssh-remote";
 import type { IpcRegistrationContext } from "./types";
 
-let currentChatAbort: (() => void) | null = null;
-let currentTraceRunId: string | null = null;
+type ChatResponse = { response: string; sessionId?: string };
+
+type ActiveChatRun = {
+  traceRunId: string;
+  abort: () => void;
+  settleAbort: () => void;
+};
+
+let activeChatRun: ActiveChatRun | null = null;
+
+function abortCurrentRun(detail: string): void {
+  if (!activeChatRun) return;
+  const run = activeChatRun;
+  activeChatRun = null;
+  run.abort();
+  finishTraceRun(run.traceRunId, "aborted", undefined, detail);
+  run.settleAbort();
+}
 
 export function abortActiveChat(): void {
-  if (currentChatAbort) {
-    currentChatAbort();
-    currentChatAbort = null;
-  }
+  abortCurrentRun("Mercury shut down the active Hermes run.");
 }
 
 export function registerChatIpc({
@@ -62,138 +76,206 @@ export function registerChatIpc({
         }
       }
 
-      if (currentChatAbort) {
-        currentChatAbort();
-        if (currentTraceRunId) {
-          finishTraceRun(
-            currentTraceRunId,
-            "aborted",
-            undefined,
-            "Superseded by a new Hermes message.",
-          );
-        }
-      }
+      abortCurrentRun("Superseded by a new Hermes message.");
 
       let fullResponse = "";
       let recordedAgentStart = false;
       const chatStartTime = Date.now();
       const traceRun = createTraceRun(message, profile);
-      currentTraceRunId = traceRun.id;
-      let resolveChat: (v: { response: string; sessionId?: string }) => void;
-      let rejectChat: (reason?: unknown) => void;
-      const promise = new Promise<{ response: string; sessionId?: string }>(
-        (res, rej) => {
-          resolveChat = res;
-          rejectChat = rej;
-        },
-      );
 
-      const handle = await sendMessage(
-        message,
-        {
-          onChunk: (chunk) => {
-            fullResponse += chunk;
-            if (!recordedAgentStart && chunk.trim()) {
-              recordedAgentStart = true;
+      if (resumeSessionId) {
+        recordTraceEvent(
+          traceRun.id,
+          "session.resumed",
+          "Session resumed",
+          resumeSessionId,
+          { sessionId: resumeSessionId },
+        );
+      }
+      if (history?.length) {
+        recordTraceEvent(
+          traceRun.id,
+          "message.history.loaded",
+          "History loaded",
+          `${history.length} previous messages included.`,
+          {
+            messageCount: history.length,
+            userCount: history.filter((msg) => msg.role === "user").length,
+            agentCount: history.filter(
+              (msg) => msg.role === "agent" || msg.role === "assistant",
+            ).length,
+          },
+        );
+      }
+
+      let settled = false;
+      let resolveChat!: (v: ChatResponse) => void;
+      let rejectChat!: (reason?: unknown) => void;
+      const promise = new Promise<ChatResponse>((res, rej) => {
+        resolveChat = res;
+        rejectChat = rej;
+      });
+      const settleResolved = (response: ChatResponse): void => {
+        if (settled) return;
+        settled = true;
+        resolveChat(response);
+      };
+      const settleRejected = (reason: unknown): void => {
+        if (settled) return;
+        settled = true;
+        rejectChat(reason);
+      };
+      const isActiveRun = (): boolean => activeChatRun?.traceRunId === traceRun.id;
+      const shouldIgnoreCallback = (): boolean =>
+        settled || (activeChatRun !== null && !isActiveRun());
+      let skipNextLegacyToolTrace = false;
+
+      try {
+        const handle = await sendMessage(
+          message,
+          {
+            onChunk: (chunk) => {
+              if (shouldIgnoreCallback()) return;
+              fullResponse += chunk;
+              if (!recordedAgentStart && chunk.trim()) {
+                recordedAgentStart = true;
+                recordTraceEvent(
+                  traceRun.id,
+                  "message.agent.delta",
+                  "Agent response started",
+                  chunk.trim().slice(0, 180),
+                );
+              }
+              event.sender.send("chat-chunk", chunk);
+            },
+            onDone: (sessionId) => {
+              if (shouldIgnoreCallback()) return;
+              if (isActiveRun()) activeChatRun = null;
+              if (fullResponse.trim()) {
+                recordTraceEvent(
+                  traceRun.id,
+                  "message.agent.delta",
+                  "Agent response completed",
+                  fullResponse.trim().slice(0, 320),
+                );
+              }
+              for (const artifactEvent of extractArtifactEventsFromText(fullResponse)) {
+                recordTraceEvent(
+                  traceRun.id,
+                  artifactEvent.type,
+                  artifactEvent.title,
+                  artifactEvent.detail,
+                  artifactEvent.metadata,
+                );
+              }
+              finishTraceRun(
+                traceRun.id,
+                "completed",
+                sessionId,
+                "Hermes returned a completed response.",
+              );
+              event.sender.send("chat-done", sessionId || "");
+              settleResolved({ response: fullResponse, sessionId });
+              // Desktop notification when window is not focused and response took >10s
+              if (
+                getMainWindow() &&
+                !getMainWindow()!.isFocused() &&
+                Date.now() - chatStartTime > 10000
+              ) {
+                const preview = fullResponse
+                  .replace(/[#*_`~\n]+/g, " ")
+                  .trim()
+                  .slice(0, 80);
+                new Notification({
+                  title: "Mercury",
+                  body: preview || "Response ready",
+                }).show();
+              }
+            },
+            onError: (error) => {
+              if (shouldIgnoreCallback()) return;
+              if (isActiveRun()) activeChatRun = null;
               recordTraceEvent(
                 traceRun.id,
-                "message.agent.delta",
-                "Agent response started",
-                chunk.trim().slice(0, 180),
+                "transport.error",
+                "Transport error",
+                error,
+                { source: "chat" },
               );
-            }
-            event.sender.send("chat-chunk", chunk);
-          },
-          onDone: (sessionId) => {
-            if (currentTraceRunId === traceRun.id) {
-              currentChatAbort = null;
-              currentTraceRunId = null;
-            }
-            if (fullResponse.trim()) {
+              finishTraceRun(traceRun.id, "failed", undefined, error);
+              event.sender.send("chat-error", error);
+              settleRejected(new Error(error));
+              // Notify on error too if window not focused
+              if (getMainWindow() && !getMainWindow()!.isFocused()) {
+                new Notification({
+                  title: "Mercury — Error",
+                  body: error.slice(0, 100),
+                }).show();
+              }
+            },
+            onTraceEvent: (traceEvent) => {
+              if (shouldIgnoreCallback()) return;
+              if (traceEvent.type.startsWith("tool.") || traceEvent.type.startsWith("delegation.")) {
+                skipNextLegacyToolTrace = true;
+              }
               recordTraceEvent(
                 traceRun.id,
-                "message.agent.delta",
-                "Agent response completed",
-                fullResponse.trim().slice(0, 320),
+                traceEvent.type,
+                traceEvent.title,
+                traceEvent.detail,
+                traceEvent.metadata,
               );
-            }
-            finishTraceRun(
-              traceRun.id,
-              "completed",
-              sessionId,
-              "Hermes returned a completed response.",
-            );
-            event.sender.send("chat-done", sessionId || "");
-            resolveChat({ response: fullResponse, sessionId });
-            // Desktop notification when window is not focused and response took >10s
-            if (
-              getMainWindow() &&
-              !getMainWindow()!.isFocused() &&
-              Date.now() - chatStartTime > 10000
-            ) {
-              const preview = fullResponse
-                .replace(/[#*_`~\n]+/g, " ")
-                .trim()
-                .slice(0, 80);
-              new Notification({
-                title: "Mercury",
-                body: preview || "Response ready",
-              }).show();
-            }
+            },
+            onToolProgress: (tool) => {
+              if (shouldIgnoreCallback()) return;
+              if (skipNextLegacyToolTrace) {
+                skipNextLegacyToolTrace = false;
+              } else {
+                recordTraceEvent(
+                  traceRun.id,
+                  "tool.progress",
+                  "Tool progress",
+                  tool,
+                );
+              }
+              event.sender.send("chat-tool-progress", tool);
+            },
+            onUsage: (usage) => {
+              if (shouldIgnoreCallback()) return;
+              recordTraceUsage(traceRun.id, usage);
+              event.sender.send("chat-usage", usage);
+            },
           },
-          onError: (error) => {
-            if (currentTraceRunId === traceRun.id) {
-              currentChatAbort = null;
-              currentTraceRunId = null;
-            }
-            finishTraceRun(traceRun.id, "failed", undefined, error);
-            event.sender.send("chat-error", error);
-            rejectChat(new Error(error));
-            // Notify on error too if window not focused
-            if (getMainWindow() && !getMainWindow()!.isFocused()) {
-              new Notification({
-                title: "Mercury — Error",
-                body: error.slice(0, 100),
-              }).show();
-            }
-          },
-          onToolProgress: (tool) => {
-            recordTraceEvent(
-              traceRun.id,
-              "tool.progress",
-              "Tool progress",
-              tool,
-            );
-            event.sender.send("chat-tool-progress", tool);
-          },
-          onUsage: (usage) => {
-            recordTraceUsage(traceRun.id, usage);
-            event.sender.send("chat-usage", usage);
-          },
-        },
-        profile,
-        resumeSessionId,
-        history,
-      );
+          profile,
+          resumeSessionId,
+          history,
+        );
 
-      currentChatAbort = handle.abort;
+        activeChatRun = {
+          traceRunId: traceRun.id,
+          abort: handle.abort,
+          settleAbort: () => {
+            if (!event.sender.isDestroyed()) {
+              event.sender.send("chat-done", "");
+            }
+            settleResolved({ response: fullResponse });
+          },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        recordTraceEvent(traceRun.id, "transport.error", "Transport error", message, {
+          source: "chat-send",
+        });
+        finishTraceRun(traceRun.id, "failed", undefined, message);
+        event.sender.send("chat-error", message);
+        settleRejected(error);
+      }
+
       return promise;
     },
   );
 
   ipcMain.handle("abort-chat", () => {
-    if (currentChatAbort) {
-      currentChatAbort();
-      currentChatAbort = null;
-      if (currentTraceRunId) {
-        finishTraceRun(
-          currentTraceRunId,
-          "aborted",
-          undefined,
-          "User stopped the active Hermes run.",
-        );
-        currentTraceRunId = null;
-      }
-    }
+    abortCurrentRun("User stopped the active Hermes run.");
   });
 }

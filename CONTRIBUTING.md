@@ -84,6 +84,19 @@ build/                   Packaging resources
 - Run `npm run typecheck` to verify type safety.
 - Follow existing patterns and conventions in the codebase.
 
+## Documentation Expectations
+
+Start from the [Mercury documentation index](docs/index.md) when changing behavior that crosses process, storage, or user-workflow boundaries. Update the relevant evergreen docs in the same PR when your change touches:
+
+- IPC channels or preload API methods; see the [IPC/preload contract](docs/contracts/ipc-preload.md).
+- Shared schemas in `src/shared/*`.
+- Persistent files, profile storage, backup/import behavior, or other stored user data.
+- Connection modes, SSH, gateway, install/update, or runtime capability behavior.
+- User-visible workflows across renderer screens.
+- Contract tests or the behavior they protect; see [contract tests](docs/testing/contract-tests.md).
+
+Historical investigations, audits, E2E reports, and branch plans under `docs/` are evidence, not the primary current reference. Use them for context, then verify current behavior against source and evergreen docs.
+
 ## Community
 
 - Join the [Nous Research Discord](https://discord.gg/NousResearch) to chat with other contributors.

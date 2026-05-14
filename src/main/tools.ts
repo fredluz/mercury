@@ -111,60 +111,130 @@ function localizeToolDefs(
 }
 
 /**
- * Parse the platform_toolsets.cli list from config.yaml.
- * The yaml structure looks like:
- *   platform_toolsets:
- *     cli:
- *       - web
- *       - browser
- *       ...
+ * Parse a platform_toolsets.<platform> list from config.yaml.
+ * Mercury chat prefers Hermes' local API server when it is ready, so the
+ * app-visible "CLI" tool toggles must stay mirrored to api_server as well.
  * We use line-by-line parsing to stay consistent with config.ts (no yaml dep).
  */
-function parseEnabledToolsets(configContent: string): Set<string> {
+function parseEnabledToolsets(configContent: string, platform = "cli"): Set<string> {
   const enabled = new Set<string>();
   const lines = configContent.split("\n");
 
   let inPlatformToolsets = false;
-  let inCli = false;
+  let inTarget = false;
+  const platformRe = new RegExp(`^\\s+${escapeRegex(platform)}\\s*:`);
 
   for (const line of lines) {
     const trimmed = line.trimEnd();
 
-    // Detect section headers
     if (/^\s*platform_toolsets\s*:/.test(trimmed)) {
       inPlatformToolsets = true;
-      inCli = false;
+      inTarget = false;
       continue;
     }
 
-    if (inPlatformToolsets && /^\s+cli\s*:/.test(trimmed)) {
-      inCli = true;
+    if (inPlatformToolsets && platformRe.test(trimmed)) {
+      inTarget = true;
       continue;
     }
 
-    // Exit sections on un-indent
     if (inPlatformToolsets && /^\S/.test(trimmed) && !/^\s*$/.test(trimmed)) {
       inPlatformToolsets = false;
-      inCli = false;
+      inTarget = false;
       continue;
     }
 
-    if (inCli && /^\s{4}\S/.test(trimmed) && !/^\s{4,}-/.test(trimmed)) {
-      // A new key at the same level as cli — we've left the cli section
-      inCli = false;
+    if (inTarget && /^\s{4}\S/.test(trimmed) && !/^\s{4,}-/.test(trimmed)) {
+      inTarget = false;
       continue;
     }
 
-    // Parse list items inside cli:
-    if (inCli) {
+    if (inTarget) {
       const match = trimmed.match(/^\s+-\s+["']?(\w+)["']?/);
-      if (match) {
-        enabled.add(match[1]);
-      }
+      if (match) enabled.add(match[1]);
     }
   }
 
   return enabled;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function platformToolsetSection(platform: string, enabled: Set<string>): string {
+  const toolsetLines = Array.from(enabled)
+    .sort()
+    .map((tool) => `      - ${tool}`)
+    .join("\n");
+  return `  ${platform}:\n${toolsetLines}`;
+}
+
+function writeMirroredPlatformToolsets(
+  configContent: string,
+  enabled: Set<string>,
+): string {
+  if (!configContent.includes("platform_toolsets")) {
+    return `${configContent.trimEnd()}\n\nplatform_toolsets:\n${platformToolsetSection("cli", enabled)}\n${platformToolsetSection("api_server", enabled)}\n`;
+  }
+
+  let content = replacePlatformToolset(configContent, "cli", enabled);
+  content = replacePlatformToolset(content, "api_server", enabled);
+  return content;
+}
+
+function replacePlatformToolset(
+  configContent: string,
+  platform: string,
+  enabled: Set<string>,
+): string {
+  const lines = configContent.split("\n");
+  const result: string[] = [];
+  const section = platformToolsetSection(platform, enabled);
+  const platformRe = new RegExp(`^\\s+${escapeRegex(platform)}\\s*:`);
+  let inPlatformToolsets = false;
+  let inTarget = false;
+  let inserted = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trimEnd();
+
+    if (/^\s*platform_toolsets\s*:/.test(trimmed)) {
+      inPlatformToolsets = true;
+      result.push(line);
+      continue;
+    }
+
+    if (inPlatformToolsets && platformRe.test(trimmed)) {
+      inTarget = true;
+      inserted = true;
+      result.push(section);
+      continue;
+    }
+
+    if (inTarget) {
+      if (/^\s+-\s/.test(trimmed)) continue;
+      if (/^\s{4}\S/.test(trimmed) || /^\S/.test(trimmed) || trimmed === "") {
+        inTarget = false;
+        result.push(line);
+      }
+      continue;
+    }
+
+    if (inPlatformToolsets && /^\S/.test(trimmed) && trimmed !== "") {
+      inPlatformToolsets = false;
+      if (!inserted) {
+        result.push(section);
+        inserted = true;
+      }
+    }
+
+    result.push(line);
+  }
+
+  if (inPlatformToolsets && !inserted) result.push(section);
+  return result.join("\n");
 }
 
 export function getToolsets(profile?: string): ToolsetInfo[] {
@@ -208,83 +278,12 @@ export function setToolsetEnabled(
       currentEnabled.delete(key);
     }
 
-    // Rebuild the platform_toolsets.cli section
-    const toolsetLines = Array.from(currentEnabled)
-      .sort()
-      .map((t) => `      - ${t}`)
-      .join("\n");
-
-    const newSection = `  cli:\n${toolsetLines}`;
-
-    // Check if platform_toolsets section exists
-    if (content.includes("platform_toolsets")) {
-      // Replace existing cli section within platform_toolsets
-      const lines = content.split("\n");
-      const result: string[] = [];
-      let inPlatformToolsets = false;
-      let inCli = false;
-      let cliInserted = false;
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const trimmed = line.trimEnd();
-
-        if (/^\s*platform_toolsets\s*:/.test(trimmed)) {
-          inPlatformToolsets = true;
-          result.push(line);
-          continue;
-        }
-
-        if (inPlatformToolsets && /^\s+cli\s*:/.test(trimmed)) {
-          inCli = true;
-          // Output the new cli section
-          result.push(newSection);
-          cliInserted = true;
-          continue;
-        }
-
-        if (inCli) {
-          // Skip old list items
-          if (/^\s+-\s/.test(trimmed)) continue;
-          // End of cli section
-          if (
-            /^\s{4}\S/.test(trimmed) ||
-            /^\S/.test(trimmed) ||
-            trimmed === ""
-          ) {
-            inCli = false;
-            if (
-              trimmed === "" &&
-              i + 1 < lines.length &&
-              /^\S/.test(lines[i + 1].trimEnd())
-            ) {
-              result.push(line);
-              continue;
-            }
-            result.push(line);
-            continue;
-          }
-          continue;
-        }
-
-        if (inPlatformToolsets && /^\S/.test(trimmed) && trimmed !== "") {
-          inPlatformToolsets = false;
-          if (!cliInserted) {
-            result.push(newSection);
-            cliInserted = true;
-          }
-        }
-
-        result.push(line);
-      }
-
-      safeWriteFile(configFile, result.join("\n"));
-    } else {
-      // Append platform_toolsets section at end
-      const newContent =
-        content.trimEnd() + "\n\nplatform_toolsets:\n" + newSection + "\n";
-      safeWriteFile(configFile, newContent);
-    }
+    // Rebuild both platform_toolsets.cli and platform_toolsets.api_server.
+    // Mercury's local chat path usually talks to Hermes through api_server,
+    // while the Tools UI historically edited only cli. Keeping these mirrored
+    // prevents the model from seeing a different tool registry than the UI.
+    const updated = writeMirroredPlatformToolsets(content, currentEnabled);
+    safeWriteFile(configFile, updated);
 
     return true;
   } catch {
