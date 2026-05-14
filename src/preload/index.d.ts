@@ -277,6 +277,7 @@ interface HermesAPI {
       source: string;
       messageCount: number;
       model: string;
+      profile?: string;
     }>
   >;
   syncSessionCache: () => Promise<
@@ -287,6 +288,7 @@ interface HermesAPI {
       source: string;
       messageCount: number;
       model: string;
+      profile?: string;
     }>
   >;
   updateSessionTitle: (sessionId: string, title: string) => Promise<void>;
@@ -304,6 +306,7 @@ interface HermesAPI {
       messageCount: number;
       model: string;
       snippet: string;
+      profile?: string;
     }>
   >;
 

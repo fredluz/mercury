@@ -22,6 +22,7 @@ import {
   sshStartGateway,
   sshReadRemoteApiKey,
 } from "../ssh-remote";
+import { updateSessionProfile } from "../session-cache";
 import type { IpcRegistrationContext } from "./types";
 
 type ChatResponse = { response: string; sessionId?: string };
@@ -194,6 +195,9 @@ export function registerChatIpc({
                 sessionId,
                 "Hermes returned a completed response.",
               );
+              if (sessionId) {
+                updateSessionProfile(sessionId, profile);
+              }
               event.sender.send("chat-done", sessionId || "");
               settleResolved({ response: fullResponse, sessionId });
               // Desktop notification when window is not focused and response took >10s

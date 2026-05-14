@@ -9,6 +9,7 @@ interface CachedSession {
   source: string;
   messageCount: number;
   model: string;
+  profile?: string;
 }
 
 interface SearchResult {
@@ -19,6 +20,7 @@ interface SearchResult {
   messageCount: number;
   model: string;
   snippet: string;
+  profile?: string;
 }
 
 interface SessionsProps {
@@ -103,6 +105,11 @@ function formatModel(model: string): string {
   return name.split(":")[0];
 }
 
+function formatProfile(profile?: string): string {
+  const clean = profile?.trim();
+  return clean || "unknown profile";
+}
+
 // Memoized session card
 const SessionCard = memo(function SessionCard({
   session,
@@ -132,7 +139,7 @@ const SessionCard = memo(function SessionCard({
       </div>
       <div className="sessions-card-tags">
         <span className="sessions-tag sessions-tag--source">
-          {session.source}
+          {formatProfile(session.profile)}
         </span>
         <span className="sessions-tag">
           {session.messageCount} msg{session.messageCount !== 1 ? "s" : ""}
@@ -273,7 +280,7 @@ function Sessions({
                 )}
                 <div className="sessions-card-tags">
                   <span className="sessions-tag sessions-tag--source">
-                    {r.source}
+                    {formatProfile(r.profile)}
                   </span>
                   <span className="sessions-tag">
                     {r.messageCount} {r.messageCount !== 1 ? t("sessions.messages") : t("sessions.messageSingular")}

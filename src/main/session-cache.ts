@@ -17,6 +17,7 @@ export interface CachedSession {
   source: string;
   messageCount: number;
   model: string;
+  profile?: string;
 }
 
 interface CacheData {
@@ -75,6 +76,40 @@ function writeCache(data: CacheData): void {
 function getDb(): Database.Database | null {
   if (!existsSync(DB_PATH)) return null;
   return new Database(DB_PATH, { readonly: true });
+}
+
+type SessionRow = {
+  id: string;
+  started_at: number;
+  source: string;
+  message_count: number;
+  model: string;
+  title: string | null;
+};
+
+function normalizeProfile(profile?: string): string {
+  const value = profile?.trim();
+  return value || "default";
+}
+
+function readSessionRow(sessionId: string): SessionRow | null {
+  const db = getDb();
+  if (!db) return null;
+  try {
+    return (
+      (db
+        .prepare(
+          `SELECT id, started_at, source, message_count, model, title
+           FROM sessions
+           WHERE id = ?`,
+        )
+        .get(sessionId) as SessionRow | undefined) || null
+    );
+  } catch {
+    return null;
+  } finally {
+    db.close();
+  }
 }
 
 // Sync from hermes DB to local cache — only fetches new/updated sessions
@@ -184,4 +219,37 @@ export function updateSessionTitle(
     cache.sessions[idx].title = title;
     writeCache(cache);
   }
+}
+
+export function updateSessionProfile(
+  sessionId: string,
+  profile?: string,
+): boolean {
+  const cleanSessionId = sessionId.trim();
+  if (!cleanSessionId) return false;
+  const cleanProfile = normalizeProfile(profile);
+
+  const cache = readCache();
+  const idx = cache.sessions.findIndex((s) => s.id === cleanSessionId);
+  if (idx >= 0) {
+    cache.sessions[idx].profile = cleanProfile;
+    writeCache(cache);
+    return true;
+  }
+
+  const row = readSessionRow(cleanSessionId);
+  if (!row) return false;
+
+  cache.sessions.push({
+    id: row.id,
+    title: row.title?.trim() || t("sessions.newConversation", getAppLocale()),
+    startedAt: row.started_at,
+    source: row.source,
+    messageCount: row.message_count,
+    model: row.model || "",
+    profile: cleanProfile,
+  });
+  cache.sessions.sort((a, b) => b.startedAt - a.startedAt);
+  writeCache(cache);
+  return true;
 }

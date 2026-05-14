@@ -22,6 +22,21 @@ import {
   sshListCachedSessions,
 } from "../ssh-remote";
 
+function attachCachedProfiles<
+  T extends { sessionId: string; profile?: string },
+>(results: T[]): T[] {
+  const profiles = new Map(
+    listCachedSessions(Number.MAX_SAFE_INTEGER).map((session) => [
+      session.id,
+      session.profile,
+    ]),
+  );
+  return results.map((result) => ({
+    ...result,
+    profile: result.profile || profiles.get(result.sessionId),
+  }));
+}
+
 export function registerSessionsIpc(): void {
   // Sessions
   ipcMain.handle("list-sessions", (_event, limit?: number, offset?: number) => {
@@ -88,6 +103,6 @@ export function registerSessionsIpc(): void {
     const conn = getConnectionConfig();
     if (conn.mode === "ssh" && conn.ssh)
       return sshSearchSessions(conn.ssh, query, limit);
-    return searchSessions(query, limit);
+    return attachCachedProfiles(searchSessions(query, limit));
   });
 }

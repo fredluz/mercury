@@ -34,7 +34,7 @@ vi.mock("../src/main/locale", () => ({
 }));
 
 import Database from "better-sqlite3";
-import { syncSessionCache } from "../src/main/session-cache";
+import { syncSessionCache, updateSessionProfile } from "../src/main/session-cache";
 
 const CACHE_FILE = join(TEST_HOME, "desktop", "sessions.json");
 const DB_PATH = join(TEST_HOME, "state.db");
@@ -193,6 +193,64 @@ describe("syncSessionCache", () => {
     const result = syncSessionCache();
 
     expect(result.map((r) => r.id)).toEqual(["s2", "s1"]);
+  });
+
+  it("records the Mercury profile used for a session in the desktop cache", () => {
+    const now = Math.floor(Date.now() / 1000);
+    seedDb([
+      {
+        id: "profiled-session",
+        started_at: now,
+        message_count: 2,
+        model: "gpt-5.5",
+        firstUserMessage: "which profile handled this",
+      },
+    ]);
+
+    expect(updateSessionProfile("profiled-session", "youtube-optimizer")).toBe(true);
+
+    const cache = JSON.parse(readFileSync(CACHE_FILE, "utf-8")) as {
+      sessions: Array<{ id: string; profile?: string; model: string }>;
+    };
+    expect(cache.sessions[0]).toEqual(
+      expect.objectContaining({
+        id: "profiled-session",
+        profile: "youtube-optimizer",
+        model: "gpt-5.5",
+      }),
+    );
+  });
+
+  it("preserves recorded profile metadata during later cache syncs", () => {
+    const future = Math.floor(Date.now() / 1000) + 600;
+    seedDb([
+      {
+        id: "profile-preserved",
+        started_at: future,
+        message_count: 1,
+        firstUserMessage: "remember the profile",
+      },
+    ]);
+    syncSessionCache();
+    updateSessionProfile("profile-preserved", "research-agent");
+
+    seedDb([
+      {
+        id: "profile-preserved",
+        started_at: future,
+        message_count: 3,
+        firstUserMessage: "remember the profile",
+      },
+    ]);
+
+    const result = syncSessionCache();
+    expect(result[0]).toEqual(
+      expect.objectContaining({
+        id: "profile-preserved",
+        profile: "research-agent",
+        messageCount: 3,
+      }),
+    );
   });
 
   it("handles a large existing cache without quadratic blowup (issue #16)", () => {

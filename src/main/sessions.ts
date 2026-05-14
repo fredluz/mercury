@@ -14,6 +14,7 @@ export interface SessionSummary {
   model: string;
   title: string | null;
   preview: string;
+  profile?: string;
 }
 
 export interface SessionMessage {
@@ -31,6 +32,7 @@ export interface SearchResult {
   messageCount: number;
   model: string;
   snippet: string;
+  profile?: string;
 }
 
 function getDb(): Database.Database | null {
