@@ -35,6 +35,17 @@ Mercury is a public fork and adaptation of [Hermes Desktop](https://github.com/f
 
 We expect to keep pulling useful upstream improvements where they fit Mercury's direction.
 
+### Mercury-specific work
+
+Mercury is not just a renamed upstream build. This fork is focused on making Hermes usable as a desktop control surface for real agent work:
+
+- **Mercury identity and packaging** — app name, icons, release metadata, Windows/Fedora packaging, and product docs target Mercury.
+- **Codex app server path** — Codex app server is the recommended provider path, including Codex OAuth-backed app-server capabilities used by the runtime.
+- **Chat as an operating surface** — richer chat activity, model/profile actions, generated titles, profile-aware session metadata, local slash-command traces, token/cost visibility, and clearer tool progress.
+- **Trace Lab** — conversation-level trace inspection with event timelines for user messages, assistant output, tool calls, delegation, approvals, transport errors, artifacts, image generation, and skill-evolution signals.
+- **Sessions and profiles** — searchable session history, profile labels on sessions, profile switching, per-profile models/tools/skills/memory/persona, and diagnostics for session search latency.
+- **Verification harnesses** — contract tests plus real Electron e2e sweeps for Trace Lab, sessions, and Codex-backed image/artifact flows.
+
 ## Install
 
 Download the latest build from the Mercury releases page.
@@ -80,38 +91,31 @@ sudo dnf install ./mercury-<version>.rpm
 ## Features
 
 - **Guided first-run install** for Hermes Agent with progress tracking and dependency resolution
-- **Local or remote backend** — run Hermes locally on `127.0.0.1:8642`, or connect the desktop app to a remote Hermes API server with URL + API key
-- **Multi-provider support** — OpenRouter, Anthropic, OpenAI, Google (Gemini), xAI (Grok), Nous Portal, Qwen, MiniMax, Hugging Face, Groq, and local OpenAI-compatible endpoints (LM Studio, Ollama, vLLM, llama.cpp)
-- **Streaming chat UI** with SSE streaming, tool progress indicators, markdown rendering, and syntax highlighting
+- **Codex app server provider path** — recommended for Mercury, including Codex OAuth-backed app-server capabilities and real-token agent workflows
+- **Local or remote backend** — run Hermes locally on `127.0.0.1:8642`, connect to a remote Hermes API server, or use the Codex app server path from setup
+- **Streaming chat workspace** with SSE streaming, tool progress indicators, markdown rendering, syntax highlighting, activity groups, profile-aware model actions, and generated titles
 - **Token usage tracking** — live prompt/completion token counts and cost display in the chat footer, plus a `/usage` slash command
-- **22 slash commands** — `/new`, `/clear`, `/fast`, `/web`, `/image`, `/browse`, `/code`, `/shell`, `/usage`, `/help`, `/tools`, `/skills`, `/model`, `/memory`, `/persona`, `/version`, `/compact`, `/compress`, `/undo`, `/retry`, `/debug`, `/status`, and more
-- **Session management** — full-text search (SQLite FTS5), date-grouped history, resume and search across conversations
-- **Profile switching** — create, delete, and switch between separate Hermes environments with isolated config
-- **14 toolsets** — web, browser, terminal, file, code execution, vision, image gen, TTS, skills, memory, session search, clarify, delegation, MoA, and task planning
+- **Slash commands** — `/new`, `/clear`, `/fast`, `/web`, `/image`, `/browse`, `/code`, `/shell`, `/usage`, `/help`, `/tools`, `/skills`, `/model`, `/memory`, `/persona`, `/version`, `/compact`, `/compress`, `/undo`, `/retry`, `/debug`, `/status`, and more
+- **Trace Lab** — inspect complete conversations as trace units, expand individual runs, review event timelines, and audit messages, tools, delegation, approvals, artifacts, images, errors, and skill-evolution signals
+- **Session management** — SQLite FTS5 search, date-grouped history, resume/search across conversations, profile labels, and latency-oriented diagnostics
+- **Profile switching** — create, delete, and switch between separate Hermes environments with isolated config, models, tools, skills, memory, and persona
+- **14 toolsets** — web, browser, terminal, file, code execution, vision, image generation, TTS, skills, memory, session search, clarify, delegation, MoA, and task planning
 - **Memory system** — view/edit memory entries, user profile memory, capacity tracking, and discoverable memory providers (Honcho, Hindsight, Mem0, RetainDB, Supermemory, ByteRover)
 - **Persona editor** — edit and reset your agent's SOUL.md personality
-- **Saved models** — CRUD management for model configurations across providers
+- **Saved models and providers** — manage provider credentials and model configurations across Codex app server, hosted APIs, and local OpenAI-compatible servers
 - **Scheduled tasks** — cron job builder (minutes, hourly, daily, weekly, custom cron) with 15 delivery targets
-- **16 messaging gateways** — Telegram, Discord, Slack, WhatsApp, Signal, Matrix, Mattermost, Email (IMAP/SMTP), SMS (Twilio/Vonage), iMessage (BlueBubbles), DingTalk, Feishu/Lark, WeCom, WeChat (iLink Bot), Webhooks, Home Assistant
+- **Messaging gateways** — Telegram, Discord, Slack, WhatsApp, Signal, Matrix, Mattermost, Email (IMAP/SMTP), SMS, iMessage, DingTalk, Feishu/Lark, WeCom, WeChat, Webhooks, and Home Assistant
 - **Backup, import & debug dump** — full data backup/restore and system diagnostics from Settings
 - **Log viewer** — view gateway and agent logs directly from the Settings screen
-- **Auto-updater** — check for and install updates via electron-updater
-- **i18n ready** — internationalization framework with English locale covering all screens, ready for community translations
-- **Test suite** — SSE parser, IPC handlers, preload API surface, installer utilities, and constants validation with Vitest
+- **Auto-updater and packaging** — Electron updater support plus macOS, Windows, AppImage, Debian, and Fedora/RPM build targets
+- **Test and e2e coverage** — Vitest contract coverage plus Electron sweeps for Trace Lab, sessions, and app-server workflows
 
 ## Preview
 
 <table>
 <tr>
-<td width="50%" align="center"><b>Chat</b><br/><img width="100%" alt="Chat" src="https://github.com/user-attachments/assets/ca84a56c-4d14-4775-96bb-c725069988be" /></td>
-<td width="50%" align="center"><b>Profiles</b><br/><img width="100%" alt="Profiles" src="https://github.com/user-attachments/assets/bd812e4a-bbdc-4141-b3a8-1ab5b0e561d4" /></td>
-</tr>
-<tr>
-<td width="50%" align="center"><b>Tools</b><br/><img width="100%" alt="Tools" src="https://github.com/user-attachments/assets/ad051fbe-055d-40d2-b6dd-959c522412d2" /></td>
-<td width="50%" align="center"><b>Settings</b><br/><img width="100%" alt="Settings" src="https://github.com/user-attachments/assets/b3f7e0d8-b087-4935-b57c-f8db30491f2e" /></td>
-</tr>
-<tr>
-<td width="50%" align="center" colspan="2"><b>Skills</b><br/><img width="100%" alt="Skills" src="https://github.com/user-attachments/assets/508c3501-52eb-419d-8cfd-06268875ff62" /></td>
+<td width="50%" align="center"><b>Trace Lab event timeline</b><br/><img width="100%" alt="Trace Lab event timeline" src="docs/labs-e2e/trace-lab-software-work.png" /></td>
+<td width="50%" align="center"><b>Trace Lab hardening evidence</b><br/><img width="100%" alt="Trace Lab hardening evidence" src="docs/labs-e2e/trace-lab-hardening.png" /></td>
 </tr>
 </table>
 
@@ -134,7 +138,7 @@ In local mode, chat requests go through `http://127.0.0.1:8642` with SSE streami
 | ------------- | ------------------------------------------------------------------------------------- |
 | **Chat**      | Streaming conversation UI with slash commands, tool progress, and token tracking      |
 | **Sessions**  | Browse, search, and resume past conversations                                         |
-| **Agents**    | Create, delete, and switch between Hermes profiles                                    |
+| **Profiles**  | Create, delete, and switch between Hermes profiles                                    |
 | **Skills**    | Browse, install, and manage bundled and installed skills                              |
 | **Models**    | Manage saved model configurations per provider                                        |
 | **Memory**    | View/edit memory entries, user profile, and configure memory providers                |
@@ -150,7 +154,8 @@ In local mode, chat requests go through `http://127.0.0.1:8642` with SSE streami
 
 | Provider            | Notes                                    |
 | ------------------- | ---------------------------------------- |
-| **OpenRouter**      | 200+ models via single API (recommended) |
+| **Codex app server** | Recommended provider for Mercury, including Codex OAuth-backed app-server capabilities and app-server-native image/artifact workflows |
+| **OpenRouter**      | 200+ models via single API               |
 | **Anthropic**       | Direct Claude access                     |
 | **OpenAI**          | Direct GPT access                        |
 | **Google (Gemini)** | Google AI Studio                         |
@@ -170,7 +175,7 @@ Telegram, Discord, Slack, WhatsApp, Signal, Matrix/Element, Mattermost, Email (I
 
 ### Tool Integrations
 
-Exa Search, Parallel API, Tavily, Firecrawl, FAL.ai (image generation), Honcho, Browserbase, Weights & Biases, and Tinker.
+Codex app-server image generation, Exa Search, Parallel API, Tavily, Firecrawl, Honcho, Browserbase, Weights & Biases, and Tinker.
 
 ## Development
 
@@ -227,6 +232,7 @@ When the app opens for the first time, it will either detect an existing Hermes 
 
 Supported setup paths in the UI:
 
+- `Codex app server` (recommended)
 - `OpenRouter`
 - `Anthropic`
 - `OpenAI`
