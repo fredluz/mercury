@@ -1,8 +1,9 @@
 /* Input area */
 .chat-input-area {
   position: relative;
-  padding: 12px 24px 16px;
-  border-top: 1px solid var(--border);
+  padding: 14px 24px 18px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  background: color-mix(in srgb, var(--bg-primary) 80%, var(--brand-cream) 20%);
   flex-shrink: 0;
 }
 
@@ -10,15 +11,21 @@
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-bright);
-  border-radius: var(--radius-lg);
-  padding: 6px 6px 6px 16px;
-  transition: border-color var(--transition);
+  background: color-mix(in srgb, white 92%, var(--brand-cream) 8%);
+  border: 1px solid color-mix(in srgb, var(--border-bright) 88%, transparent);
+  border-radius: 18px;
+  padding: 7px 7px 7px 16px;
+  box-shadow:
+    0 10px 24px rgba(17, 12, 5, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition);
 }
 
 .chat-input-wrapper:focus-within {
   border-color: var(--border-focus);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-subtle) 82%, transparent);
 }
 
 .chat-input {
@@ -42,22 +49,24 @@
 }
 
 .chat-send-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-sm);
-  background: var(--accent);
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--brand-ink);
   border: none;
-  color: #fff;
+  color: var(--brand-gold-soft);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all var(--transition);
   flex-shrink: 0;
+  box-shadow: 0 10px 20px rgba(17, 12, 5, 0.14);
 }
 
 .chat-send-btn:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background: color-mix(in srgb, var(--brand-ink) 88%, black 12%);
+  color: #f6dba7;
 }
 
 .chat-send-btn:disabled {

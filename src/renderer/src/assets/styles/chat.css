@@ -8,8 +8,9 @@
 }
 
 .chat-header {
-  padding: 14px 24px;
-  border-bottom: 1px solid var(--border);
+  padding: 16px 24px 15px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  background: color-mix(in srgb, var(--bg-primary) 82%, var(--brand-cream) 18%);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -36,8 +37,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 15px;
+  font-family: var(--font-serif);
+  font-size: 22px;
   font-weight: 600;
+  letter-spacing: -0.02em;
   color: var(--text-primary);
 }
 
@@ -65,10 +68,11 @@
 .chat-context-counter {
   flex-shrink: 0;
   font-size: 11px;
-  color: var(--text-secondary);
-  background: var(--bg-tertiary);
-  padding: 2px 8px;
-  border-radius: 10px;
+  color: var(--accent-text);
+  background: color-mix(in srgb, var(--brand-cream) 75%, white 25%);
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--brand-gold-soft) 68%, transparent);
 }
 
 .chat-header-actions {
@@ -145,10 +149,11 @@
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: 28px 28px 24px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
+  background: linear-gradient(180deg, rgba(243, 231, 211, 0.14), transparent 30%);
 }
 
 /* Empty state */
@@ -194,17 +199,19 @@
 }
 
 .chat-empty-text {
-  font-size: 22px;
+  font-family: var(--font-serif);
+  font-size: 30px;
   font-weight: 600;
+  letter-spacing: -0.03em;
   color: var(--text-primary);
 }
 
 .chat-empty-hint {
   font-size: 14px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   max-width: 360px;
   text-align: center;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 .chat-empty-suggestions {
@@ -316,8 +323,9 @@
 }
 
 .chat-bubble {
-  padding: 10px 16px;
-  border-radius: var(--radius-lg);
+  padding: 12px 17px;
+  border-radius: 20px;
+  font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.65;
   white-space: pre-wrap;
@@ -327,18 +335,20 @@
   max-width: 100%;
   overflow-x: auto;
   user-select: text;
+  box-shadow: 0 10px 24px rgba(17, 12, 5, 0.04);
 }
 
 .chat-bubble-user {
   background: var(--user-bubble);
   color: var(--user-bubble-text);
-  border-bottom-right-radius: 4px;
+  border-bottom-right-radius: 6px;
 }
 
 .chat-bubble-agent {
   background: var(--agent-bubble);
   color: var(--agent-bubble-text);
-  border-bottom-left-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+  border-bottom-left-radius: 6px;
 }
 
 .chat-bubble-agent code {
@@ -442,10 +452,10 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 9px;
-  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--bg-secondary) 86%, transparent);
+  background: color-mix(in srgb, var(--brand-cream) 46%, var(--bg-primary) 54%);
   color: var(--text-secondary);
   cursor: pointer;
   text-align: left;
@@ -456,8 +466,8 @@
 }
 
 .chat-activity-summary:hover {
-  background: var(--bg-elevated);
-  border-color: var(--border);
+  background: color-mix(in srgb, var(--brand-cream) 60%, var(--bg-primary) 40%);
+  border-color: color-mix(in srgb, var(--brand-gold-soft) 70%, transparent);
   color: var(--text-primary);
 }
 
@@ -510,13 +520,14 @@
   max-width: 220px;
   padding: 3px 8px;
   border-radius: 999px;
-  background: var(--bg-elevated);
+  background: color-mix(in srgb, var(--bg-primary) 35%, var(--brand-cream) 65%);
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
 }
 
 .chat-activity-pill-running {
@@ -551,10 +562,10 @@
 
 .chat-activity-details {
   margin-top: 8px;
-  padding: 10px;
+  padding: 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--bg-secondary) 72%, transparent);
+  background: color-mix(in srgb, var(--brand-cream) 42%, var(--bg-primary) 58%);
 }
 
 .chat-activity-event + .chat-activity-event {
