@@ -1,8 +1,8 @@
 import type React from "react";
-import { Activity, ArrowRight, Clock3, ExternalLink, FileImage, HelpCircle, MessageSquareText } from "lucide-react";
+import { Activity, Clock3, ExternalLink, FileImage, HelpCircle, MessageSquareText } from "lucide-react";
 import type { SkillTrainingRun, TraceEvent, TraceRun } from "../../../../../shared/traces";
 import { EVENT_ICONS, EVENT_LABELS } from "../trace-lab.types";
-import { buildRunMap, explainEvent, formatSkillScore, formatTime, safeStringify } from "../trace-lab.helpers";
+import { explainEvent, formatSkillScore, formatTime, safeStringify } from "../trace-lab.helpers";
 
 export function SkillTraceSummary({
   skillRuns,
@@ -23,7 +23,7 @@ export function SkillTraceSummary({
 
       {skillRuns.length === 0 ? (
         <p className="trace-muted">
-          No skill-learning signal is linked to this run yet.
+          No skill-learning signal is linked to this conversation yet.
         </p>
       ) : (
         <div className="trace-skill-links">
@@ -39,46 +39,6 @@ export function SkillTraceSummary({
           ))}
         </div>
       )}
-    </section>
-  );
-}
-
-export function RunMap({ run }: { run: TraceRun }): React.JSX.Element {
-  const steps = buildRunMap(run);
-  return (
-    <section className="trace-run-map" aria-label="Agent Run Map">
-      <div className="trace-section-title">
-        <div>
-          <p className="trace-eyebrow">Agent Run Map</p>
-          <h3>What Hermes did</h3>
-        </div>
-        <span className={`trace-map-status ${run.status}`}>{run.status}</span>
-      </div>
-
-      <div className="trace-map-grid">
-        {steps.map((step, index) => {
-          const Icon = step.icon;
-          return (
-            <div className="trace-map-step-wrap" key={step.key}>
-              <article
-                className={`trace-map-step ${step.event ? "complete" : "pending"} ${step.tone}`}
-              >
-                <span className="trace-map-step-icon">
-                  <Icon size={16} />
-                </span>
-                <strong>{step.label}</strong>
-                <p>{step.caption}</p>
-                <small>
-                  {step.event ? formatTime(step.event.timestamp) : "Waiting"}
-                </small>
-              </article>
-              {index < steps.length - 1 ? (
-                <ArrowRight className="trace-map-arrow" size={16} />
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
     </section>
   );
 }
@@ -120,10 +80,12 @@ export function TraceEventRow({
   event,
   selected,
   onSelect,
+  contextLabel,
 }: {
   event: TraceEvent;
   selected: boolean;
   onSelect: () => void;
+  contextLabel?: string;
 }): React.JSX.Element {
   const Icon = EVENT_ICONS[event.type] || Activity;
   return (
@@ -136,6 +98,7 @@ export function TraceEventRow({
         <Icon size={15} />
       </span>
       <span className="trace-event-copy">
+        {contextLabel ? <em>{contextLabel}</em> : null}
         <strong>{event.title || EVENT_LABELS[event.type] || event.type}</strong>
         <small>{event.detail || EVENT_LABELS[event.type] || event.type}</small>
       </span>

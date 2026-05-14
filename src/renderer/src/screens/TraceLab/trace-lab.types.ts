@@ -15,7 +15,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
-import type { TraceEvent } from "../../../../shared/traces";
+import type { TraceEvent, TraceRun, TraceUsage } from "../../../../shared/traces";
 
 export const EVENT_LABELS: Record<string, string> = {
   "run.started": "Run started",
@@ -73,14 +73,33 @@ export const EVENT_ICONS: Record<string, typeof Activity> = {
   "skill.rejected": AlertCircle,
 };
 
-export type RunMapStep = {
+export type TraceConversation = {
   key: string;
-  label: string;
-  caption: string;
-  event?: TraceEvent;
-  icon: typeof Activity;
-  tone: "blue" | "green" | "amber" | "red" | "neutral";
+  sessionId?: string;
+  title: string;
+  profileLabel: string;
+  status: TraceRun["status"];
+  startedAt: number;
+  updatedAt: number;
+  messagePreview: string;
+  latestMessagePreview: string;
+  runCount: number;
+  eventCount: number;
+  usage: TraceUsage;
+  runs: TraceRun[];
+  hasSkillSignals: boolean;
+  hasNeedsAttention: boolean;
 };
+
+export type ConversationTimelineItem = {
+  key: string;
+  run: TraceRun;
+  runIndex: number;
+  event: TraceEvent;
+  contextLabel: string;
+};
+
+export type SelectedEventRef = { runId: string; eventId: string };
 
 export type Narrative = { happened: string; matters: string };
 export type RunFilter = "all" | "completed" | "needs-attention" | "skills";

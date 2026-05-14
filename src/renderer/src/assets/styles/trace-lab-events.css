@@ -75,6 +75,13 @@
   gap: 4px;
 }
 
+.trace-event-copy em {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+}
+
 .trace-event-copy small {
   color: var(--text-secondary);
   line-height: 1.4;
@@ -371,13 +378,8 @@
   .trace-metrics,
   .trace-workbench,
   .trace-facts,
-  .trace-map-grid,
   .trace-skill-links {
     grid-template-columns: 1fr;
-  }
-
-  .trace-map-arrow {
-    display: none;
   }
 
   .trace-metric,

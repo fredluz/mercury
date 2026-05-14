@@ -1,17 +1,40 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, AlertCircle, BookOpenCheck, BrainCircuit, CheckCircle2, Link2, RefreshCw, Route, Search } from "lucide-react";
-import type {
-  SkillTrainingRun,
-  TraceRun,
-} from "../../../../shared/traces";
+import {
+  Activity,
+  AlertCircle,
+  BookOpenCheck,
+  BrainCircuit,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  MessagesSquare,
+  RefreshCw,
+  Search,
+} from "lucide-react";
+import type { SkillTrainingRun, TraceRun } from "../../../../shared/traces";
 
-import { EmptyState, EventInspector, Fact, Metric, RunMap, SkillTraceSummary, TraceEventRow } from "./components/TraceLabComponents";
-import { RUN_FILTERS, type RunFilter } from "./trace-lab.types";
-import { formatTime, traceRunMatchesFilter, traceRunMatchesSearch } from "./trace-lab.helpers";
+import {
+  EmptyState,
+  EventInspector,
+  Fact,
+  Metric,
+  SkillTraceSummary,
+  TraceEventRow,
+} from "./components/TraceLabComponents";
+import { RUN_FILTERS, type RunFilter, type SelectedEventRef, type TraceConversation } from "./trace-lab.types";
+import {
+  buildConversationTimeline,
+  buildTraceConversations,
+  formatTime,
+  traceConversationMatchesFilter,
+  traceConversationMatchesSearch,
+} from "./trace-lab.helpers";
+
 function TraceLab(): React.JSX.Element {
   const [runs, setRuns] = useState<TraceRun[]>([]);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [selectedConversationKey, setSelectedConversationKey] = useState<string | null>(null);
+  const [selectedEventRef, setSelectedEventRef] = useState<SelectedEventRef | null>(null);
+  const [expandedConversationKeys, setExpandedConversationKeys] = useState<Set<string>>(() => new Set());
   const [skillRuns, setSkillRuns] = useState<SkillTrainingRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [runQuery, setRunQuery] = useState("");
@@ -25,10 +48,6 @@ function TraceLab(): React.JSX.Element {
     ]);
     setRuns(nextRuns);
     setSkillRuns(nextSkillRuns);
-    setSelectedRunId((current) => current || nextRuns[0]?.id || null);
-    setSelectedEventId(
-      (current) => current || nextRuns[0]?.events[0]?.id || null,
-    );
     setLoading(false);
   }
 
@@ -39,48 +58,92 @@ function TraceLab(): React.JSX.Element {
     return () => window.clearTimeout(timer);
   }, []);
 
-  const filteredRuns = useMemo(() => {
-    const query = runQuery.trim().toLowerCase();
-    return runs.filter(
-      (run) =>
-        traceRunMatchesFilter(run, runFilter) &&
-        (!query || traceRunMatchesSearch(run, query)),
-    );
-  }, [runFilter, runQuery, runs]);
+  const conversations = useMemo(() => buildTraceConversations(runs), [runs]);
 
-  const selectedRun = useMemo(() => {
-    const selected = runs.find((run) => run.id === selectedRunId) || null;
-    if (selected && filteredRuns.some((run) => run.id === selected.id)) {
+  const filteredConversations = useMemo(() => {
+    return conversations.filter(
+      (conversation) =>
+        traceConversationMatchesFilter(conversation, runFilter) &&
+        traceConversationMatchesSearch(conversation, runQuery),
+    );
+  }, [conversations, runFilter, runQuery]);
+
+  const selectedConversation = useMemo(() => {
+    const selected = conversations.find(
+      (conversation) => conversation.key === selectedConversationKey,
+    );
+    if (
+      selected &&
+      filteredConversations.some((conversation) => conversation.key === selected.key)
+    ) {
       return selected;
     }
-    return filteredRuns[0] || runs[0] || null;
-  }, [filteredRuns, runs, selectedRunId]);
+    if (filteredConversations[0]) return filteredConversations[0];
+    if (runQuery.trim() || runFilter !== "all") return null;
+    return conversations[0] || null;
+  }, [conversations, filteredConversations, runFilter, runQuery, selectedConversationKey]);
 
-  const selectedEvent = useMemo(() => {
-    if (!selectedRun) return null;
+  const timeline = useMemo(
+    () => (selectedConversation ? buildConversationTimeline(selectedConversation) : []),
+    [selectedConversation],
+  );
+
+  const selectedTimelineItem = useMemo(() => {
+    if (timeline.length === 0) return null;
     return (
-      selectedRun.events.find((event) => event.id === selectedEventId) ||
-      selectedRun.events[0] ||
-      null
+      timeline.find(
+        (item) =>
+          item.run.id === selectedEventRef?.runId &&
+          item.event.id === selectedEventRef.eventId,
+      ) || timeline[0]
     );
-  }, [selectedEventId, selectedRun]);
+  }, [selectedEventRef, timeline]);
 
-  const selectedRunSkillRuns = useMemo(() => {
-    if (!selectedRun) return [];
-    return skillRuns.filter((run) => run.linkedRunId === selectedRun.id);
-  }, [selectedRun, skillRuns]);
+  const selectedConversationSkillRuns = useMemo(() => {
+    if (!selectedConversation) return [];
+    const selectedRunIds = new Set(selectedConversation.runs.map((run) => run.id));
+    return skillRuns.filter(
+      (skillRun) => skillRun.linkedRunId && selectedRunIds.has(skillRun.linkedRunId),
+    );
+  }, [selectedConversation, skillRuns]);
 
-  function selectRun(run: TraceRun): void {
-    setSelectedRunId(run.id);
-    setSelectedEventId(run.events[0]?.id || null);
+  function selectConversation(conversation: TraceConversation): void {
+    setSelectedConversationKey(conversation.key);
+    const firstRun = conversation.runs[0];
+    setSelectedEventRef(firstRun?.events[0] ? { runId: firstRun.id, eventId: firstRun.events[0].id } : null);
+    if (conversation.runCount > 1) {
+      setExpandedConversationKeys((current) => new Set(current).add(conversation.key));
+    }
+  }
+
+  function selectRunInConversation(conversation: TraceConversation, run: TraceRun): void {
+    setSelectedConversationKey(conversation.key);
+    setSelectedEventRef(run.events[0] ? { runId: run.id, eventId: run.events[0].id } : null);
+  }
+
+  function toggleConversation(conversationKey: string): void {
+    setExpandedConversationKeys((current) => {
+      const next = new Set(current);
+      if (next.has(conversationKey)) next.delete(conversationKey);
+      else next.add(conversationKey);
+      return next;
+    });
   }
 
   function selectSkillRun(skillRun: SkillTrainingRun): void {
     const linkedRun = runs.find((run) => run.id === skillRun.linkedRunId);
     if (!linkedRun) return;
-    setSelectedRunId(linkedRun.id);
-    setSelectedEventId(skillRun.id);
-    if (runFilter !== "all" && !traceRunMatchesFilter(linkedRun, runFilter)) {
+    const linkedConversation = conversations.find((conversation) =>
+      conversation.runs.some((run) => run.id === linkedRun.id),
+    );
+    if (!linkedConversation) return;
+    setSelectedConversationKey(linkedConversation.key);
+    setSelectedEventRef({ runId: linkedRun.id, eventId: skillRun.id });
+    setExpandedConversationKeys((current) => new Set(current).add(linkedConversation.key));
+    if (
+      runFilter !== "all" &&
+      !traceConversationMatchesFilter(linkedConversation, runFilter)
+    ) {
       setRunFilter("all");
     }
     setRunQuery("");
@@ -93,24 +156,20 @@ function TraceLab(): React.JSX.Element {
           <p className="trace-eyebrow">Agent Intelligence</p>
           <h2>Trace Lab</h2>
           <p className="trace-lab-subtitle">
-            Follow the agent from request to answer, then inspect what it
-            learned for the next run.
+            Review full conversations first, then expand the runs and structured
+            events that explain how Hermes answered.
           </p>
         </div>
         <div className="trace-header-actions">
           <span className="trace-mode-badge">
-            <Route size={14} />
-            Run map
+            <MessagesSquare size={14} />
+            Conversations
           </span>
           <span className="trace-mode-badge">
             <BookOpenCheck size={14} />
             Skill evaluation
           </span>
-          <button
-            className="btn btn-secondary"
-            onClick={load}
-            disabled={loading}
-          >
+          <button className="btn btn-secondary" onClick={load} disabled={loading}>
             <RefreshCw size={15} />
             Refresh
           </button>
@@ -118,37 +177,29 @@ function TraceLab(): React.JSX.Element {
       </header>
 
       <section className="trace-metrics" aria-label="Trace metrics">
-        <Metric icon={Activity} label="Recorded runs" value={runs.length} />
+        <Metric icon={Activity} label="Conversations" value={conversations.length} />
         <Metric
           icon={CheckCircle2}
           label="Completed"
-          value={runs.filter((run) => run.status === "completed").length}
+          value={conversations.filter((conversation) => conversation.status === "completed").length}
         />
         <Metric
           icon={AlertCircle}
           label="Needs attention"
-          value={
-            runs.filter(
-              (run) => run.status === "failed" || run.status === "aborted",
-            ).length
-          }
+          value={conversations.filter((conversation) => conversation.hasNeedsAttention).length}
         />
-        <Metric
-          icon={BrainCircuit}
-          label="Skill reviews"
-          value={skillRuns.length}
-        />
+        <Metric icon={BrainCircuit} label="Skill reviews" value={skillRuns.length} />
       </section>
 
       <section className="trace-workbench">
-        <aside className="trace-run-list" aria-label="Trace runs">
+        <aside className="trace-run-list" aria-label="Trace conversations">
           <div className="trace-panel-heading">
             <div>
-              <p className="trace-eyebrow">Runs</p>
+              <p className="trace-eyebrow">Conversations</p>
               <h3>Recent activity</h3>
             </div>
             <span className="trace-run-count">
-              {filteredRuns.length}/{runs.length}
+              {filteredConversations.length}/{conversations.length}
             </span>
           </div>
 
@@ -157,12 +208,12 @@ function TraceLab(): React.JSX.Element {
             <input
               value={runQuery}
               onChange={(event) => setRunQuery(event.target.value)}
-              placeholder="Search requests, markers, events"
-              aria-label="Search trace runs"
+              placeholder="Search conversations, runs, events"
+              aria-label="Search trace conversations"
             />
           </label>
 
-          <div className="trace-run-filters" aria-label="Trace run filters">
+          <div className="trace-run-filters" aria-label="Trace conversation filters">
             {RUN_FILTERS.map((filter) => (
               <button
                 key={filter.key}
@@ -174,108 +225,155 @@ function TraceLab(): React.JSX.Element {
             ))}
           </div>
 
-          {runQuery && filteredRuns.length === 0 ? (
-            <EmptyState
-              title="No matching runs"
-              body="Try a prompt phrase, run marker, event type, or status."
-            />
-          ) : null}
-
           <div className="trace-run-results">
-            {runs.length === 0 ? (
-              <EmptyState title="No trace runs yet" />
+            {conversations.length === 0 ? (
+              <EmptyState title="No trace conversations yet" />
+            ) : filteredConversations.length === 0 ? (
+              <EmptyState
+                title="No matching conversations"
+                body="Try a different search phrase, session id, event type, status, or filter."
+              />
             ) : (
-              filteredRuns.map((run) => (
-                <button
-                  key={run.id}
-                  className={`trace-run-row ${
-                    selectedRun?.id === run.id ? "active" : ""
-                  }`}
-                  title={run.messagePreview}
-                  onClick={() => selectRun(run)}
-                >
-                  <span className={`trace-status-dot ${run.status}`} />
-                  <strong>{run.title}</strong>
-                  <span>{run.profile}</span>
-                  {run.messagePreview ? (
-                    <small className="trace-run-preview">
-                      {run.messagePreview}
-                    </small>
-                  ) : null}
-                  <small>{formatTime(run.updatedAt)}</small>
-                </button>
-              ))
+              filteredConversations.map((conversation) => {
+                const expanded = expandedConversationKeys.has(conversation.key);
+                const selected = selectedConversation?.key === conversation.key;
+                const selectedRunId = selectedTimelineItem?.run.id;
+                return (
+                  <section
+                    key={conversation.key}
+                    className={`trace-conversation-item ${selected ? "active" : ""}`}
+                  >
+                    <button
+                      className="trace-conversation-row"
+                      title={conversation.latestMessagePreview || conversation.messagePreview}
+                      onClick={() => selectConversation(conversation)}
+                    >
+                      <span className={`trace-status-dot ${conversation.status}`} />
+                      <strong>{conversation.title}</strong>
+                      <span>{conversation.profileLabel}</span>
+                      {conversation.latestMessagePreview ? (
+                        <small className="trace-run-preview">
+                          {conversation.latestMessagePreview}
+                        </small>
+                      ) : null}
+                      <small className="trace-conversation-meta">
+                        {formatTime(conversation.updatedAt)} · {conversation.runCount} {conversation.runCount === 1 ? "run" : "runs"}
+                        {conversation.sessionId ? ` · session ${conversation.sessionId.slice(0, 8)}` : ""}
+                      </small>
+                    </button>
+                    {conversation.runCount > 1 ? (
+                      <button
+                        className="trace-conversation-toggle"
+                        onClick={() => toggleConversation(conversation.key)}
+                        aria-expanded={expanded}
+                      >
+                        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        {expanded ? "Hide runs" : "Show runs"}
+                      </button>
+                    ) : null}
+                    {expanded ? (
+                      <div className="trace-run-children">
+                        {conversation.runs.map((run, index) => (
+                          <button
+                            key={run.id}
+                            className={`trace-run-child-row ${selectedRunId === run.id ? "active" : ""}`}
+                            onClick={() => selectRunInConversation(conversation, run)}
+                          >
+                            <span className={`trace-status-dot ${run.status}`} />
+                            <strong>Run {index + 1}</strong>
+                            <span>{run.title}</span>
+                            <small>
+                              {formatTime(run.updatedAt)} · {run.usage?.totalTokens || 0} tokens
+                            </small>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </section>
+                );
+              })
             )}
           </div>
         </aside>
 
-        <article className="trace-detail" aria-label="Selected trace run">
-          {selectedRun ? (
+        <article className="trace-detail" aria-label="Selected trace conversation">
+          {selectedConversation ? (
             <>
               <div className="trace-detail-title">
                 <div>
-                  <p className="trace-eyebrow">{selectedRun.profile}</p>
-                  <h3 title={selectedRun.messagePreview}>
-                    {selectedRun.title}
+                  <p className="trace-eyebrow">{selectedConversation.profileLabel}</p>
+                  <h3 title={selectedConversation.latestMessagePreview || selectedConversation.messagePreview}>
+                    {selectedConversation.title}
                   </h3>
                 </div>
-                <span className={`trace-status-pill ${selectedRun.status}`}>
-                  {selectedRun.status}
+                <span className={`trace-status-pill ${selectedConversation.status}`}>
+                  {selectedConversation.status}
                 </span>
               </div>
 
-              <section className="trace-request-preview">
-                <p className="trace-eyebrow">Full Request</p>
-                <p>{selectedRun.messagePreview}</p>
-              </section>
-
-              <RunMap run={selectedRun} />
-
-              <SkillTraceSummary
-                skillRuns={selectedRunSkillRuns}
-                onSelect={(skillRun) => setSelectedEventId(skillRun.id)}
-              />
+              <div className="trace-timeline">
+                <div className="trace-section-title">
+                  <div>
+                    <p className="trace-eyebrow">Event Timeline</p>
+                    <h3>Merged conversation evidence</h3>
+                  </div>
+                  <span>{selectedConversation.eventCount} events</span>
+                </div>
+                {timeline.length === 0 ? (
+                  <EmptyState title="No events recorded" />
+                ) : (
+                  timeline.map((item) => (
+                    <TraceEventRow
+                      key={item.key}
+                      event={item.event}
+                      contextLabel={item.contextLabel}
+                      selected={item.key === selectedTimelineItem?.key}
+                      onSelect={() =>
+                        setSelectedEventRef({ runId: item.run.id, eventId: item.event.id })
+                      }
+                    />
+                  ))
+                )}
+              </div>
 
               <div className="trace-facts">
-                <Fact
-                  label="Started"
-                  value={formatTime(selectedRun.startedAt)}
-                />
-                <Fact
-                  label="Updated"
-                  value={formatTime(selectedRun.updatedAt)}
-                />
-                <Fact
-                  label="Tokens"
-                  value={String(selectedRun.usage?.totalTokens || 0)}
-                />
+                <Fact label="Started" value={formatTime(selectedConversation.startedAt)} />
+                <Fact label="Updated" value={formatTime(selectedConversation.updatedAt)} />
+                <Fact label="Agent runs" value={String(selectedConversation.runCount)} />
+                <Fact label="Tokens" value={String(selectedConversation.usage.totalTokens || 0)} />
                 <Fact
                   label="Cost"
                   value={
-                    selectedRun.usage?.cost != null
-                      ? `$${selectedRun.usage.cost.toFixed(4)}`
+                    selectedConversation.usage.cost != null
+                      ? `$${selectedConversation.usage.cost.toFixed(4)}`
                       : "n/a"
                   }
                 />
               </div>
 
-              <div className="trace-timeline">
-                <div className="trace-section-title">
-                  <p className="trace-eyebrow">Event Timeline</p>
-                  <h3>Step-by-step evidence</h3>
+              <section className="trace-request-preview">
+                <p className="trace-eyebrow">Conversation messages</p>
+                <div className="trace-message-stack">
+                  {selectedConversation.runs.map((run, index) => (
+                    <button
+                      key={run.id}
+                      className="trace-message-summary"
+                      onClick={() => selectRunInConversation(selectedConversation, run)}
+                    >
+                      <strong>Run {index + 1}: {run.title}</strong>
+                      <span>{run.messagePreview || "No message preview recorded."}</span>
+                    </button>
+                  ))}
                 </div>
-                {selectedRun.events.map((event) => (
-                  <TraceEventRow
-                    key={event.id}
-                    event={event}
-                    selected={event.id === selectedEvent?.id}
-                    onSelect={() => setSelectedEventId(event.id)}
-                  />
-                ))}
-              </div>
+              </section>
+
+              <SkillTraceSummary
+                skillRuns={selectedConversationSkillRuns}
+                onSelect={selectSkillRun}
+              />
             </>
           ) : (
-            <EmptyState title="No run selected" />
+            <EmptyState title="No conversation selected" />
           )}
         </article>
 
@@ -284,70 +382,19 @@ function TraceLab(): React.JSX.Element {
             <div>
               <p className="trace-eyebrow">Inspector</p>
               <h3>
-                {selectedEvent ? selectedEvent.title : "No event selected"}
+                {selectedTimelineItem ? selectedTimelineItem.event.title : "No event selected"}
               </h3>
             </div>
           </div>
 
-          {selectedRun && selectedEvent ? (
-            <EventInspector run={selectedRun} event={selectedEvent} />
+          {selectedTimelineItem ? (
+            <EventInspector
+              run={selectedTimelineItem.run}
+              event={selectedTimelineItem.event}
+            />
           ) : (
             <EmptyState title="No event selected" />
           )}
-
-          <section
-            className="skill-training-panel"
-            aria-label="Skill Evaluation"
-          >
-            <div className="trace-panel-heading compact">
-              <div>
-                <p className="trace-eyebrow">Skill Evaluation</p>
-                <h3>Learning signals</h3>
-              </div>
-            </div>
-
-            {skillRuns.length === 0 ? (
-              <div className="skill-training-empty">
-                <BrainCircuit size={18} />
-                <div>
-                  <strong>No skill reviews yet</strong>
-                  <p>
-                    When Hermes evaluates a skill, this panel will show the
-                    score, review status, and linked trace.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              skillRuns.map((run) => (
-                <button
-                  className={`skill-training-row ${
-                    selectedEvent?.id === run.id ? "active" : ""
-                  }`}
-                  key={run.id}
-                  onClick={() => selectSkillRun(run)}
-                >
-                  <div className="skill-training-row-top">
-                    <span>{run.status}</span>
-                    <strong>{run.skillName}</strong>
-                  </div>
-                  <div className="skill-score-track">
-                    <div
-                      style={{
-                        width: `${Math.round((run.score || 0) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                  <p>{run.summary}</p>
-                  {run.linkedRunId ? (
-                    <small>
-                      <Link2 size={12} />
-                      Opens linked trace
-                    </small>
-                  ) : null}
-                </button>
-              ))
-            )}
-          </section>
         </aside>
       </section>
     </div>

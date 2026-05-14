@@ -1,176 +1,203 @@
-import {
-  Activity,
-  AlertCircle,
-  BrainCircuit,
-  CheckCircle2,
-  Clock3,
-  FileCode2,
-  FileImage,
-  FileSearch,
-  History,
-  Route,
-  ShieldCheck,
-  Users,
-  Wrench,
-} from "lucide-react";
-import type { TraceEvent, TraceRun } from "../../../../shared/traces";
-import type { Narrative, RunFilter, RunMapStep } from "./trace-lab.types";
+import type { TraceEvent, TraceRun, TraceUsage } from "../../../../shared/traces";
+import type {
+  ConversationTimelineItem,
+  Narrative,
+  RunFilter,
+  TraceConversation,
+} from "./trace-lab.types";
 
-export function buildRunMap(run: TraceRun): RunMapStep[] {
-  const firstOf = (types: TraceEvent["type"][]): TraceEvent | undefined =>
-    run.events.find((event) => types.includes(event.type));
-  const firstMatching = (
-    matcher: (event: TraceEvent) => boolean,
-  ): TraceEvent | undefined => run.events.find(matcher);
+export function buildTraceConversations(runs: TraceRun[]): TraceConversation[] {
+  const groups = new Map<string, { sessionId?: string; runs: TraceRun[] }>();
 
-  const contextEvent = firstOf(["session.resumed", "message.history.loaded"]);
-  const toolEvents = run.events.filter((event) => event.type.startsWith("tool."));
-  const delegationEvents = run.events.filter((event) =>
-    event.type.startsWith("delegation."),
+  for (const run of runs) {
+    const { key, sessionId } = conversationIdentity(run);
+    const group = groups.get(key) || { sessionId, runs: [] };
+    if (!group.sessionId && sessionId) group.sessionId = sessionId;
+    group.runs.push(run);
+    groups.set(key, group);
+  }
+
+  return Array.from(groups.entries())
+    .map(([key, group]) => buildConversation(key, group.sessionId, group.runs))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export function buildConversationTimeline(
+  conversation: TraceConversation,
+): ConversationTimelineItem[] {
+  return conversation.runs
+    .flatMap((run, runIndex) =>
+      run.events.map((event) => ({
+        key: `${run.id}:${event.id}`,
+        run,
+        runIndex: runIndex + 1,
+        event,
+        contextLabel: `Run ${runIndex + 1} · ${run.profile} · ${run.title}`,
+      })),
+    )
+    .sort((a, b) => a.event.timestamp - b.event.timestamp);
+}
+
+export function traceConversationMatchesSearch(
+  conversation: TraceConversation,
+  query: string,
+): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return true;
+
+  const searchable = [
+    conversation.title,
+    conversation.profileLabel,
+    conversation.status,
+    conversation.sessionId || "",
+    conversation.messagePreview,
+    conversation.latestMessagePreview,
+    String(conversation.runCount),
+    String(conversation.eventCount),
+    String(conversation.usage.totalTokens || ""),
+    String(conversation.usage.cost || ""),
+    ...conversation.runs.flatMap((run) => [
+      run.title,
+      run.messagePreview,
+      run.profile,
+      run.status,
+      run.sessionId || "",
+      String(run.usage?.totalTokens || ""),
+      String(run.usage?.cost || ""),
+      ...run.events.flatMap((event) => [
+        event.title,
+        event.detail || "",
+        event.type,
+        safeStringify(event.metadata || {}),
+      ]),
+    ]),
+  ]
+    .join("\n")
+    .toLowerCase();
+
+  return searchable.includes(normalizedQuery);
+}
+
+export function traceConversationMatchesFilter(
+  conversation: TraceConversation,
+  filter: RunFilter,
+): boolean {
+  if (filter === "completed") return conversation.status === "completed";
+  if (filter === "needs-attention") return conversation.hasNeedsAttention;
+  if (filter === "skills") return conversation.hasSkillSignals;
+  return true;
+}
+
+export function traceRunMatchesSearch(run: TraceRun, query: string): boolean {
+  return traceConversationMatchesSearch(buildTraceConversations([run])[0], query);
+}
+
+export function traceRunMatchesFilter(run: TraceRun, filter: RunFilter): boolean {
+  return traceConversationMatchesFilter(buildTraceConversations([run])[0], filter);
+}
+
+function buildConversation(
+  key: string,
+  sessionId: string | undefined,
+  runs: TraceRun[],
+): TraceConversation {
+  const sortedRuns = runs
+    .slice()
+    .sort((a, b) => a.startedAt - b.startedAt || a.updatedAt - b.updatedAt);
+  const firstRun = sortedRuns[0];
+  const latestRun = sortedRuns.reduce((latest, run) =>
+    run.updatedAt > latest.updatedAt ? run : latest,
   );
-  const toolEvent = pickLifecycleEvent(toolEvents);
-  const delegationEvent = pickLifecycleEvent(delegationEvents);
-  const approvalEvent = firstMatching((event) => event.type.startsWith("approval."));
-  const artifactEvent = firstOf(["artifact.created"]);
-  const anySkill = firstMatching((event) => event.type.startsWith("skill."));
-  const anyFile = toolEvents.find((event) => {
-    const metadata = event.metadata || {};
-    const toolName = String(
-      metadata.toolName || metadata.tool || metadata.name || event.title || "",
-    );
-    const metadataText = safeStringify(metadata);
-    return (
-      /file|edit|patch|write/i.test(toolName) ||
-      /filePath|workspacePath|filename|diff|patch/i.test(metadataText)
-    );
-  });
-  const terminalEvent = firstOf(["run.completed", "run.failed", "run.aborted"]);
+  const usage = aggregateUsage(sortedRuns);
+  const profileLabel = summarizeProfiles(sortedRuns);
 
-  const steps: RunMapStep[] = [
-    {
-      key: "ask",
-      label: "Ask",
-      caption: "The user's request was captured as the run goal.",
-      event: firstOf(["message.user", "run.started"]),
-      icon: FileSearch,
-      tone: "blue",
+  return {
+    key,
+    sessionId,
+    title: firstRun?.title || (sessionId ? `Session ${shortId(sessionId)}` : "Trace conversation"),
+    profileLabel,
+    status: aggregateStatus(sortedRuns),
+    startedAt: Math.min(...sortedRuns.map((run) => run.startedAt)),
+    updatedAt: Math.max(...sortedRuns.map((run) => run.updatedAt)),
+    messagePreview: firstRun?.messagePreview || "",
+    latestMessagePreview: latestRun?.messagePreview || "",
+    runCount: sortedRuns.length,
+    eventCount: sortedRuns.reduce((total, run) => total + run.events.length, 0),
+    usage,
+    runs: sortedRuns,
+    hasSkillSignals: sortedRuns.some((run) =>
+      run.events.some((event) => event.type.startsWith("skill.")),
+    ),
+    hasNeedsAttention: sortedRuns.some(runNeedsAttention),
+  };
+}
+
+function conversationIdentity(run: TraceRun): { key: string; sessionId?: string } {
+  const sessionId = firstNonEmptyString(
+    run.sessionId,
+    sessionIdFromResumeEvent(run),
+  );
+  if (sessionId) return { key: `session:${sessionId}`, sessionId };
+  return { key: `run:${run.id}` };
+}
+
+function sessionIdFromResumeEvent(run: TraceRun): string | undefined {
+  const resumeEvent = run.events.find((event) => event.type === "session.resumed");
+  if (!resumeEvent) return undefined;
+  return firstNonEmptyString(resumeEvent.metadata?.sessionId, resumeEvent.detail);
+}
+
+function aggregateStatus(runs: TraceRun[]): TraceRun["status"] {
+  if (runs.some((run) => run.status === "running")) return "running";
+  if (runs.some((run) => run.status === "failed")) return "failed";
+  if (runs.some((run) => run.status === "aborted")) return "aborted";
+  return "completed";
+}
+
+function aggregateUsage(runs: TraceRun[]): TraceUsage {
+  let hasCost = false;
+  const usage = runs.reduce<TraceUsage>(
+    (total, run) => {
+      total.promptTokens += run.usage?.promptTokens || 0;
+      total.completionTokens += run.usage?.completionTokens || 0;
+      total.totalTokens += run.usage?.totalTokens || 0;
+      if (run.usage?.cost != null) {
+        hasCost = true;
+        total.cost = (total.cost || 0) + run.usage.cost;
+      }
+      return total;
     },
-  ];
+    { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+  );
+  if (!hasCost) delete usage.cost;
+  return usage;
+}
 
-  if (contextEvent) {
-    steps.push({
-      key: "context",
-      label: "Context",
-      caption:
-        contextEvent.type === "session.resumed"
-          ? "Hermes resumed an existing conversation before answering."
-          : "Prior messages were loaded without storing their raw content in this trace.",
-      event: contextEvent,
-      icon: contextEvent.type === "session.resumed" ? Clock3 : History,
-      tone: "blue",
-    });
+function runNeedsAttention(run: TraceRun): boolean {
+  return (
+    run.status === "failed" ||
+    run.status === "aborted" ||
+    run.events.some((event) =>
+      ["tool.failed", "delegation.failed", "transport.error"].includes(event.type),
+    )
+  );
+}
+
+function summarizeProfiles(runs: TraceRun[]): string {
+  const profiles = Array.from(new Set(runs.map((run) => run.profile).filter(Boolean)));
+  if (profiles.length <= 1) return profiles[0] || "default";
+  return `${profiles[0]} +${profiles.length - 1}`;
+}
+
+function shortId(value: string): string {
+  return value.length <= 10 ? value : `${value.slice(0, 6)}…${value.slice(-4)}`;
+}
+
+function firstNonEmptyString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
   }
-
-  steps.push({
-    key: "plan",
-    label: "Planning",
-    caption: "Hermes framed the work before acting.",
-    event: firstOf(["run.started"]),
-    icon: Route,
-    tone: "green",
-  });
-
-  if (approvalEvent) {
-    steps.push({
-      key: "approval",
-      label: "Approval",
-      caption: "A permission gate was requested or resolved during the run.",
-      event: approvalEvent,
-      icon: ShieldCheck,
-      tone: approvalEvent.type === "approval.requested" ? "amber" : "green",
-    });
-  }
-
-  if (toolEvent) {
-    steps.push({
-      key: "tools",
-      label: "Tool Calls",
-      caption: "The agent used tools to inspect, create, or change external context.",
-      event: toolEvent,
-      icon: Wrench,
-      tone: toolEvent.type === "tool.failed" ? "red" : "blue",
-    });
-  }
-
-  if (delegationEvent) {
-    steps.push({
-      key: "delegation",
-      label: "Delegation",
-      caption: "A sub-agent or delegated task contributed to the run.",
-      event: delegationEvent,
-      icon: Users,
-      tone: delegationEvent.type === "delegation.failed" ? "red" : "green",
-    });
-  }
-
-  if (anyFile) {
-    steps.push({
-      key: "files",
-      label: "Files Edited",
-      caption: "Workspace file activity was linked to the trace metadata or detail.",
-      event: anyFile,
-      icon: FileCode2,
-      tone: "amber",
-    });
-  }
-
-  if (artifactEvent) {
-    steps.push({
-      key: "artifacts",
-      label: "Artifacts",
-      caption: "A generated file, image, or output reference was attached to the run.",
-      event: artifactEvent,
-      icon: FileImage,
-      tone: "amber",
-    });
-  }
-
-  if (anySkill) {
-    steps.push({
-      key: "skills",
-      label: "Skill Notes",
-      caption: "A skill signal was captured for evaluation.",
-      event: anySkill,
-      icon: BrainCircuit,
-      tone: "green",
-    });
-  }
-
-  steps.push({
-    key: "answer",
-    label: "Answer",
-    caption:
-      run.status === "completed"
-        ? "Hermes returned a completed response."
-        : run.status === "running"
-          ? "Hermes is still working on this run."
-          : "Hermes stopped before a successful completion.",
-    event: terminalEvent,
-    icon:
-      run.status === "completed"
-        ? CheckCircle2
-        : run.status === "running"
-          ? Activity
-          : AlertCircle,
-    tone:
-      run.status === "completed"
-        ? "green"
-        : run.status === "running"
-          ? "blue"
-          : "red",
-  });
-
-  return steps;
+  return undefined;
 }
 
 export function explainEvent(run: TraceRun, event: TraceEvent): Narrative {
@@ -287,55 +314,6 @@ export function explainEvent(run: TraceRun, event: TraceEvent): Narrative {
           "Each event is evidence that helps explain what the agent did, why it did it, and what should improve next time.",
       };
   }
-}
-
-export function traceRunMatchesSearch(run: TraceRun, query: string): boolean {
-  const searchable = [
-    run.title,
-    run.messagePreview,
-    run.profile,
-    run.status,
-    run.sessionId || "",
-    String(run.usage?.totalTokens || ""),
-    String(run.usage?.cost || ""),
-    ...run.events.flatMap((event) => [
-      event.title,
-      event.detail || "",
-      event.type,
-      safeStringify(event.metadata || {}),
-    ]),
-  ]
-    .join("\n")
-    .toLowerCase();
-  return searchable.includes(query);
-}
-
-export function traceRunMatchesFilter(run: TraceRun, filter: RunFilter): boolean {
-  if (filter === "completed") return run.status === "completed";
-  if (filter === "needs-attention") {
-    return (
-      run.status === "failed" ||
-      run.status === "aborted" ||
-      run.events.some((event) =>
-        ["tool.failed", "delegation.failed", "transport.error"].includes(
-          event.type,
-        ),
-      )
-    );
-  }
-  if (filter === "skills") {
-    return run.events.some((event) => event.type.startsWith("skill."));
-  }
-  return true;
-}
-
-function pickLifecycleEvent(events: TraceEvent[]): TraceEvent | undefined {
-  return (
-    events.find((event) => event.type.endsWith(".failed")) ||
-    events.find((event) => event.type.endsWith(".completed")) ||
-    events.find((event) => event.type.endsWith(".started")) ||
-    events[0]
-  );
 }
 
 export function formatSkillScore(score?: number): string {
