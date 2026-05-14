@@ -143,6 +143,8 @@ describe("New APIs from v0.8/v0.9 features", () => {
   it("has local chat trace API", () => {
     expect(preloadMethods).toContain("recordLocalChatTrace");
     expect(typeMethods).toContain("recordLocalChatTrace");
+    expect(preloadMethods).toContain("onChatTraceEvent");
+    expect(typeMethods).toContain("onChatTraceEvent");
   });
 });
 
@@ -173,6 +175,7 @@ describe("Legacy APIs preserved (backward compat)", () => {
     "onChatChunk",
     "onChatDone",
     "onChatToolProgress",
+    "onChatTraceEvent",
     "onChatUsage",
     "onChatError",
     "recordLocalChatTrace",

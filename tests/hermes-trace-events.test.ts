@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   extractArtifactEventsFromText,
+  isStandaloneCliActivityLine,
   normalizeCliProgressLine,
   normalizeHermesStreamEvent,
+  splitLegacyToolProgressContent,
 } from "../src/main/hermes/trace-events";
 
 describe("Hermes trace event normalization", () => {
@@ -43,6 +45,30 @@ describe("Hermes trace event normalization", () => {
       type: "artifact.created",
       metadata: expect.objectContaining({ artifactType: "image" }),
     });
+  });
+
+  it("splits standalone legacy API tool progress out of assistant prose", () => {
+    expect(splitLegacyToolProgressContent("`🔍 search_web`\nHere is the result.")).toEqual({
+      prose: "Here is the result.",
+      progressLabels: ["🔍 search_web"],
+    });
+
+    expect(splitLegacyToolProgressContent("Use `🔍 search_web` in docs, not as progress.")).toEqual({
+      prose: "Use `🔍 search_web` in docs, not as progress.",
+      progressLabels: [],
+    });
+
+    expect(splitLegacyToolProgressContent("`npm test`")).toEqual({
+      prose: "`npm test`",
+      progressLabels: [],
+    });
+  });
+
+  it("only suppresses standalone CLI activity lines, not natural prose", () => {
+    expect(isStandaloneCliActivityLine("🔧 Running tool: read_file")).toBe(true);
+    expect(isStandaloneCliActivityLine("Running tests now and I will summarize results.")).toBe(false);
+    expect(isStandaloneCliActivityLine("Executing the plan requires three steps.")).toBe(false);
+    expect(isStandaloneCliActivityLine("Tool usage is documented below.")).toBe(false);
   });
 
   it("extracts image artifacts from Codex app-server tool progress paths", () => {

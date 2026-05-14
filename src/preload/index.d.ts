@@ -7,6 +7,7 @@ import type {
 import type {
   LocalChatTraceRequest,
   SkillTrainingRun,
+  TraceEvent,
   TraceRun,
 } from "../shared/traces";
 
@@ -116,6 +117,7 @@ interface HermesAPI {
   onChatChunk: (callback: (chunk: string) => void) => () => void;
   onChatDone: (callback: (sessionId?: string) => void) => () => void;
   onChatToolProgress: (callback: (tool: string) => void) => () => void;
+  onChatTraceEvent: (callback: (event: TraceEvent) => void) => () => void;
   onChatUsage: (
     callback: (usage: {
       promptTokens: number;

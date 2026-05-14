@@ -3,7 +3,10 @@ import https from "https";
 import { getModelConfig } from "../config";
 import { getApiUrl, getRemoteAuthHeader } from "./connection";
 import type { ChatCallbacks, ChatHandle } from "./types";
-import { normalizeHermesStreamEvent } from "./trace-events";
+import {
+  normalizeHermesStreamEvent,
+  splitLegacyToolProgressContent,
+} from "./trace-events";
 
 export function sendMessageViaApi(
   message: string,
@@ -40,11 +43,9 @@ export function sendMessageViaApi(
 
   let sessionId = _resumeSessionId || "";
   let hasContent = false;
+  let hasStreamSignal = false;
   let finished = false; // guard against double callbacks
   let lastError = ""; // capture embedded error messages
-  // Tool progress pattern: `emoji tool_name` or `emoji description`
-  const toolProgressRe = /^`([^\s`]+)\s+([^`]+)`$/;
-
   function finish(error?: string): void {
     if (finished) return;
     finished = true;
@@ -109,7 +110,9 @@ export function sendMessageViaApi(
   function processCustomEvent(eventType: string, data: string): void {
     try {
       const payload = JSON.parse(data);
-      for (const traceEvent of normalizeHermesStreamEvent(eventType, payload)) {
+      const traceEvents = normalizeHermesStreamEvent(eventType, payload);
+      if (traceEvents.length > 0) hasStreamSignal = true;
+      for (const traceEvent of traceEvents) {
         cb.onTraceEvent?.(traceEvent);
       }
       if (eventType === "hermes.tool.progress" && cb.onToolProgress) {
@@ -124,7 +127,7 @@ export function sendMessageViaApi(
 
   function processSseData(data: string): boolean {
     if (data === "[DONE]") {
-      if (hasContent) {
+      if (hasContent || hasStreamSignal) {
         finish();
       } else if (lastError) {
         finish(lastError);
@@ -159,14 +162,14 @@ export function sendMessageViaApi(
       }
 
       if (delta?.content) {
-        const content = delta.content.trim();
-        // Legacy: Detect tool progress lines injected into content: `🔍 search_web`
-        const match = toolProgressRe.exec(content);
-        if (match && cb.onToolProgress) {
-          cb.onToolProgress(`${match[1]} ${match[2]}`);
-        } else {
+        const { prose, progressLabels } = splitLegacyToolProgressContent(delta.content);
+        if (progressLabels.length > 0) hasStreamSignal = true;
+        for (const label of progressLabels) {
+          cb.onToolProgress?.(label);
+        }
+        if (prose) {
           hasContent = true;
-          cb.onChunk(delta.content);
+          cb.onChunk(prose);
         }
       }
     } catch {
@@ -246,11 +249,11 @@ export function sendMessageViaApi(
           }
         }
         // Signal completion — even when no content was received
-        if (!hasContent && !lastError) {
+        if (!hasContent && !hasStreamSignal && !lastError) {
           probeRealError();
           return;
         }
-        finish(hasContent ? undefined : lastError);
+        finish(hasContent || hasStreamSignal ? undefined : lastError);
       });
 
       res.on("error", (err) => finish(`Stream error: ${err.message}`));

@@ -1,6 +1,8 @@
+import { Fragment } from "react";
 import type React from "react";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { useI18n } from "../../components/useI18n";
+import { ChatActivityGroup } from "./components/ChatActivityGroup";
 import { ChatComposer } from "./components/ChatComposer";
 import { ChatEmpty } from "./components/ChatEmpty";
 import { ChatHeader } from "./components/ChatHeader";
@@ -62,25 +64,38 @@ function Chat({
             t={t}
           />
         ) : (
-          chat.visibleMessages.map((msg, i) => (
-            <MessageRow
-              key={msg.id}
-              msg={msg}
-              isLast={i === chat.visibleMessages.length - 1}
-              isLoading={chat.isLoading}
-              onApprove={chat.handleApprove}
-              onDeny={chat.handleDeny}
-            />
-          ))
+          chat.visibleMessages.map((msg, i) => {
+            const activityGroups = chat.activityGroups.filter(
+              (group) => group.anchorMessageId === msg.id,
+            );
+            return (
+              <Fragment key={msg.id}>
+                <div className="chat-transcript-item">
+                  <MessageRow
+                    msg={msg}
+                    isLast={i === chat.visibleMessages.length - 1}
+                    isLoading={chat.isLoading}
+                    onApprove={chat.handleApprove}
+                    onDeny={chat.handleDeny}
+                  />
+                </div>
+                {activityGroups.length > 0 ? (
+                  <div className="chat-transcript-item chat-transcript-activity-item">
+                    {activityGroups.map((group) => (
+                      <ChatActivityGroup
+                        key={group.id}
+                        group={group}
+                        onToggle={chat.toggleActivityGroup}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+              </Fragment>
+            );
+          })
         )}
 
-        {chat.isLoading && !chat.lastMessageIsAgent && (
-          <ChatLoading toolProgress={chat.toolProgress} />
-        )}
-
-        {chat.isLoading && chat.toolProgress && chat.lastMessageIsAgent && (
-          <div className="chat-tool-progress-inline">{chat.toolProgress}</div>
-        )}
+        {chat.isLoading && !chat.lastMessageIsAgent && <ChatLoading />}
 
         <div ref={chat.messagesEndRef} />
       </div>

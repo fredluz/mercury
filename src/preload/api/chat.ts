@@ -1,5 +1,5 @@
 import { ipcRenderer } from "electron";
-import type { LocalChatTraceRequest, TraceRun } from "../../shared/traces";
+import type { LocalChatTraceRequest, TraceEvent, TraceRun } from "../../shared/traces";
 
 export const chatApi = {
   // Chat
@@ -43,6 +43,13 @@ export const chatApi = {
       callback(tool);
     ipcRenderer.on("chat-tool-progress", handler);
     return () => ipcRenderer.removeListener("chat-tool-progress", handler);
+  },
+
+  onChatTraceEvent: (callback: (event: TraceEvent) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, traceEvent: TraceEvent): void =>
+      callback(traceEvent);
+    ipcRenderer.on("chat-trace-event", handler);
+    return () => ipcRenderer.removeListener("chat-trace-event", handler);
   },
 
   onChatUsage: (

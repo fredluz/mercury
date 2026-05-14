@@ -1,4 +1,4 @@
-import { ipcMain, Notification } from "electron";
+import { ipcMain, Notification, type WebContents } from "electron";
 import {
   sendMessage,
   startGateway,
@@ -8,6 +8,7 @@ import {
   isRemoteMode,
 } from "../hermes";
 import { extractArtifactEventsFromText } from "../hermes/trace-events";
+import type { TraceEvent, TraceEventType } from "../../shared/traces";
 import { startSshTunnel, isSshTunnelHealthy } from "../ssh-tunnel";
 import { getConnectionConfig } from "../config";
 import {
@@ -32,6 +33,24 @@ type ActiveChatRun = {
 };
 
 let activeChatRun: ActiveChatRun | null = null;
+
+function isLiveChatActivityEvent(type: TraceEventType): boolean {
+  return (
+    type.startsWith("tool.") ||
+    type.startsWith("delegation.") ||
+    type === "artifact.created" ||
+    type.startsWith("approval.") ||
+    type === "transport.error"
+  );
+}
+
+function sendChatTraceEvent(
+  sender: WebContents,
+  event: TraceEvent | null,
+): void {
+  if (!event || !isLiveChatActivityEvent(event.type) || sender.isDestroyed()) return;
+  sender.send("chat-trace-event", event);
+}
 
 function abortCurrentRun(detail: string): void {
   if (!activeChatRun) return;
@@ -160,13 +179,14 @@ export function registerChatIpc({
                 );
               }
               for (const artifactEvent of extractArtifactEventsFromText(fullResponse)) {
-                recordTraceEvent(
+                const recordedEvent = recordTraceEvent(
                   traceRun.id,
                   artifactEvent.type,
                   artifactEvent.title,
                   artifactEvent.detail,
                   artifactEvent.metadata,
                 );
+                sendChatTraceEvent(event.sender, recordedEvent);
               }
               finishTraceRun(
                 traceRun.id,
@@ -195,13 +215,14 @@ export function registerChatIpc({
             onError: (error) => {
               if (shouldIgnoreCallback()) return;
               if (isActiveRun()) activeChatRun = null;
-              recordTraceEvent(
+              const recordedError = recordTraceEvent(
                 traceRun.id,
                 "transport.error",
                 "Transport error",
                 error,
                 { source: "chat" },
               );
+              sendChatTraceEvent(event.sender, recordedError);
               finishTraceRun(traceRun.id, "failed", undefined, error);
               event.sender.send("chat-error", error);
               settleRejected(new Error(error));
@@ -218,25 +239,27 @@ export function registerChatIpc({
               if (traceEvent.type.startsWith("tool.") || traceEvent.type.startsWith("delegation.")) {
                 skipNextLegacyToolTrace = true;
               }
-              recordTraceEvent(
+              const recordedEvent = recordTraceEvent(
                 traceRun.id,
                 traceEvent.type,
                 traceEvent.title,
                 traceEvent.detail,
                 traceEvent.metadata,
               );
+              sendChatTraceEvent(event.sender, recordedEvent);
             },
             onToolProgress: (tool) => {
               if (shouldIgnoreCallback()) return;
               if (skipNextLegacyToolTrace) {
                 skipNextLegacyToolTrace = false;
               } else {
-                recordTraceEvent(
+                const recordedEvent = recordTraceEvent(
                   traceRun.id,
                   "tool.progress",
                   "Tool progress",
                   tool,
                 );
+                sendChatTraceEvent(event.sender, recordedEvent);
               }
               event.sender.send("chat-tool-progress", tool);
             },
@@ -263,9 +286,10 @@ export function registerChatIpc({
         };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        recordTraceEvent(traceRun.id, "transport.error", "Transport error", message, {
+        const recordedError = recordTraceEvent(traceRun.id, "transport.error", "Transport error", message, {
           source: "chat-send",
         });
+        sendChatTraceEvent(event.sender, recordedError);
         finishTraceRun(traceRun.id, "failed", undefined, message);
         event.sender.send("chat-error", message);
         settleRejected(error);

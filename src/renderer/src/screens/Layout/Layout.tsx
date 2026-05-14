@@ -13,6 +13,7 @@ import Models from "../Models/Models";
 import Providers from "../Providers/Providers";
 import Schedules from "../Schedules/Schedules";
 import RemoteNotice from "../../components/RemoteNotice";
+import MercuryLockup from "../../components/common/MercuryLockup";
 import {
   ChatBubble,
   Clock,
@@ -177,9 +178,7 @@ function Layout(): React.JSX.Element {
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <div className="sidebar-brand-lockup" aria-label="Mercury">
-            Mercury
-          </div>
+          <MercuryLockup className="sidebar-brand-lockup" />
         </div>
 
         <nav className="sidebar-nav">
@@ -259,10 +258,7 @@ function Layout(): React.JSX.Element {
               <Agents
                 activeProfile={activeProfile}
                 onSelectProfile={handleSelectProfile}
-                onChatWith={(name: string) => {
-                  handleSelectProfile(name);
-                  goTo("chat");
-                }}
+                onProfileAction={goTo}
               />
             )}
           </div>

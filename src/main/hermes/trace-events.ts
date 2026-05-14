@@ -78,6 +78,37 @@ export function normalizeHermesStreamEvent(
   return [];
 }
 
+export function splitLegacyToolProgressContent(text: string): {
+  prose: string;
+  progressLabels: string[];
+} {
+  const progressLabels: string[] = [];
+  const proseLines: string[] = [];
+  const lines = text.split(/(\r?\n)/);
+
+  for (let i = 0; i < lines.length; i += 2) {
+    const line = lines[i] || "";
+    const separator = lines[i + 1] || "";
+    const label = legacyToolProgressLabel(line);
+    if (label) {
+      progressLabels.push(label);
+      continue;
+    }
+    proseLines.push(line + separator);
+  }
+
+  return { prose: proseLines.join(""), progressLabels };
+}
+
+export function isStandaloneCliActivityLine(line: string): boolean {
+  const text = line.trim();
+  if (!text) return false;
+  if (normalizeCliProgressLine(text).length === 0) return false;
+  return /^(?:[-*•]\s*)?(?:[🔧🛠️🤖📦🖼️🎨⚙️▶️⏳✅❌⚠️].*|(?:running|executing|calling)\s+(?:tool|function|command)\b|tool\s+(?:progress|started|completed|failed|returned)\b|delegate\b|delegating\b|subagent\b|image tool returned\b)/i.test(
+    text,
+  );
+}
+
 export function normalizeCliProgressLine(line: string): ChatTraceCallbackEvent[] {
   const text = line.trim();
   if (!text) return [];
@@ -127,6 +158,14 @@ export function extractArtifactEventsFromText(text: string): ChatTraceCallbackEv
   }
 
   return events;
+}
+
+function legacyToolProgressLabel(line: string): string | null {
+  const match = /^`([^\s`]+)\s+([^`]+)`$/.exec(line.trim());
+  if (!match) return null;
+  const marker = match[1];
+  if (!/[^\w./-]/.test(marker)) return null;
+  return `${marker} ${match[2].trim()}`;
 }
 
 function normalizeToolEvent(

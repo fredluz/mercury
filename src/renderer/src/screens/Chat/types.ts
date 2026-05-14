@@ -1,4 +1,5 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
+import type { TraceEvent } from "../../../../shared/traces";
 
 export interface SlashCommand {
   name: string;
@@ -27,11 +28,25 @@ export interface ChatUsage {
   cost?: number;
 }
 
+export type ChatActivityGroupStatus = "running" | "completed" | "failed" | "aborted";
+
+export interface ChatActivityGroup {
+  id: string;
+  runId?: string;
+  anchorMessageId: string;
+  status: ChatActivityGroupStatus;
+  startedAt: number;
+  updatedAt: number;
+  expanded: boolean;
+  events: TraceEvent[];
+}
+
 export interface ChatController {
   input: string;
   setInput: Dispatch<SetStateAction<string>>;
   isLoading: boolean;
-  toolProgress: string | null;
+  activityGroups: ChatActivityGroup[];
+  toggleActivityGroup: (groupId: string) => void;
   usage: ChatUsage | null;
   fastMode: boolean;
   setFastMode: Dispatch<SetStateAction<boolean>>;

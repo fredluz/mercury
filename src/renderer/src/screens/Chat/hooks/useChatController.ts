@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { TraceEvent } from "../../../../../shared/traces";
 import { PROVIDERS } from "../../../constants";
 import { useI18n } from "../../../components/useI18n";
 import { SLASH_COMMANDS } from "../chat.constants";
+import { isChatActivityEvent } from "../chatActivity";
 import { executeLocalCommand, isLocalSlashCommand } from "../chatCommands";
-import type { ChatController, ChatMessage, ChatUsage, ModelGroup, SlashCommand } from "../types";
+import type {
+  ChatActivityGroup,
+  ChatActivityGroupStatus,
+  ChatController,
+  ChatMessage,
+  ChatUsage,
+  ModelGroup,
+  SlashCommand,
+} from "../types";
 
 interface UseChatControllerArgs {
   messages: ChatMessage[];
@@ -24,7 +34,7 @@ export function useChatController({
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [hermesSessionId, setHermesSessionId] = useState<string | null>(null);
-  const [toolProgress, setToolProgress] = useState<string | null>(null);
+  const [activityGroups, setActivityGroups] = useState<ChatActivityGroup[]>([]);
   const [usage, setUsage] = useState<ChatUsage | null>(null);
   const [fastMode, setFastMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -33,6 +43,7 @@ export function useChatController({
   const isLoadingRef = useRef(false);
   const userScrolledUpRef = useRef(false);
   const prevMessageCountRef = useRef(messages.length);
+  const activeActivityGroupIdRef = useRef<string | null>(null);
 
   const [currentModel, setCurrentModel] = useState("");
   const [currentProvider, setCurrentProvider] = useState("auto");
@@ -60,6 +71,73 @@ export function useChatController({
   const scrollToBottom = useCallback((force?: boolean) => {
     if (!force && userScrolledUpRef.current) return;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  const beginActivityGroup = useCallback((anchorMessageId: string): void => {
+    const now = Date.now();
+    const id = `activity-${now}-${Math.random().toString(36).slice(2, 8)}`;
+    activeActivityGroupIdRef.current = id;
+    setActivityGroups((prev) => [
+      ...prev,
+      {
+        id,
+        anchorMessageId,
+        status: "running",
+        startedAt: now,
+        updatedAt: now,
+        expanded: false,
+        events: [],
+      },
+    ]);
+  }, []);
+
+  const appendActivityEvent = useCallback((traceEvent: TraceEvent): void => {
+    if (!isChatActivityEvent(traceEvent)) return;
+    setActivityGroups((prev) => {
+      let targetIndex = traceEvent.runId
+        ? prev.findIndex((group) => group.runId === traceEvent.runId)
+        : -1;
+      if (targetIndex < 0 && activeActivityGroupIdRef.current) {
+        targetIndex = prev.findIndex((group) => group.id === activeActivityGroupIdRef.current);
+      }
+      if (targetIndex < 0) return prev;
+
+      const target = prev[targetIndex];
+      if (target.events.some((event) => event.id === traceEvent.id)) return prev;
+
+      const next = [...prev];
+      next[targetIndex] = {
+        ...target,
+        runId: target.runId || traceEvent.runId,
+        status: traceEvent.type === "transport.error" || traceEvent.type.endsWith(".failed") ? "failed" : target.status,
+        updatedAt: traceEvent.timestamp,
+        events: [...target.events, traceEvent],
+      };
+      return next;
+    });
+  }, []);
+
+  const markActiveActivityGroup = useCallback((status: ChatActivityGroupStatus): void => {
+    const activeId = activeActivityGroupIdRef.current;
+    if (!activeId) return;
+    setActivityGroups((prev) =>
+      prev
+        .map((group) =>
+          group.id === activeId
+            ? { ...group, status, updatedAt: Date.now() }
+            : group,
+        )
+        .filter((group) => group.id !== activeId || group.events.length > 0),
+    );
+    activeActivityGroupIdRef.current = null;
+  }, []);
+
+  const toggleActivityGroup = useCallback((groupId: string): void => {
+    setActivityGroups((prev) =>
+      prev.map((group) =>
+        group.id === groupId ? { ...group, expanded: !group.expanded } : group,
+      ),
+    );
   }, []);
 
   const loadModelConfig = useCallback(async (): Promise<void> => {
@@ -102,7 +180,11 @@ export function useChatController({
   }, []);
 
   useEffect(() => {
-    if (messages.length === 0) setHermesSessionId(null);
+    if (messages.length === 0) {
+      setHermesSessionId(null);
+      setActivityGroups([]);
+      activeActivityGroupIdRef.current = null;
+    }
   }, [messages]);
 
   useEffect(() => {
@@ -147,17 +229,17 @@ export function useChatController({
         return [...prev, { id: `agent-${Date.now()}`, role: "agent", content: chunk }];
       });
     });
+    const cleanupTraceEvent = window.hermesAPI.onChatTraceEvent(appendActivityEvent);
     const cleanupDone = window.hermesAPI.onChatDone((sessionId) => {
       if (sessionId) setHermesSessionId(sessionId);
-      setToolProgress(null);
+      markActiveActivityGroup("completed");
       setIsLoading(false);
     });
     const cleanupError = window.hermesAPI.onChatError((error) => {
       setMessages((prev) => [...prev, { id: `error-${Date.now()}`, role: "agent", content: `Error: ${error}` }]);
-      setToolProgress(null);
+      markActiveActivityGroup("failed");
       setIsLoading(false);
     });
-    const cleanupToolProgress = window.hermesAPI.onChatToolProgress(setToolProgress);
     const cleanupUsage = window.hermesAPI.onChatUsage((u) => {
       setUsage((prev) => ({
         promptTokens: (prev?.promptTokens || 0) + u.promptTokens,
@@ -168,14 +250,14 @@ export function useChatController({
     });
     return () => {
       cleanupChunk();
+      cleanupTraceEvent();
       cleanupDone();
       cleanupError();
-      cleanupToolProgress();
       cleanupUsage();
     };
-  }, [setMessages]);
+  }, [appendActivityEvent, markActiveActivityGroup, setMessages]);
 
-  useEffect(() => scrollToBottom(), [messages, scrollToBottom]);
+  useEffect(() => scrollToBottom(), [messages, activityGroups, scrollToBottom]);
 
   useEffect(() => {
     const prevCount = prevMessageCountRef.current;
@@ -218,12 +300,14 @@ export function useChatController({
   function handleClear(): void {
     if (isLoading) {
       window.hermesAPI.abortChat();
+      markActiveActivityGroup("aborted");
       setIsLoading(false);
     }
     setMessages([]);
     setHermesSessionId(null);
     setUsage(null);
-    setToolProgress(null);
+    setActivityGroups([]);
+    activeActivityGroupIdRef.current = null;
   }
 
   async function handleSend(): Promise<void> {
@@ -244,8 +328,10 @@ export function useChatController({
       }
     }
 
+    const userMessage: ChatMessage = { id: `user-${Date.now()}`, role: "user", content: text };
     setIsLoading(true);
-    setMessages((prev) => [...prev, { id: `user-${Date.now()}`, role: "user", content: text }]);
+    setMessages((prev) => [...prev, userMessage]);
+    beginActivityGroup(userMessage.id);
     onSessionStarted?.();
     try {
       await window.hermesAPI.sendMessage(
@@ -264,8 +350,10 @@ export function useChatController({
     if (!text || isLoading) return;
     setInput("");
     if (inputRef.current) inputRef.current.style.height = "auto";
+    const userMessage: ChatMessage = { id: `user-btw-${Date.now()}`, role: "user", content: `💭 ${text}` };
     setIsLoading(true);
-    setMessages((prev) => [...prev, { id: `user-btw-${Date.now()}`, role: "user", content: `💭 ${text}` }]);
+    setMessages((prev) => [...prev, userMessage]);
+    beginActivityGroup(userMessage.id);
     try {
       await window.hermesAPI.sendMessage(
         `/btw ${text}`,
@@ -341,33 +429,39 @@ export function useChatController({
 
   function handleAbort(): void {
     window.hermesAPI.abortChat();
+    markActiveActivityGroup("aborted");
     setIsLoading(false);
     setTimeout(() => inputRef.current?.focus(), 50);
   }
 
   const handleApprove = useCallback(() => {
+    const userMessage: ChatMessage = { id: `user-approve-${Date.now()}`, role: "user", content: "/approve" };
     setInput("");
     setIsLoading(true);
-    setMessages((prev) => [...prev, { id: `user-approve-${Date.now()}`, role: "user", content: "/approve" }]);
+    setMessages((prev) => [...prev, userMessage]);
+    beginActivityGroup(userMessage.id);
     window.hermesAPI
       .sendMessage("/approve", profile, hermesSessionId || undefined, messages.map((m) => ({ role: m.role, content: m.content })))
       .catch(() => setIsLoading(false));
-  }, [profile, hermesSessionId, setMessages, messages]);
+  }, [beginActivityGroup, profile, hermesSessionId, setMessages, messages]);
 
   const handleDeny = useCallback(() => {
+    const userMessage: ChatMessage = { id: `user-deny-${Date.now()}`, role: "user", content: "/deny" };
     setInput("");
     setIsLoading(true);
-    setMessages((prev) => [...prev, { id: `user-deny-${Date.now()}`, role: "user", content: "/deny" }]);
+    setMessages((prev) => [...prev, userMessage]);
+    beginActivityGroup(userMessage.id);
     window.hermesAPI
       .sendMessage("/deny", profile, hermesSessionId || undefined, messages.map((m) => ({ role: m.role, content: m.content })))
       .catch(() => setIsLoading(false));
-  }, [profile, hermesSessionId, setMessages, messages]);
+  }, [beginActivityGroup, profile, hermesSessionId, setMessages, messages]);
 
   return {
     input,
     setInput,
     isLoading,
-    toolProgress,
+    activityGroups,
+    toggleActivityGroup,
     usage,
     fastMode,
     setFastMode,

@@ -158,10 +158,11 @@ export function recordTraceEvent(
   title: string,
   detail?: string,
   metadata?: Record<string, unknown>,
-): void {
+): TraceEvent | null {
   const data = readStore();
-  appendEvent(data, runId, type, title, detail, metadata);
+  const event = appendEvent(data, runId, type, title, detail, metadata);
   writeStore(data);
+  return event;
 }
 
 export function createLocalChatTrace(

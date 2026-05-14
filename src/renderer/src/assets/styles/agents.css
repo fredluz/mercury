@@ -35,7 +35,7 @@
   margin-top: 2px;
 }
 
-/* Agent card footer with chat button */
+/* Agent card footer actions */
 .agents-card-footer {
   display: flex;
   align-items: center;
@@ -43,6 +43,37 @@
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
+}
+
+.agents-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agents-card-action-btn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.agents-card-action-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+.agents-card-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .agents-create {
@@ -133,6 +164,11 @@
 .agents-card.active .agents-card-avatar {
   background: var(--accent);
   color: #fff;
+}
+
+.agents-card.active .agents-card-avatar-icon {
+  background: var(--brand-cream);
+  color: var(--brand-ink);
 }
 
 .agents-card-info {
@@ -228,8 +264,12 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  background: var(--brand-cream);
 }
 
 .agents-card-avatar-icon img {
-  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  object-fit: contain;
 }

@@ -4,7 +4,10 @@ import { HERMES_HOME, HERMES_PYTHON, HERMES_REPO, HERMES_SCRIPT, getEnhancedPath
 import { getModelConfig, readEnv } from "../config";
 import { stripAnsi } from "../utils";
 import type { ChatCallbacks, ChatHandle } from "./types";
-import { normalizeCliProgressLine } from "./trace-events";
+import {
+  isStandaloneCliActivityLine,
+  normalizeCliProgressLine,
+} from "./trace-events";
 
 const LOCAL_PROVIDERS = new Set([
   "custom",
@@ -151,9 +154,12 @@ export function sendMessageViaCli(
     for (const line of lines) {
       const t = line.trim();
       if (t && NOISE_PATTERNS.some((p) => p.test(t))) continue;
-      for (const traceEvent of normalizeCliProgressLine(t)) {
+      const isActivityLine = isStandaloneCliActivityLine(t);
+      const traceEvents = isActivityLine ? normalizeCliProgressLine(t) : [];
+      for (const traceEvent of traceEvents) {
         cb.onTraceEvent?.(traceEvent);
       }
+      if (traceEvents.length > 0) continue;
       result.push(line);
     }
 

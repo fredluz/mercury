@@ -1,5 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Trash, ChatBubble } from "../../assets/icons";
+import {
+  Brain,
+  ChatBubble,
+  Plus,
+  Puzzle,
+  Sparkles,
+  Trash,
+  Wrench,
+} from "../../assets/icons";
+import type { LucideIcon } from "lucide-react";
 import MercuryMark from "../../components/common/MercuryMark";
 import { useI18n } from "../../components/useI18n";
 
@@ -16,17 +25,33 @@ interface ProfileInfo {
   gatewayRunning: boolean;
 }
 
+type ProfileActionView = "chat" | "skills" | "tools" | "soul" | "memory";
+
+interface ProfileAction {
+  view: ProfileActionView;
+  icon: LucideIcon;
+  labelKey: string;
+}
+
+const PROFILE_ACTIONS: ProfileAction[] = [
+  { view: "chat", icon: ChatBubble, labelKey: "agents.actionChat" },
+  { view: "skills", icon: Puzzle, labelKey: "agents.actionSkills" },
+  { view: "tools", icon: Wrench, labelKey: "agents.actionTools" },
+  { view: "soul", icon: Sparkles, labelKey: "agents.actionPersona" },
+  { view: "memory", icon: Brain, labelKey: "agents.actionMemory" },
+];
+
 interface AgentsProps {
   activeProfile: string;
   onSelectProfile: (name: string) => void;
-  onChatWith: (name: string) => void;
+  onProfileAction: (view: ProfileActionView) => void;
 }
 
 function AgentAvatar({ name }: { name: string }): React.JSX.Element {
   if (name === "default") {
     return (
       <div className="agents-card-avatar agents-card-avatar-icon">
-        <MercuryMark size={22} />
+        <MercuryMark size={30} decorative />
       </div>
     );
   }
@@ -38,7 +63,7 @@ function AgentAvatar({ name }: { name: string }): React.JSX.Element {
 function Agents({
   activeProfile,
   onSelectProfile,
-  onChatWith,
+  onProfileAction,
 }: AgentsProps): React.JSX.Element {
   const { t } = useI18n();
   const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
@@ -94,10 +119,29 @@ function Agents({
     void loadProfiles();
   }
 
+  async function handleProfileAction(
+    name: string,
+    view: ProfileActionView,
+  ): Promise<void> {
+    await handleSelect(name);
+    onProfileAction(view);
+  }
+
   function providerLabel(provider: string): string {
     if (!provider || provider === "auto") return t("agents.auto");
     if (provider === "custom") return t("agents.local");
     return provider.charAt(0).toUpperCase() + provider.slice(1);
+  }
+
+  function isProfileActionAvailable(
+    profile: ProfileInfo,
+    view: ProfileActionView,
+  ): boolean {
+    void profile;
+    void view;
+    // These destination tabs remain useful for empty/setup states, so none of
+    // the current profile summary fields represent a genuinely unavailable action.
+    return true;
   }
 
   if (loading) {
@@ -213,16 +257,31 @@ function Agents({
               )}
             </div>
             <div className="agents-card-footer">
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onChatWith(p.name);
-                }}
+              <div
+                className="agents-card-actions"
+                role="group"
+                aria-label={t("agents.actionsLabel")}
               >
-                <ChatBubble size={13} />
-                {t("agents.chat")}
-              </button>
+                {PROFILE_ACTIONS.map(({ view, icon: Icon, labelKey }) => {
+                  const label = t(labelKey, { name: p.name });
+                  const available = isProfileActionAvailable(p, view);
+                  return (
+                    <button
+                      key={view}
+                      className="agents-card-action-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (available) void handleProfileAction(p.name, view);
+                      }}
+                      title={label}
+                      aria-label={label}
+                      disabled={!available}
+                    >
+                      <Icon size={15} />
+                    </button>
+                  );
+                })}
+              </div>
               {!p.isDefault &&
                 (confirmDelete === p.name ? (
                   <div
