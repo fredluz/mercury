@@ -28,6 +28,12 @@ const args = new Map(
   }),
 );
 
+const explicitNumericOptions = {
+  sshPort: args.has("ssh-port") || Boolean(process.env.MERCURY_SSH_PORT),
+  remotePort: args.has("remote-port") || Boolean(process.env.MERCURY_SSH_REMOTE_PORT),
+  localPort: args.has("local-port") || Boolean(process.env.MERCURY_SSH_LOCAL_PORT),
+};
+
 const options = {
   caseName: args.get("case") || "current-config",
   mode: args.get("mode") || "auto",
@@ -118,9 +124,9 @@ function currentConfigToRuntime() {
       host: options.sshHost || ssh.host || "",
       username: options.sshUsername || ssh.username || "",
       keyPath: options.sshKeyPath || ssh.keyPath || "",
-      port: Number(options.sshPort || ssh.port || 22),
-      remotePort: Number(options.remotePort || ssh.remotePort || 8642),
-      localPort: Number(options.localPort || ssh.localPort || 18642),
+      port: explicitNumericOptions.sshPort ? options.sshPort : Number(ssh.port || 22),
+      remotePort: explicitNumericOptions.remotePort ? options.remotePort : Number(ssh.remotePort || 8642),
+      localPort: explicitNumericOptions.localPort ? options.localPort : Number(ssh.localPort || 18642),
     },
   };
 }

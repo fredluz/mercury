@@ -1,6 +1,7 @@
 import { ChildProcess, spawn } from "child_process";
 import { homedir } from "os";
 import { join } from "path";
+import { performance } from "perf_hooks";
 import net from "net";
 import http from "http";
 import { recordPerfEvent, withPerfSpan } from "./perf/telemetry";
@@ -144,15 +145,24 @@ export async function startSshTunnel(config: SshConfig): Promise<void> {
     activeConfig = { ...config, localPort };
     tunnelRunning = false;
 
-    tunnelProcess = await withPerfSpan(
-      "ssh",
-      "ssh.tunnel.spawn",
-      sshTunnelMeta(config, localPort),
-      async () => spawn("ssh", buildSshArgs(config, localPort), {
+    const spawnStart = performance.now();
+    try {
+      tunnelProcess = spawn("ssh", buildSshArgs(config, localPort), {
         stdio: "ignore",
         detached: false,
-      }),
-    );
+      });
+    } catch (error) {
+      recordPerfEvent({
+        scope: "ssh",
+        name: "ssh.tunnel.spawn",
+        phase: "span",
+        durationMs: performance.now() - spawnStart,
+        ok: false,
+        error: error instanceof Error ? error.name : "Error",
+        meta: sshTunnelMeta(config, localPort),
+      });
+      throw error;
+    }
 
     tunnelProcess.on("exit", () => {
       tunnelRunning = false;
@@ -177,6 +187,15 @@ export async function startSshTunnel(config: SshConfig): Promise<void> {
         ok: false,
         meta: sshTunnelMeta(config, localPort),
       });
+    });
+
+    recordPerfEvent({
+      scope: "ssh",
+      name: "ssh.tunnel.spawn",
+      phase: "span",
+      durationMs: performance.now() - spawnStart,
+      ok: true,
+      meta: sshTunnelMeta(config, localPort),
     });
 
     try {

@@ -1,0 +1,24 @@
+{
+  "runId": "ssh-remote-skip-smoke",
+  "generatedAt": "2026-05-16T10:09:32.381Z",
+  "caseName": "explicit",
+  "requestedMode": "ssh",
+  "samples": 1,
+  "timeoutMs": 15000,
+  "artifactPath": "/Users/fredluz/Code/mercury/prompt-exports/perf-runs/ssh-remote-skip-smoke-ssh-remote.json",
+  "diagFile": "/Users/fredluz/Code/mercury/prompt-exports/perf-runs/ssh-remote-skip-smoke-ssh-remote.ndjson",
+  "secretHandling": "Artifacts redact hostnames, URLs, API keys, commands, stdout/stderr, prompts, and query text.",
+  "mode": "ssh",
+  "target": {
+    "hostConfigured": false,
+    "usernameConfigured": false,
+    "hasKeyPath": false,
+    "sshPort": 22,
+    "remotePort": 8642,
+    "requestedLocalPort": 18642
+  },
+  "status": "SKIPPED",
+  "reason": "No SSH host/user configured. Pass --ssh-host and --ssh-user or use a current SSH config.",
+  "operations": [],
+  "stats": {}
+}
