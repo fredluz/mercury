@@ -1,7 +1,7 @@
 export default {
   chat: "Chat",
   sessions: "Sesiones",
-  agents: "Perfiles",
+  agents: "Agentes",
   models: "Modelos",
   providers: "Proveedores",
   skills: "Habilidades",

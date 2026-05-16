@@ -6,6 +6,9 @@ import {
   restartGateway,
   isGatewayRunning,
   setSshRemoteApiKey,
+  markRuntimeStale,
+  markAllRuntimesStale,
+  revalidateRuntime,
 } from "../hermes";
 import {
   startSshTunnel,
@@ -57,16 +60,26 @@ export function registerConfigIpc(): void {
     "set-env",
     async (_event, key: string, value: string, profile?: string) => {
       const conn = getConnectionConfig();
+      const reason = `Environment key ${key} changed for profile runtime.`;
       if (conn.mode === "ssh" && conn.ssh) {
         await sshSetEnvValue(conn.ssh, key, value, profile);
+        markRuntimeStale(profile, reason);
+        if (await sshGatewayStatus(conn.ssh, profile)) {
+          await sshStopGateway(conn.ssh, profile);
+          await sshStartGateway(conn.ssh, profile);
+          await startSshTunnel(conn.ssh, profile);
+          const refreshedKey = await sshReadRemoteApiKey(conn.ssh, profile);
+          setSshRemoteApiKey(refreshedKey, profile);
+          await revalidateRuntime(profile);
+        }
         return true;
       }
       setEnvValue(key, value, profile);
-      // Restart gateway so it picks up the new API key
+      markRuntimeStale(profile, reason);
+      // Restart gateway so it picks up the new credential config
       if (
-        (isGatewayRunning() && key.endsWith("_API_KEY")) ||
-        key.endsWith("_TOKEN") ||
-        key === "HF_TOKEN"
+        isGatewayRunning(profile) &&
+        (key.endsWith("_API_KEY") || key.endsWith("_TOKEN") || key === "HF_TOKEN")
       ) {
         restartGateway(profile);
       }
@@ -87,9 +100,11 @@ export function registerConfigIpc(): void {
       const conn = getConnectionConfig();
       if (conn.mode === "ssh" && conn.ssh) {
         await sshSetConfigValue(conn.ssh, key, value, profile);
+        markRuntimeStale(profile, `Config key ${key} changed for profile runtime.`);
         return true;
       }
       setConfigValue(key, value, profile);
+      markRuntimeStale(profile, `Config key ${key} changed for profile runtime.`);
       return true;
     },
   );
@@ -121,27 +136,35 @@ export function registerConfigIpc(): void {
       if (conn.mode === "ssh" && conn.ssh) {
         const prev = await sshGetModelConfig(conn.ssh, profile);
         await sshSetModelConfig(conn.ssh, provider, model, baseUrl, profile);
-        if (
-          (await sshGatewayStatus(conn.ssh)) &&
-          (prev.provider !== provider ||
-            prev.model !== model ||
-            prev.baseUrl !== baseUrl)
-        ) {
-          await sshStopGateway(conn.ssh);
-          await sshStartGateway(conn.ssh);
+        const changed =
+          prev.provider !== provider ||
+          prev.model !== model ||
+          prev.baseUrl !== baseUrl;
+        if (changed) {
+          markRuntimeStale(profile, "Model configuration changed for profile runtime.");
+        }
+        if (changed && (await sshGatewayStatus(conn.ssh, profile))) {
+          await sshStopGateway(conn.ssh, profile);
+          await sshStartGateway(conn.ssh, profile);
+          await startSshTunnel(conn.ssh, profile);
+          const refreshedKey = await sshReadRemoteApiKey(conn.ssh, profile);
+          setSshRemoteApiKey(refreshedKey, profile);
+          await revalidateRuntime(profile);
         }
         return true;
       }
       const prev = getModelConfig(profile);
       setModelConfig(provider, model, baseUrl, profile);
+      const changed =
+        prev.provider !== provider ||
+        prev.model !== model ||
+        prev.baseUrl !== baseUrl;
+      if (changed) {
+        markRuntimeStale(profile, "Model configuration changed for profile runtime.");
+      }
 
       // Restart gateway when provider, model, or endpoint changes so it picks up new config
-      if (
-        isGatewayRunning() &&
-        (prev.provider !== provider ||
-          prev.model !== model ||
-          prev.baseUrl !== baseUrl)
-      ) {
+      if (changed && isGatewayRunning(profile)) {
         restartGateway(profile);
       }
 
@@ -153,7 +176,12 @@ export function registerConfigIpc(): void {
   ipcMain.handle("is-remote-mode", () => isRemoteMode());
   ipcMain.handle("is-remote-only-mode", () => isRemoteOnlyMode());
   ipcMain.handle("get-connection-config", () => getConnectionConfig());
-  ipcMain.handle("is-ssh-tunnel-active", () => isSshTunnelActive());
+  ipcMain.handle("is-ssh-tunnel-active", (_event, profile?: string) => {
+    const conn = getConnectionConfig();
+    return conn.mode === "ssh" && conn.ssh
+      ? isSshTunnelActive(conn.ssh, profile)
+      : false;
+  });
 
   ipcMain.handle(
     "set-connection-config",
@@ -169,6 +197,7 @@ export function registerConfigIpc(): void {
         apiKey: apiKey || "",
         ssh: getConnectionConfig().ssh, // preserve existing ssh config
       });
+      markAllRuntimesStale("Connection mode changed; runtime identity must be revalidated.");
       return true;
     },
   );
@@ -190,6 +219,7 @@ export function registerConfigIpc(): void {
         mode: "ssh",
         ssh: { host, port, username, keyPath, remotePort, localPort },
       });
+      markAllRuntimesStale("SSH connection settings changed; runtime identity must be revalidated.");
       return true;
     },
   );
@@ -219,17 +249,18 @@ export function registerConfigIpc(): void {
       }),
   );
 
-  ipcMain.handle("start-ssh-tunnel", async () => {
+  ipcMain.handle("start-ssh-tunnel", async (_event, profile?: string) => {
     const conn = getConnectionConfig();
     if (conn.mode !== "ssh") return false;
-    if (conn.ssh && !(await sshGatewayStatus(conn.ssh))) {
-      await sshStartGateway(conn.ssh);
+    if (conn.ssh && !(await sshGatewayStatus(conn.ssh, profile))) {
+      await sshStartGateway(conn.ssh, profile);
     }
-    await startSshTunnel(conn.ssh);
+    await startSshTunnel(conn.ssh, profile);
     // Cache the remote API key so chat auth works through the tunnel
     if (conn.ssh) {
-      const key = await sshReadRemoteApiKey(conn.ssh);
-      setSshRemoteApiKey(key);
+      const key = await sshReadRemoteApiKey(conn.ssh, profile);
+      setSshRemoteApiKey(key, profile);
+      await revalidateRuntime(profile);
     }
     return true;
   });

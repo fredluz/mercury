@@ -1,7 +1,12 @@
 import { ipcRenderer } from "electron";
 import type { PerfTelemetryConfig, RendererPerfEvent } from "../../shared/perf";
+import type { RuntimeDiagnostic } from "../../shared/runtime";
 
 export const appApi = {
+  // Runtime diagnostics
+  getRuntimeDiagnostic: (profile?: string): Promise<RuntimeDiagnostic> =>
+    ipcRenderer.invoke("get-runtime-diagnostic", profile),
+
   // Updates
   checkForUpdates: (): Promise<string | null> =>
     ipcRenderer.invoke("check-for-updates"),
@@ -175,6 +180,7 @@ export const appApi = {
   readLogs: (
     logFile?: string,
     lines?: number,
+    profile?: string,
   ): Promise<{ content: string; path: string }> =>
-    ipcRenderer.invoke("read-logs", logFile, lines),
+    ipcRenderer.invoke("read-logs", logFile, lines, profile),
 };

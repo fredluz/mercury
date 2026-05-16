@@ -43,12 +43,15 @@ export {
   type SshProfileInfo,
 } from "./ssh/sessions-profiles";
 export {
+  buildSshHermesProfileCommand,
+  parseMcpServersFromConfig,
   sshGatewayStatus,
   sshStartGateway,
   sshStopGateway,
   sshReadRemoteApiKey,
   sshGetHermesVersion,
   sshReadLogs,
+  sshListMcpServers,
   sshGetPlatformEnabled,
   sshSetPlatformEnabled,
   sshListCachedSessions,

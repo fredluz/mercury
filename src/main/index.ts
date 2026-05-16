@@ -15,7 +15,11 @@ import {
   sshReadRemoteApiKey,
 } from "./ssh-remote";
 import { registerIpcHandlers, abortActiveChat } from "./ipc";
-import { recordMemorySnapshot, recordPerfEvent } from "./perf/telemetry";
+import {
+  isPerfTelemetryEnabled,
+  recordMemorySnapshot,
+  recordPerfEvent,
+} from "./perf/telemetry";
 
 process.on("uncaughtException", (err) => {
   console.error("[MAIN UNCAUGHT]", err);
@@ -70,6 +74,7 @@ function appMetricsSummary(): Record<string, unknown> | undefined {
 }
 
 function recordStartupMemory(name: string, meta?: Record<string, unknown>): void {
+  if (!isPerfTelemetryEnabled("startup")) return;
   recordMemorySnapshot("startup", name, {
     ...meta,
     resourceUsage: resourceUsageSummary(),

@@ -54,6 +54,10 @@ const mocks = vi.hoisted(() => {
     updateSessionProfile: vi.fn(),
     updateSessionTitle: vi.fn(),
     generateChatTitle: vi.fn(),
+    profileRuntimeManager: {
+      normalizeProfile: vi.fn(),
+      resolveRuntime: vi.fn(),
+    },
   };
 });
 
@@ -106,6 +110,10 @@ vi.mock("../src/main/hermes/title", () => ({
   generateChatTitle: mocks.generateChatTitle,
 }));
 
+vi.mock("../src/main/hermes/runtime", () => ({
+  profileRuntimeManager: mocks.profileRuntimeManager,
+}));
+
 function resetMockState(): void {
   mocks.handlers.clear();
   mocks.capturedCallbacks = undefined;
@@ -149,6 +157,14 @@ function resetMockState(): void {
   mocks.updateSessionProfile.mockReset();
   mocks.updateSessionTitle.mockReset();
   mocks.generateChatTitle.mockReset();
+  mocks.profileRuntimeManager.normalizeProfile
+    .mockReset()
+    .mockImplementation((profile?: string) => profile?.trim() || "default");
+  mocks.profileRuntimeManager.resolveRuntime.mockReset().mockResolvedValue({
+    request: { profile: "default", mode: "local", purpose: "chat" },
+    identity: { requestedProfile: "default", actualProfile: "default", verified: true },
+    transport: "cli",
+  });
   mocks.sendMessage.mockReset().mockImplementation(
     async (
       _message: string,
@@ -256,6 +272,40 @@ describe("chat IPC lifecycle hardening", () => {
     expect(settleCount).toBe(1);
   });
 
+  it("resolves a runtime for the selected profile before starting chat transport", async () => {
+    const handler = await setupHandler();
+    const event = createEvent();
+    const runtime = {
+      request: { profile: "alpha", mode: "local", purpose: "chat" },
+      identity: { requestedProfile: "alpha", actualProfile: "alpha", verified: true },
+      transport: "cli",
+    };
+    mocks.profileRuntimeManager.resolveRuntime.mockResolvedValueOnce(runtime);
+
+    const invokePromise = handler(event, "hello", "alpha", "resume-session");
+    const callbacks = await waitForTransportCallbacks();
+    callbacks.onChunk("answer");
+    callbacks.onDone("session-alpha");
+
+    await expect(invokePromise).resolves.toEqual({
+      response: "answer",
+      sessionId: "session-alpha",
+    });
+    expect(mocks.profileRuntimeManager.resolveRuntime).toHaveBeenCalledWith({
+      profile: "alpha",
+      purpose: "chat",
+      sessionId: "resume-session",
+    });
+    expect(mocks.sendMessage).toHaveBeenCalledWith(
+      "hello",
+      expect.any(Object),
+      "alpha",
+      "resume-session",
+      undefined,
+      runtime,
+    );
+  });
+
   it("still starts transport and completes when pre-send trace setup throws", async () => {
     const handler = await setupHandler();
     const event = createEvent();
@@ -348,11 +398,14 @@ describe("chat IPC lifecycle hardening", () => {
       }),
     ).resolves.toBe("Profile Aware Title");
 
-    expect(mocks.generateChatTitle).toHaveBeenCalledWith({
-      profile: "research-agent",
-      sessionId: "session-title-1",
-      messages: [{ role: "user", content: "Summarize this session" }],
-    });
+    expect(mocks.generateChatTitle).toHaveBeenCalledWith(
+      {
+        profile: "research-agent",
+        sessionId: "session-title-1",
+        messages: [{ role: "user", content: "Summarize this session" }],
+      },
+      expect.any(Object),
+    );
     expect(mocks.updateSessionTitle).toHaveBeenCalledTimes(1);
     expect(mocks.updateSessionTitle).toHaveBeenNthCalledWith(
       1,

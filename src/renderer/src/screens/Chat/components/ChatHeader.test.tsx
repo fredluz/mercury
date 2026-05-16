@@ -56,7 +56,7 @@ function renderHeader(overrides: Partial<React.ComponentProps<typeof ChatHeader>
 }
 
 describe("ChatHeader metadata", () => {
-  it("renders generated title, profile identity, and context percent", () => {
+  it("renders generated title, agent identity, and context percent", () => {
     renderHeader();
 
     expect(screen.getByText("Chat Metadata Plan")).toBeInTheDocument();

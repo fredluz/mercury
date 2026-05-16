@@ -72,6 +72,17 @@ const preloadMethods = extractPreloadMethods(preloadSrc);
 const typeMethods = extractTypeMethods(preloadTypes);
 
 describe("Preload API Surface", () => {
+  it("gateway APIs expose profile-aware lifecycle signatures", () => {
+    expect(preloadSrc).toContain('ipcRenderer.invoke("start-gateway", profile)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("stop-gateway", profile)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("gateway-status", profile)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("restart-gateway", profile)');
+    expect(preloadTypes).toContain("startGateway: (profile?: string)");
+    expect(preloadTypes).toContain("stopGateway: (profile?: string)");
+    expect(preloadTypes).toContain("gatewayStatus: (profile?: string)");
+    expect(preloadTypes).toContain("restartGateway: (profile?: string)");
+  });
+
   it("session APIs expose profile-aware signatures and row metadata", () => {
     expect(preloadSrc).toContain('ipcRenderer.invoke("get-session-messages", sessionId, profile)');
     expect(preloadSrc).toContain('ipcRenderer.invoke("list-sessions", limit, offset, profile)');
@@ -119,6 +130,13 @@ describe("Preload API Surface", () => {
 // ─── New APIs exist ─────────────────────────────────────
 
 describe("New APIs from v0.8/v0.9 features", () => {
+  it("has runtime diagnostic API", () => {
+    expect(preloadMethods).toContain("getRuntimeDiagnostic");
+    expect(typeMethods).toContain("getRuntimeDiagnostic");
+    expect(preloadSrc).toContain('ipcRenderer.invoke("get-runtime-diagnostic", profile)');
+    expect(preloadTypes).toContain("RuntimeDiagnostic");
+  });
+
   it("has backup/import APIs", () => {
     expect(preloadMethods).toContain("runHermesBackup");
     expect(preloadMethods).toContain("runHermesImport");
@@ -126,9 +144,16 @@ describe("New APIs from v0.8/v0.9 features", () => {
     expect(typeMethods).toContain("runHermesImport");
   });
 
-  it("has log viewer API", () => {
+  it("has profile-aware log viewer API", () => {
     expect(preloadMethods).toContain("readLogs");
     expect(typeMethods).toContain("readLogs");
+    expect(preloadSrc).toContain('ipcRenderer.invoke("read-logs", logFile, lines, profile)');
+    expect(preloadTypes).toContain("profile?: string,");
+  });
+
+  it("has profile-aware remote update API", () => {
+    expect(preloadSrc).toContain('ipcRenderer.invoke("run-hermes-update", profile)');
+    expect(preloadTypes).toContain("runHermesUpdate: (");
   });
 
   it("has debug dump API", () => {
@@ -206,6 +231,7 @@ describe("Legacy APIs preserved (backward compat)", () => {
     "startGateway",
     "stopGateway",
     "gatewayStatus",
+    "restartGateway",
     "getPlatformEnabled",
     "setPlatformEnabled",
     // Sessions

@@ -8,7 +8,8 @@ This is the evergreen architecture reference for Mercury's current Electron app 
 - IPC composition root: `src/main/ipc/index.ts`
 - Preload bridge: `src/preload/index.ts`, `src/preload/api/*`, `src/preload/index.d.ts`
 - Renderer app shell: `src/renderer/src/App.tsx`, `src/renderer/src/screens/Layout/Layout.tsx`
-- Shared contracts: `src/shared/*`
+- Shared contracts: `src/shared/*`, including runtime diagnostics in `src/shared/runtime.ts`
+- Profile runtime manager: `src/main/hermes/runtime.ts`, `src/main/hermes/types.ts`
 - Brand source and generated assets: `brand/README.md`, `brand/source/mercury-logo-source.png`, `scripts/generate-brand-assets.mjs`, `build/icon.*`, `resources/icon.png`, `docs/assets/mercury-logo.png`
 - Contract tests: `tests/ipc-handlers.test.ts`, `tests/preload-api-surface.test.ts`
 
@@ -17,7 +18,8 @@ This is the evergreen architecture reference for Mercury's current Electron app 
 Mercury is an Electron/Vite desktop app split across four durable boundaries:
 
 1. **Main process** (`src/main/index.ts` and `src/main/*`)
-   - Owns Electron app lifecycle, the `BrowserWindow`, app menu, updater setup, shutdown cleanup, and side-effectful services such as gateway, SSH tunnel, and Claw3D shutdown.
+   - Owns Electron app lifecycle, the `BrowserWindow`, app menu, updater setup, shutdown cleanup, and side-effectful services such as gateway, SSH tunnel, profile runtime manager, and Claw3D shutdown.
+   - `src/main/hermes/runtime.ts` owns the reliable profile runtime contract: profile-keyed local gateway/API state, CLI fallback identity, SSH runtime handles, pure remote fail-closed behavior, runtime diagnostics, and stale-runtime markers.
    - Calls `registerIpcHandlers({ getMainWindow })` so domain IPC modules can expose main-process services to the renderer.
 2. **Preload bridge** (`src/preload/index.ts`, `src/preload/api/*`, `src/preload/index.d.ts`)
    - Builds `hermesAPI` from split preload API fragments.
@@ -28,7 +30,7 @@ Mercury is an Electron/Vite desktop app split across four durable boundaries:
    - `App.tsx` controls first-run/install/setup/main routing.
    - `Layout.tsx` owns the main navigation shell and active profile state.
 4. **Shared contracts** (`src/shared/*`)
-   - Shared TypeScript schemas used across process boundaries, including traces, skills, and i18n types/config.
+   - Shared TypeScript schemas used across process boundaries, including traces, skills, runtime diagnostics, and i18n types/config.
 
 For IPC/preload change rules, see [IPC and preload contract](../contracts/ipc-preload.md). For test coverage, see [Contract tests](../testing/contract-tests.md).
 
@@ -43,7 +45,7 @@ For IPC/preload change rules, see [IPC and preload contract](../contracts/ipc-pr
 5. Register all IPC handlers with `registerIpcHandlers({ getMainWindow: () => mainWindow })`.
 6. Create the main `BrowserWindow` with `createWindow()`.
 7. Register updater IPC/event behavior with `setupUpdater()`.
-8. If the saved connection config is SSH and has a host, attempt to start the remote gateway, start the SSH tunnel, read the remote API key, and cache it with `setSshRemoteApiKey(...)`.
+8. If the saved connection config is SSH and has a host, attempt to start the remote gateway for the default startup profile, start the SSH tunnel, read that profile's remote API key, and cache it with `setSshRemoteApiKey(...)`. Later profile-specific SSH operations refresh this key through the runtime manager path.
 9. On macOS-style activation, recreate a window if none exist.
 
 ## Main window behavior
@@ -140,8 +142,10 @@ After entering `main` or `setup`, local mode performs a lazy `verifyInstall()` c
 `src/renderer/src/screens/Layout/Layout.tsx` owns the primary shell:
 
 - Tracks the active view, active profile, current chat messages, current session id, and visited views.
+- Presents Hermes profiles to users as Agents; internal renderer state and IPC continue to use `profile` for runtime/storage identity.
 - Lazy-mounts tabs on first visit, then keeps them mounted with `display: none` toggles.
 - Re-checks pure remote mode on tab switch using `window.hermesAPI.isRemoteOnlyMode()`.
+- Polls `window.hermesAPI.getRuntimeDiagnostic(activeProfile)` and shows runtime diagnostics when the selected profile is stale, unverified, mismatched, or unsupported. Async diagnostic results are guarded against profile switches so an old profile cannot overwrite the current warning.
 - Gates filesystem-backed screens in pure remote HTTP mode with `RemoteNotice`; SSH mode is not treated as remote-only by this renderer check.
 - Handles menu events from the main process:
   - `onMenuNewChat()` aborts the current chat, clears chat state, and navigates to Chat.
@@ -156,6 +160,7 @@ After entering `main` or `setup`, local mode performs a lazy `verifyInstall()` c
 | IPC registration/composition | `src/main/ipc/index.ts`, `src/main/ipc/*.ts` |
 | Renderer-safe API surface | `src/preload/index.ts`, `src/preload/api/*`, `src/preload/index.d.ts` |
 | Hermes chat/API/CLI/gateway/connection | `src/main/hermes/*` |
+| Profile runtime manager and runtime diagnostics | `src/main/hermes/runtime.ts`, `src/main/hermes/types.ts`, `src/shared/runtime.ts`, `src/renderer/src/components/RuntimeDiagnosticNotice.tsx` |
 | Connection config and profile-aware config/env/model settings | `src/main/config.ts`, `src/main/ipc/config.ts` |
 | SSH tunnel and remote operations | `src/main/ssh-tunnel.ts`, `src/main/ssh-remote.ts`, `src/main/ssh/*` |
 | Install/update/doctor/migration helpers | `src/main/installer.ts`, `src/main/install/*`, `src/main/ipc/install.ts` |

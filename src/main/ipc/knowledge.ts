@@ -18,7 +18,7 @@ import {
   importSkillMarkdown,
 } from "../skills";
 import type { SkillMarkdownImportRequest } from "../../shared/skills";
-import { isGatewayRunning } from "../hermes";
+import { isGatewayRunning, markRuntimeStale } from "../hermes";
 import {
   sshReadMemory,
   sshAddMemoryEntry,
@@ -39,6 +39,10 @@ import {
   sshGatewayStatus,
 } from "../ssh-remote";
 
+function markProfileMutation(profile: string | undefined, area: string): void {
+  markRuntimeStale(profile, `${area} changed for profile runtime.`);
+}
+
 export function registerKnowledgeIpc(): void {
   // Memory
   ipcMain.handle("read-memory", (_event, profile?: string) => {
@@ -49,38 +53,46 @@ export function registerKnowledgeIpc(): void {
   });
   ipcMain.handle(
     "add-memory-entry",
-    (_event, content: string, profile?: string) => {
+    async (_event, content: string, profile?: string) => {
       const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh)
-        return sshAddMemoryEntry(conn.ssh, content, profile);
-      return addMemoryEntry(content, profile);
+      const result = conn.mode === "ssh" && conn.ssh
+        ? await sshAddMemoryEntry(conn.ssh, content, profile)
+        : addMemoryEntry(content, profile);
+      if (result.success) markProfileMutation(profile, "Memory");
+      return result;
     },
   );
   ipcMain.handle(
     "update-memory-entry",
-    (_event, index: number, content: string, profile?: string) => {
+    async (_event, index: number, content: string, profile?: string) => {
       const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh)
-        return sshUpdateMemoryEntry(conn.ssh, index, content, profile);
-      return updateMemoryEntry(index, content, profile);
+      const result = conn.mode === "ssh" && conn.ssh
+        ? await sshUpdateMemoryEntry(conn.ssh, index, content, profile)
+        : updateMemoryEntry(index, content, profile);
+      if (result.success) markProfileMutation(profile, "Memory");
+      return result;
     },
   );
   ipcMain.handle(
     "remove-memory-entry",
-    (_event, index: number, profile?: string) => {
+    async (_event, index: number, profile?: string) => {
       const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh)
-        return sshRemoveMemoryEntry(conn.ssh, index, profile);
-      return removeMemoryEntry(index, profile);
+      const result = conn.mode === "ssh" && conn.ssh
+        ? await sshRemoveMemoryEntry(conn.ssh, index, profile)
+        : removeMemoryEntry(index, profile);
+      if (result) markProfileMutation(profile, "Memory");
+      return result;
     },
   );
   ipcMain.handle(
     "write-user-profile",
-    (_event, content: string, profile?: string) => {
+    async (_event, content: string, profile?: string) => {
       const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh)
-        return sshWriteUserProfile(conn.ssh, content, profile);
-      return writeUserProfile(content, profile);
+      const result = conn.mode === "ssh" && conn.ssh
+        ? await sshWriteUserProfile(conn.ssh, content, profile)
+        : writeUserProfile(content, profile);
+      if (result.success) markProfileMutation(profile, "User profile memory");
+      return result;
     },
   );
 
@@ -90,16 +102,21 @@ export function registerKnowledgeIpc(): void {
     if (conn.mode === "ssh" && conn.ssh) return sshReadSoul(conn.ssh, profile);
     return readSoul(profile);
   });
-  ipcMain.handle("write-soul", (_event, content: string, profile?: string) => {
+  ipcMain.handle("write-soul", async (_event, content: string, profile?: string) => {
     const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshWriteSoul(conn.ssh, content, profile);
-    return writeSoul(content, profile);
+    const result = conn.mode === "ssh" && conn.ssh
+      ? await sshWriteSoul(conn.ssh, content, profile)
+      : writeSoul(content, profile);
+    if (result) markProfileMutation(profile, "SOUL");
+    return result;
   });
-  ipcMain.handle("reset-soul", (_event, profile?: string) => {
+  ipcMain.handle("reset-soul", async (_event, profile?: string) => {
     const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) return sshResetSoul(conn.ssh, profile);
-    return resetSoul(profile);
+    const result = conn.mode === "ssh" && conn.ssh
+      ? await sshResetSoul(conn.ssh, profile)
+      : resetSoul(profile);
+    markProfileMutation(profile, "SOUL");
+    return result;
   });
 
   // Tools
@@ -111,11 +128,13 @@ export function registerKnowledgeIpc(): void {
   });
   ipcMain.handle(
     "set-toolset-enabled",
-    (_event, key: string, enabled: boolean, profile?: string) => {
+    async (_event, key: string, enabled: boolean, profile?: string) => {
       const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh)
-        return sshSetToolsetEnabled(conn.ssh, key, enabled, profile);
-      return setToolsetEnabled(key, enabled, profile);
+      const result = conn.mode === "ssh" && conn.ssh
+        ? await sshSetToolsetEnabled(conn.ssh, key, enabled, profile)
+        : setToolsetEnabled(key, enabled, profile);
+      if (result) markProfileMutation(profile, `Toolset ${key}`);
+      return result;
     },
   );
 
@@ -139,20 +158,24 @@ export function registerKnowledgeIpc(): void {
   });
   ipcMain.handle(
     "install-skill",
-    (_event, identifier: string, _profile?: string) => {
+    async (_event, identifier: string, profile?: string) => {
       const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh)
-        return sshInstallSkill(conn.ssh, identifier);
-      return installSkill(identifier, _profile);
+      const result = conn.mode === "ssh" && conn.ssh
+        ? await sshInstallSkill(conn.ssh, identifier, profile)
+        : installSkill(identifier, profile);
+      if (result.success) markProfileMutation(profile, "Skills");
+      return result;
     },
   );
   ipcMain.handle(
     "uninstall-skill",
-    (_event, name: string, _profile?: string) => {
+    async (_event, name: string, profile?: string) => {
       const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh)
-        return sshUninstallSkill(conn.ssh, name);
-      return uninstallSkill(name, _profile);
+      const result = conn.mode === "ssh" && conn.ssh
+        ? await sshUninstallSkill(conn.ssh, name, profile)
+        : uninstallSkill(name, profile);
+      if (result.success) markProfileMutation(profile, "Skills");
+      return result;
     },
   );
   ipcMain.handle(
@@ -161,7 +184,8 @@ export function registerKnowledgeIpc(): void {
       const conn = getConnectionConfig();
       if (conn.mode === "ssh" && conn.ssh) {
         const result = await sshImportSkillMarkdown(conn.ssh, request, profile);
-        if (result.success && (await sshGatewayStatus(conn.ssh))) {
+        if (result.success) markProfileMutation(profile, "Skills");
+        if (result.success && (await sshGatewayStatus(conn.ssh, profile))) {
           return { ...result, warning: "gateway-restart-required" as const };
         }
         return result;
@@ -175,7 +199,8 @@ export function registerKnowledgeIpc(): void {
         };
       }
       const result = importSkillMarkdown(request, profile);
-      if (result.success && isGatewayRunning()) {
+      if (result.success) markProfileMutation(profile, "Skills");
+      if (result.success && isGatewayRunning(profile)) {
         return { ...result, warning: "gateway-restart-required" as const };
       }
       return result;

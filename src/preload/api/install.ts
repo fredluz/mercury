@@ -48,8 +48,10 @@ export const installApi = {
     ipcRenderer.invoke("refresh-hermes-version"),
   runHermesDoctor: (): Promise<string> =>
     ipcRenderer.invoke("run-hermes-doctor"),
-  runHermesUpdate: (): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke("run-hermes-update"),
+  runHermesUpdate: (
+    profile?: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("run-hermes-update", profile),
 
   // OpenClaw migration
   checkOpenClaw: (): Promise<{ found: boolean; path: string | null }> =>

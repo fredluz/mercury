@@ -12,7 +12,7 @@ import {
   InstallProgress,
 } from "../installer";
 import { getConnectionConfig } from "../config";
-import { setSshRemoteApiKey } from "../hermes";
+import { revalidateRuntime, setSshRemoteApiKey } from "../hermes";
 import { startSshTunnel } from "../ssh-tunnel";
 import {
   sshGetHermesVersion,
@@ -61,7 +61,7 @@ export function registerInstallIpc({
     if (conn.mode === "ssh" && conn.ssh) return sshRunDoctor(conn.ssh);
     return runHermesDoctor();
   });
-  ipcMain.handle("run-hermes-update", async (event) => {
+  ipcMain.handle("run-hermes-update", async (event, profile?: string) => {
     try {
       const conn = getConnectionConfig();
       if (conn.mode === "ssh" && conn.ssh) {
@@ -73,10 +73,11 @@ export function registerInstallIpc({
           log: "Running hermes update over SSH...\n",
         });
         await sshRunUpdate(conn.ssh);
-        await sshStartGateway(conn.ssh);
-        await startSshTunnel(conn.ssh);
-        const key = await sshReadRemoteApiKey(conn.ssh);
-        setSshRemoteApiKey(key);
+        await sshStartGateway(conn.ssh, profile);
+        await startSshTunnel(conn.ssh, profile);
+        const key = await sshReadRemoteApiKey(conn.ssh, profile);
+        setSshRemoteApiKey(key, profile);
+        await revalidateRuntime(profile);
         return { success: true };
       }
       await runHermesUpdate((progress: InstallProgress) => {

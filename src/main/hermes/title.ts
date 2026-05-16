@@ -3,7 +3,8 @@ import https from "https";
 import { getModelConfig } from "../config";
 import { generateTitle } from "../session-cache";
 import { getSessionTitle } from "../sessions";
-import { getApiUrl, getRemoteAuthHeader } from "./connection";
+import { profileRuntimeManager } from "./runtime";
+import type { ProfileRuntimeHandle } from "./types";
 import {
   type GenerateChatTitleRequest,
   sanitizeChatTitle,
@@ -30,10 +31,29 @@ function compactMessages(
     }));
 }
 
-function requestModelTitle(request: GenerateChatTitleRequest): Promise<string> {
+function runtimeMatchesRequest(
+  runtime: ProfileRuntimeHandle,
+  profile?: string,
+): boolean {
+  const requestedProfile = profileRuntimeManager.normalizeProfile(profile);
+  return (
+    runtime.request.profile === requestedProfile &&
+    runtime.identity.verified &&
+    runtime.identity.actualProfile === requestedProfile
+  );
+}
+
+function requestModelTitle(
+  request: GenerateChatTitleRequest,
+  runtime: ProfileRuntimeHandle,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const mc = getModelConfig(request.profile);
-    const chatUrl = `${getApiUrl()}/v1/chat/completions`;
+    if (!runtime.apiBaseUrl) {
+      reject(new Error("Title runtime does not expose an API base URL"));
+      return;
+    }
+    const chatUrl = `${runtime.apiBaseUrl}/v1/chat/completions`;
     const requester = chatUrl.startsWith("https") ? https : http;
     const body = JSON.stringify({
       model: mc.model || "hermes-agent",
@@ -54,7 +74,7 @@ function requestModelTitle(request: GenerateChatTitleRequest): Promise<string> {
         headers: {
           "Content-Type": "application/json",
           "X-Mercury-Internal": "generate-chat-title",
-          ...getRemoteAuthHeader(),
+          ...(runtime.authHeaders ?? {}),
         },
         timeout: 20_000,
       },
@@ -98,9 +118,10 @@ function requestModelTitle(request: GenerateChatTitleRequest): Promise<string> {
 
 export async function generateChatTitle(
   request: GenerateChatTitleRequest,
+  preparedRuntime?: ProfileRuntimeHandle,
 ): Promise<string> {
   if (request.sessionId) {
-    const existingTitle = getSessionTitle(request.sessionId);
+    const existingTitle = getSessionTitle(request.sessionId, request.profile);
     if (existingTitle) return sanitizeChatTitle(existingTitle) || existingTitle;
   }
 
@@ -108,7 +129,21 @@ export async function generateChatTitle(
   if (compactMessages(request.messages).length === 0) return fallback;
 
   try {
-    const modelTitle = sanitizeChatTitle(await requestModelTitle(request));
+    const runtime =
+      preparedRuntime ??
+      (await profileRuntimeManager.resolveRuntime({
+        profile: request.profile,
+        purpose: "title",
+        sessionId: request.sessionId,
+        preferTransport: "api",
+      }));
+    if (
+      (runtime.transport !== "api" && runtime.transport !== "ssh-api") ||
+      !runtimeMatchesRequest(runtime, request.profile)
+    ) {
+      return fallback;
+    }
+    const modelTitle = sanitizeChatTitle(await requestModelTitle(request, runtime));
     return modelTitle || fallback;
   } catch {
     return fallback;

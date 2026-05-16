@@ -28,12 +28,15 @@ export function classifySshCommand(command: string): SshCommandKind {
   if (/\bcat > \"\$file\"/.test(normalized)) return "write-file";
   if (/\btest -e \"\$file\"/.test(normalized)) return "file-exists";
   if (/gateway\.pid/.test(normalized) && /kill -0/.test(normalized)) return "gateway-status";
-  if (/\bhermes gateway start\b/.test(normalized)) return "gateway-start";
-  if (/\bhermes gateway stop\b/.test(normalized)) return "gateway-stop";
-  if (/\bhermes (?:--version|version)\b/.test(normalized)) return "hermes-version";
-  if (/\bhermes doctor\b/.test(normalized)) return "hermes-doctor";
-  if (/\bhermes update\b/.test(normalized)) return "hermes-update";
-  if (/\bhermes dump\b/.test(normalized)) return "hermes-dump";
+  if (/\bhermes(?:\s+-p\s+\S+)?\s+gateway start\b/.test(normalized))
+    return "gateway-start";
+  if (/\bhermes(?:\s+-p\s+\S+)?\s+gateway stop\b/.test(normalized))
+    return "gateway-stop";
+  if (/\bhermes(?:\s+-p\s+\S+)?\s+(?:--version|version)\b/.test(normalized))
+    return "hermes-version";
+  if (/\bhermes(?:\s+-p\s+\S+)?\s+doctor\b/.test(normalized)) return "hermes-doctor";
+  if (/\bhermes(?:\s+-p\s+\S+)?\s+update\b/.test(normalized)) return "hermes-update";
+  if (/\bhermes(?:\s+-p\s+\S+)?\s+dump\b/.test(normalized)) return "hermes-dump";
   return "shell";
 }
 

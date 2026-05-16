@@ -1,8 +1,7 @@
 import http from "http";
 import https from "https";
 import { getModelConfig } from "../config";
-import { getApiUrl, getRemoteAuthHeader } from "./connection";
-import type { ChatCallbacks, ChatHandle } from "./types";
+import type { ChatCallbacks, ChatHandle, ProfileRuntimeHandle } from "./types";
 import {
   normalizeHermesStreamEvent,
   splitLegacyToolProgressContent,
@@ -11,10 +10,14 @@ import {
 export function sendMessageViaApi(
   message: string,
   cb: ChatCallbacks,
-  profile?: string,
-  _resumeSessionId?: string,
-  history?: Array<{ role: string; content: string }>,
+  profile: string | undefined,
+  _resumeSessionId: string | undefined,
+  history: Array<{ role: string; content: string }> | undefined,
+  runtime: ProfileRuntimeHandle,
 ): ChatHandle {
+  if (!runtime?.apiBaseUrl) {
+    throw new Error("Verified API runtime handle is required for chat API execution");
+  }
   const mc = getModelConfig(profile);
   const controller = new AbortController();
 
@@ -38,7 +41,7 @@ export function sendMessageViaApi(
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...getRemoteAuthHeader(),
+    ...(runtime.authHeaders ?? {}),
   };
 
   let sessionId = _resumeSessionId || "";
@@ -63,7 +66,7 @@ export function sendMessageViaApi(
       messages: [{ role: "user", content: message }],
       stream: false,
     });
-    const probeUrl = `${getApiUrl()}/v1/chat/completions`;
+    const probeUrl = `${runtime.apiBaseUrl}/v1/chat/completions`;
     const probeMod = probeUrl.startsWith("https") ? https : http;
     const probeReq = probeMod.request(
       probeUrl,
@@ -71,7 +74,7 @@ export function sendMessageViaApi(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...getRemoteAuthHeader(),
+          ...(runtime.authHeaders ?? {}),
         },
       },
       (res) => {
@@ -178,7 +181,7 @@ export function sendMessageViaApi(
     return false;
   }
 
-  const chatUrl = `${getApiUrl()}/v1/chat/completions`;
+  const chatUrl = `${runtime.apiBaseUrl}/v1/chat/completions`;
   const requester = chatUrl.startsWith("https") ? https.request : http.request;
   const req = requester(
     chatUrl,

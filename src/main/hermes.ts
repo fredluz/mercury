@@ -8,7 +8,13 @@ export {
   ensureSshTunnelIfNeeded,
   testRemoteConnection,
 } from "./hermes/connection";
-export { type ChatCallbacks } from "./hermes/types";
+export {
+  type ChatCallbacks,
+  type ProfileRuntimeHandle,
+  type ProfileRuntimeRequest,
+  type RuntimeIdentity,
+  ProfileRuntimeError,
+} from "./hermes/types";
 export {
   sendMessage,
   stopHealthPolling,
@@ -17,4 +23,10 @@ export {
   isGatewayRunning,
   isApiReady,
   restartGateway,
+  getRuntimeIdentity,
+  getRuntimeDiagnostic,
+  markRuntimeStale,
+  markAllRuntimesStale,
+  clearRuntimeStale,
+  revalidateRuntime,
 } from "./hermes/gateway";

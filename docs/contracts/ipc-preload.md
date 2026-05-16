@@ -76,6 +76,7 @@ Examples by domain:
 - Trace Lab: `list-trace-runs`, `get-trace-run`, `list-skill-training-runs`, `record-local-chat-trace`.
 - Gateway/platform: `start-gateway`, `stop-gateway`, `gateway-status`, `get-platform-enabled`, `set-platform-enabled`.
 - Sessions/profiles/cache/search: `list-sessions`, `get-session-messages`, `list-profiles`, `create-profile`, `delete-profile`, `set-active-profile`, `list-cached-sessions`, `sync-session-cache`, `update-session-title`, `search-sessions`.
+  These API names remain profile-based for compatibility and Hermes storage/runtime identity; renderer product copy presents them to users as Agents.
 - Knowledge/skills: `read-memory`, `add-memory-entry`, `update-memory-entry`, `remove-memory-entry`, `write-user-profile`, `read-soul`, `write-soul`, `reset-soul`, `get-toolsets`, `set-toolset-enabled`, `list-installed-skills`, `list-bundled-skills`, `get-skill-content`, `install-skill`, `uninstall-skill`, `import-skill-markdown`.
 - Models/credentials: `get-credential-pool`, `set-credential-pool`, `list-models`, `add-model`, `remove-model`, `update-model`.
 - Claw3D: `claw3d-status`, `claw3d-setup`, `claw3d-get-port`, `claw3d-set-port`, `claw3d-get-ws-url`, `claw3d-set-ws-url`, `claw3d-start-all`, `claw3d-stop-all`, `claw3d-get-logs`, `claw3d-start-dev`, `claw3d-stop-dev`, `claw3d-start-adapter`, `claw3d-stop-adapter`.

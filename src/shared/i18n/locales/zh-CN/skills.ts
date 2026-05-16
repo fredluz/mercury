@@ -22,7 +22,7 @@ export default {
   install: "安装",
   importMarkdownAction: "导入 Markdown",
   importTitle: "导入 Markdown 技能",
-  importHelp: "粘贴 SKILL.md 文件。技能会保存到当前选中的配置文件。",
+  importHelp: "粘贴 SKILL.md 文件。技能会保存到当前选中的代理。",
   importName: "名称",
   importNamePlaceholder: "skill-name",
   importCategory: "分类",

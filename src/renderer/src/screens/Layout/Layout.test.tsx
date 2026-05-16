@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Layout from "./Layout";
 
@@ -59,9 +59,22 @@ vi.mock("../TraceLab/TraceLab", () => ({
   ),
 }));
 
-function installHermesApiMock(): void {
+function installHermesApiMock(remoteOnly = false): void {
   (window as unknown as { hermesAPI: Partial<Window["hermesAPI"]> }).hermesAPI = {
-    isRemoteOnlyMode: vi.fn().mockResolvedValue(false),
+    isRemoteOnlyMode: vi.fn().mockResolvedValue(remoteOnly),
+    getRuntimeDiagnostic: vi.fn().mockResolvedValue({
+      selectedProfile: "default",
+      requestedProfile: "default",
+      actualProfile: "default",
+      verified: true,
+      verificationSource: "cli-args",
+      mode: "local",
+      transport: "cli",
+      status: "verified",
+      authSource: "none",
+      startedByMercury: false,
+      stale: false,
+    }),
     onUpdateAvailable: vi.fn(() => vi.fn()),
     onUpdateDownloadProgress: vi.fn(() => vi.fn()),
     onUpdateDownloaded: vi.fn(() => vi.fn()),
@@ -82,8 +95,11 @@ describe("Layout trace routing", () => {
     vi.clearAllMocks();
   });
 
-  it("removes Trace Lab from sidebar and opens session trace detail with Sessions nav active", () => {
+  it("removes Trace Lab from sidebar and opens session trace detail with Sessions nav active", async () => {
     render(<Layout />);
+    await waitFor(() =>
+      expect(window.hermesAPI.getRuntimeDiagnostic).toHaveBeenCalled(),
+    );
 
     expect(screen.queryByRole("button", { name: /Trace Lab/i })).not.toBeInTheDocument();
 
@@ -95,12 +111,27 @@ describe("Layout trace routing", () => {
     expect(sessionsNav).toHaveClass("active");
   });
 
-  it("opens the all-trace activity fallback from Sessions", () => {
+  it("opens the all-trace activity fallback from Sessions", async () => {
     render(<Layout />);
+    await waitFor(() =>
+      expect(window.hermesAPI.getRuntimeDiagnostic).toHaveBeenCalled(),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "navigation.sessions" }));
     fireEvent.click(screen.getByRole("button", { name: "Open all traces" }));
 
     expect(screen.getByText(/TraceLab mock all/)).toBeInTheDocument();
+  });
+
+  it("uses Agents terminology for the remote-only Agents view", async () => {
+    installHermesApiMock(true);
+    render(<Layout />);
+    await waitFor(() =>
+      expect(window.hermesAPI.getRuntimeDiagnostic).toHaveBeenCalled(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "navigation.agents" }));
+
+    expect(await screen.findByText("Remote Agents")).toBeInTheDocument();
   });
 });

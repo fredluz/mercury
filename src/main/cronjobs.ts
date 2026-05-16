@@ -4,7 +4,9 @@ import { join } from "path";
 import { execFile } from "child_process";
 import { HERMES_HOME, HERMES_PYTHON, HERMES_SCRIPT } from "./installer";
 import { profileHome } from "./utils";
-import { isRemoteMode, getApiUrl, getRemoteAuthHeader } from "./hermes";
+import { isRemoteMode } from "./hermes";
+import { buildHermesProfileCommandArgs, profileRuntimeManager } from "./hermes/runtime";
+import type { ProfileRuntimeHandle } from "./hermes/types";
 
 export interface CronJob {
   id: string;
@@ -60,15 +62,39 @@ function normalizeJob(job: Record<string, unknown>): CronJob | null {
   };
 }
 
+async function resolveCronApiRuntime(
+  profile?: string,
+): Promise<ProfileRuntimeHandle> {
+  const requestedProfile = profileRuntimeManager.normalizeProfile(profile);
+  const runtime = await profileRuntimeManager.resolveRuntime({
+    profile: requestedProfile,
+    purpose: "cron",
+    preferTransport: "api",
+  });
+  if (
+    (runtime.transport !== "api" && runtime.transport !== "ssh-api") ||
+    !runtime.apiBaseUrl ||
+    runtime.request.profile !== requestedProfile ||
+    !runtime.identity.verified ||
+    runtime.identity.actualProfile !== requestedProfile
+  ) {
+    throw new Error(
+      `Verified cron API runtime is not available for profile ${requestedProfile}`,
+    );
+  }
+  return runtime;
+}
+
 async function remoteFetch(
+  runtime: ProfileRuntimeHandle,
   path: string,
   init: RequestInit = {},
 ): Promise<Response> {
   const headers: Record<string, string> = {
-    ...getRemoteAuthHeader(),
+    ...(runtime.authHeaders ?? {}),
     ...((init.headers as Record<string, string>) || {}),
   };
-  return fetch(`${getApiUrl()}${path}`, { ...init, headers });
+  return fetch(`${runtime.apiBaseUrl}${path}`, { ...init, headers });
 }
 
 async function remoteJsonError(res: Response): Promise<string> {
@@ -90,8 +116,9 @@ export async function listCronJobs(
 ): Promise<CronJob[]> {
   if (isRemoteMode()) {
     try {
+      const runtime = await resolveCronApiRuntime(profile);
       const qs = includeDisabled ? "?include_disabled=true" : "";
-      const res = await remoteFetch(`/api/jobs${qs}`);
+      const res = await remoteFetch(runtime, `/api/jobs${qs}`);
       if (!res.ok) {
         console.error("[CRON] remote list failed:", await remoteJsonError(res));
         return [];
@@ -142,11 +169,10 @@ function runCronCommand(
   args: string[],
   profile?: string,
 ): Promise<{ success: boolean; output: string; error?: string }> {
-  const cliArgs = [HERMES_SCRIPT];
-  if (profile && profile !== "default") {
-    cliArgs.push("-p", profile);
-  }
-  cliArgs.push("cron", ...args);
+  const cliArgs = buildHermesProfileCommandArgs(HERMES_SCRIPT, profile, [
+    "cron",
+    ...args,
+  ]);
 
   return new Promise((resolve) => {
     execFile(
@@ -177,7 +203,8 @@ export async function createCronJob(
 ): Promise<{ success: boolean; error?: string }> {
   if (isRemoteMode()) {
     try {
-      const res = await remoteFetch("/api/jobs", {
+      const runtime = await resolveCronApiRuntime(profile);
+      const res = await remoteFetch(runtime, "/api/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -216,7 +243,8 @@ export async function removeCronJob(
   if (!jobId) return { success: false, error: "Missing job ID" };
   if (isRemoteMode()) {
     try {
-      const res = await remoteFetch(`/api/jobs/${encodeURIComponent(jobId)}`, {
+      const runtime = await resolveCronApiRuntime(profile);
+      const res = await remoteFetch(runtime, `/api/jobs/${encodeURIComponent(jobId)}`, {
         method: "DELETE",
       });
       if (!res.ok) {
@@ -234,9 +262,12 @@ export async function removeCronJob(
 async function remoteJobAction(
   jobId: string,
   action: "pause" | "resume" | "run",
+  profile?: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const runtime = await resolveCronApiRuntime(profile);
     const res = await remoteFetch(
+      runtime,
       `/api/jobs/${encodeURIComponent(jobId)}/${action}`,
       { method: "POST" },
     );
@@ -254,7 +285,7 @@ export async function pauseCronJob(
   profile?: string,
 ): Promise<{ success: boolean; error?: string }> {
   if (!jobId) return { success: false, error: "Missing job ID" };
-  if (isRemoteMode()) return remoteJobAction(jobId, "pause");
+  if (isRemoteMode()) return remoteJobAction(jobId, "pause", profile);
   const result = await runCronCommand(["pause", jobId], profile);
   return { success: result.success, error: result.error };
 }
@@ -264,7 +295,7 @@ export async function resumeCronJob(
   profile?: string,
 ): Promise<{ success: boolean; error?: string }> {
   if (!jobId) return { success: false, error: "Missing job ID" };
-  if (isRemoteMode()) return remoteJobAction(jobId, "resume");
+  if (isRemoteMode()) return remoteJobAction(jobId, "resume", profile);
   const result = await runCronCommand(["resume", jobId], profile);
   return { success: result.success, error: result.error };
 }
@@ -274,7 +305,7 @@ export async function triggerCronJob(
   profile?: string,
 ): Promise<{ success: boolean; error?: string }> {
   if (!jobId) return { success: false, error: "Missing job ID" };
-  if (isRemoteMode()) return remoteJobAction(jobId, "run");
+  if (isRemoteMode()) return remoteJobAction(jobId, "run", profile);
   const result = await runCronCommand(["run", jobId], profile);
   return { success: result.success, error: result.error };
 }

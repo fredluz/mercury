@@ -24,7 +24,7 @@ export default {
   importMarkdownAction: "Import Markdown",
   importTitle: "Import Markdown skill",
   importHelp:
-    "Paste a SKILL.md file. The skill is saved to the selected profile.",
+    "Paste a SKILL.md file. The skill is saved to the selected agent.",
   importName: "Name",
   importNamePlaceholder: "skill-name",
   importCategory: "Category",

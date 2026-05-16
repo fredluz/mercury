@@ -29,6 +29,8 @@ import {
 import { updateSessionProfile, updateSessionTitle } from "../session-cache";
 import { generateChatTitle as resolveChatTitle } from "../hermes/title";
 import { isSyntheticChatStreamEnabled } from "../hermes/synthetic-chat";
+import { profileRuntimeManager } from "../hermes/runtime";
+import type { ProfileRuntimeHandle } from "../hermes/types";
 import type { IpcRegistrationContext } from "./types";
 
 type ChatResponse = { response: string; sessionId?: string };
@@ -99,25 +101,44 @@ export function abortActiveChat(): void {
   abortCurrentRun("Mercury shut down the active Hermes run.");
 }
 
-async function prepareChatBackend(profile?: string): Promise<void> {
-  if (isSyntheticChatStreamEnabled()) return;
+async function prepareChatBackend(
+  profile?: string,
+  purpose: "chat" | "title" = "chat",
+  sessionId?: string,
+): Promise<ProfileRuntimeHandle | undefined> {
+  if (isSyntheticChatStreamEnabled()) return undefined;
 
-  if (!isRemoteMode() && !isGatewayRunning()) {
-    startGateway(profile);
+  const normalizedProfile = profileRuntimeManager.normalizeProfile(profile);
+  if (!isRemoteMode() && !isGatewayRunning(normalizedProfile)) {
+    startGateway(normalizedProfile);
   }
 
-  await ensureSshTunnelIfNeeded();
+  if (!isRemoteMode()) {
+    return profileRuntimeManager.resolveRuntime({
+      profile: normalizedProfile,
+      purpose,
+      sessionId,
+    });
+  }
+
+  await ensureSshTunnelIfNeeded(normalizedProfile);
   const conn = getConnectionConfig();
   if (conn.mode === "ssh" && conn.ssh) {
-    const gatewayRunning = await sshGatewayStatus(conn.ssh);
-    const tunnelHealthy = await isSshTunnelHealthy();
+    const gatewayRunning = await sshGatewayStatus(conn.ssh, normalizedProfile);
+    const tunnelHealthy = await isSshTunnelHealthy(conn.ssh, normalizedProfile);
     if (!gatewayRunning || !tunnelHealthy) {
-      await sshStartGateway(conn.ssh);
-      await startSshTunnel(conn.ssh);
-      const key = await sshReadRemoteApiKey(conn.ssh);
-      setSshRemoteApiKey(key);
+      await sshStartGateway(conn.ssh, normalizedProfile);
+      await startSshTunnel(conn.ssh, normalizedProfile);
     }
+    const key = await sshReadRemoteApiKey(conn.ssh, normalizedProfile);
+    setSshRemoteApiKey(key, normalizedProfile);
   }
+
+  return profileRuntimeManager.resolveRuntime({
+    profile: normalizedProfile,
+    purpose,
+    sessionId,
+  });
 }
 
 export function registerChatIpc({
@@ -133,7 +154,7 @@ export function registerChatIpc({
       resumeSessionId?: string,
       history?: Array<{ role: string; content: string }>,
     ) => {
-      await prepareChatBackend(profile);
+      const runtime = await prepareChatBackend(profile, "chat", resumeSessionId);
 
       abortCurrentRun("Superseded by a new Hermes message.");
 
@@ -363,6 +384,7 @@ export function registerChatIpc({
           profile,
           resumeSessionId,
           history,
+          runtime,
         );
 
         if (!settled) {
@@ -418,8 +440,12 @@ export function registerChatIpc({
       return title;
     }
 
-    await prepareChatBackend(normalizedRequest.profile);
-    const title = await resolveChatTitle(normalizedRequest);
+    const runtime = await prepareChatBackend(
+      normalizedRequest.profile,
+      "title",
+      normalizedRequest.sessionId,
+    );
+    const title = await resolveChatTitle(normalizedRequest, runtime);
     if (normalizedRequest.sessionId && title) {
       updateSessionTitle(
         normalizedRequest.sessionId,

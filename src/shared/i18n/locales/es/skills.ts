@@ -24,7 +24,7 @@ export default {
   importMarkdownAction: "Importar Markdown",
   importTitle: "Importar habilidad Markdown",
   importHelp:
-    "Pega un archivo SKILL.md. La habilidad se guarda en el perfil seleccionado.",
+    "Pega un archivo SKILL.md. La habilidad se guarda en el agente seleccionado.",
   importName: "Nombre",
   importNamePlaceholder: "nombre-habilidad",
   importCategory: "Categoría",

@@ -1,6 +1,6 @@
 # Storage and Profiles
 
-This document describes Mercury's current profile scoping, persistent files, session cache, memory/user/soul storage, model/credential files, and local/SSH/remote differences.
+This document describes Mercury's current profile scoping, persistent files, session cache, memory/user/soul storage, model/credential files, runtime identity, and local/SSH/remote differences. It intentionally distinguishes profile-scoped storage from verified profile-scoped runtime execution.
 
 ## Source anchors
 
@@ -13,12 +13,13 @@ This document describes Mercury's current profile scoping, persistent files, ses
 - Soul: `src/main/soul.ts`
 - Models: `src/main/models.ts`, `src/main/default-models.ts`, `src/shared/chat-metadata.ts`
 - IPC routing: `src/main/ipc/config.ts`, `src/main/ipc/sessions.ts`, `src/main/ipc/knowledge.ts`, `src/main/ipc/models.ts`, `src/main/ipc/system.ts`
-- SSH implementations: `src/main/ssh/config.ts`, `src/main/ssh/sessions-profiles.ts`, `src/main/ssh/memory-soul.ts`, `src/main/ssh/runtime.ts`, `src/main/ssh/transport.ts`
-- Contract tests: `tests/profiles.test.ts`, `tests/chat-metadata.test.ts`, `tests/session-cache-sync.test.ts`
+- Runtime identity and diagnostics: `src/main/hermes/runtime.ts`, `src/main/hermes/types.ts`, `src/shared/runtime.ts`
+- SSH implementations: `src/main/ssh/config.ts`, `src/main/ssh/sessions-profiles.ts`, `src/main/ssh/memory-soul.ts`, `src/main/ssh/runtime.ts`, `src/main/ssh/transport.ts`, `src/main/ssh-tunnel.ts`
+- Contract tests: `tests/profiles.test.ts`, `tests/chat-metadata.test.ts`, `tests/session-cache-sync.test.ts`, `tests/hermes-runtime.test.ts`, `tests/cron-runtime.test.ts`, `tests/ssh-remote.test.ts`, `tests/reliable-profile-runtime-contract.test.ts`
 
 ## Profile scoping
 
-Most local profile-aware files are rooted through `profileHome(profile)` from `src/main/utils.ts`.
+Most local profile-aware files are rooted through `profileHome(profile)` from `src/main/utils.ts`. In the UI, these Hermes profiles are presented as Agents; this document uses profile to refer to filesystem/runtime identity.
 
 Current behavior visible from callers:
 
@@ -28,6 +29,19 @@ Current behavior visible from callers:
 - Named profiles are any non-dot directories directly under `<HERMES_HOME>/profiles`; they do not need `config.yaml` or `.env` to be visible in the UI.
 - `<HERMES_HOME>/active_profile` is read to mark `ProfileInfo.isActive`. Missing or blank files default the active profile to `"default"`.
 - SSH implementations mirror this shape with remote paths under `~/.hermes` for default and `~/.hermes/profiles/<profile>` for named profiles.
+
+## Storage isolation vs runtime isolation
+
+Storage isolation means Mercury reads and writes profile-specific files such as `.env`, `config.yaml`, `state.db`, memory, SOUL, skills, cron jobs, and remote SSH equivalents under the requested profile home. Runtime isolation is a stricter execution guarantee: chat, title generation, cron API calls, gateway lifecycle, SSH gateway operations, and other Hermes execution paths must resolve a runtime whose actual identity is verified for the requested profile.
+
+Mercury enforces runtime isolation through `ProfileRuntimeManager` and the main-process runtime contract in `src/main/hermes/types.ts`:
+
+- `ProfileRuntimeRequest` carries the requested `profile`, connection `mode`, runtime `purpose`, optional `sessionId`, and transport preference.
+- `RuntimeIdentity` records requested profile, actual/verified profile, mode, transport, URL/port, PID/config/log/home evidence, auth-key fingerprint/source, verification source, command evidence, and mismatch reason when known.
+- `ProfileRuntimeHandle` is the only safe handoff for API execution. Chat, title, and cron API paths must use its URL/auth and reject mismatched or unverified profiles.
+- `RuntimeDiagnostic` from `src/shared/runtime.ts` is exposed through `get-runtime-diagnostic` and renderer `getRuntimeDiagnostic(profile)`. It reports selected/requested/actual profile, mode, transport, API URL/port, PID/config/auth source, verification time, stale state, mismatch, unsupported, and capability fields.
+
+A profile-scoped file write does not prove that a running Hermes API process has loaded that profile. Profile-scoped config changes that can affect a running runtime mark the runtime stale or restart it when practical. The UI surfaces stale/mismatch/unverified states in Chat, Gateway, Settings, and the main layout instead of implying profile isolation when Mercury cannot prove it.
 
 ## Persistent files
 
@@ -47,8 +61,8 @@ Current local persistent files used by the documented subsystems include:
 | `<profileHome>/memories/USER.md` | `src/main/memory.ts`, `src/main/ssh/memory-soul.ts` | User profile text. |
 | `<profileHome>/SOUL.md` | `src/main/soul.ts`, `src/main/ssh/memory-soul.ts` | Persona/soul text. |
 | `<HERMES_HOME>/desktop-traces.json` | `src/main/trace-store.ts` | Trace runs and trace events. See [Trace schema contract](../contracts/trace-schema.md). |
-| `<HERMES_HOME>/gateway.pid` | `src/main/hermes/gateway.ts` | Gateway process id used for gateway status/stop. |
-| `<HERMES_HOME>/logs/*.log` | installer/runtime log helpers, SSH runtime log helper | Log viewer reads allowed log files locally/remotely. |
+| `<profileHome>/gateway.pid` | `src/main/hermes/runtime.ts`, `src/main/ssh/runtime.ts` | Profile-specific gateway process id used for local/SSH gateway status and stop. |
+| `<profileHome>/gateway.log`, `<profileHome>/logs/*.log` | installer/runtime log helpers, SSH runtime log helper | Profile-specific log viewer inputs where available; SSH log reads target the selected remote profile. |
 
 Remote SSH equivalents generally use `~/.hermes/...` and `~/.hermes/profiles/<profile>/...` paths.
 
@@ -81,7 +95,7 @@ See [Connection modes](connection-modes.md) for runtime interpretation.
 - disables `smart_model_routing` when it finds an adjacent `enabled: true|false` line after a `smart_model_routing` line;
 - sets top-level `streaming:` to `true` when the field exists.
 
-`src/main/ipc/config.ts` restarts local or SSH gateways for selected config changes as described in [Connection modes](connection-modes.md).
+`src/main/ipc/config.ts` restarts local or SSH gateways for selected config changes where it can safely do so and marks affected runtimes stale for changes that require revalidation. Connection-mode changes mark all known runtimes stale because the verified transport identity may no longer match the selected mode.
 
 ## Credential pool
 
@@ -220,24 +234,24 @@ Current behavior:
 
 SSH soul behavior in `src/main/ssh/memory-soul.ts` uses remote `~/.hermes/SOUL.md` or profile `SOUL.md` and the same default soul text.
 
-## Backup, import, dump, logs, and memory providers
+## Backup, import, dump, logs, MCP, and memory providers
 
 `src/main/ipc/system.ts` exposes system/storage-adjacent operations:
 
 - `run-hermes-backup` -> local `runHermesBackup(profile)`.
-- `run-hermes-import` -> local `runHermesImport(archivePath, profile)`.
+- `run-hermes-import` -> local `runHermesImport(archivePath, profile)` and marks the profile runtime stale after a successful import.
 - `run-hermes-dump` -> SSH `sshRunDump(...)` in SSH mode, otherwise local `runHermesDump()`.
-- `list-mcp-servers` -> local `listMcpServers(profile)`.
+- `list-mcp-servers` -> SSH `sshListMcpServers(conn.ssh, profile)` in SSH mode, otherwise local `listMcpServers(profile)`.
 - `discover-memory-providers` -> SSH implementation in SSH mode, otherwise local implementation.
-- `read-logs` -> SSH log reader in SSH mode, otherwise local log reader.
+- `read-logs` -> SSH `sshReadLogs(conn.ssh, logFile, lines, profile)` in SSH mode, otherwise local `readLogs(logFile, lines, profile)`.
 
-At the time of this doc, backup/import and MCP server listing do not branch to SSH or pure remote HTTP in this IPC module.
+Backup/import remain local filesystem operations; pure remote HTTP mode does not claim profile-isolated storage access for them.
 
 ## Local, remote, and SSH differences
 
-- **Local mode** reads/writes local files under `HERMES_HOME` and `profileHome(profile)`.
-- **Pure remote HTTP mode** is renderer-gated for filesystem-backed screens. Main handlers without explicit remote support may still operate locally; manual Markdown skill import explicitly rejects pure remote mode because it writes to a profile filesystem.
-- **SSH mode** uses SSH helpers for many env/config/session/profile/memory/soul/skill/runtime reads and writes. Remote paths are under `~/.hermes` and `~/.hermes/profiles/<profile>`. Some handlers still remain local-only, as noted above.
+- **Local mode** reads/writes local files under `HERMES_HOME` and `profileHome(profile)`. Local gateway/API state is owned by `ProfileRuntimeManager`, keyed by profile, and uses profile-specific port/PID/log/config/auth evidence. CLI fallback uses `hermes -p <profile>` for named profiles, which is treated as verified command identity.
+- **Pure remote HTTP mode** is renderer-gated for filesystem-backed screens and fail-closed for profile runtime execution unless an identity can be declared or verified. Generic remote `/health` success is not enough to satisfy a selected Mercury profile, so chat/title/cron/gateway paths do not silently reuse a profile-less remote API.
+- **SSH mode** uses SSH helpers for many env/config/session/profile/memory/soul/skill/runtime reads and writes. Remote paths are under `~/.hermes` and `~/.hermes/profiles/<profile>`. Gateway status/start/stop/restart/API-key/log/MCP paths accept profile and use `hermes -p <profile>` or profile-specific remote paths. SSH tunnel state is keyed by profile plus host/user/port/remote-port/local-port so a tunnel for one profile cannot satisfy another accidentally.
 
 ## Verification guidance
 
@@ -246,9 +260,10 @@ For storage/profile changes, run targeted tests based on the touched area:
 ```bash
 npm run test -- tests/profiles.test.ts tests/chat-metadata.test.ts
 npm run test -- tests/session-cache-sync.test.ts tests/sessions-profile-db.test.ts
-npm run test -- tests/chat-ipc-lifecycle.test.ts
+npm run test -- tests/hermes-runtime.test.ts tests/cron-runtime.test.ts tests/ssh-remote.test.ts
+npm run test -- tests/chat-ipc-lifecycle.test.ts tests/hermes-title.test.ts
 npm run test -- tests/skills-import.test.ts
-npm run test -- tests/ipc-handlers.test.ts tests/preload-api-surface.test.ts
+npm run test -- tests/ipc-handlers.test.ts tests/preload-api-surface.test.ts tests/reliable-profile-runtime-contract.test.ts
 npm run typecheck
 ```
 

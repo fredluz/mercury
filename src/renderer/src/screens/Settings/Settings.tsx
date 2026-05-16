@@ -3,6 +3,7 @@ import { useTheme } from "../../components/ThemeProvider";
 import { useI18n } from "../../components/useI18n";
 import { SettingsCoreSections } from "./components/SettingsCoreSections";
 import { SettingsPreferenceSections } from "./components/SettingsPreferenceSections";
+import type { RuntimeDiagnostic } from "../../../../shared/runtime";
 
 // Read cached values from localStorage for instant display
 function getCachedVersion(): string | null {
@@ -22,7 +23,13 @@ function getCachedOpenClaw(): { found: boolean; path: string | null } | null {
   }
 }
 
-function Settings({ profile }: { profile?: string }): React.JSX.Element {
+function Settings({
+  profile,
+  runtimeDiagnostic,
+}: {
+  profile?: string;
+  runtimeDiagnostic?: RuntimeDiagnostic | null;
+}): React.JSX.Element {
   const { t, locale, setLocale } = useI18n();
   const [hermesHome, setHermesHome] = useState("");
   const { theme, setTheme } = useTheme();
@@ -274,7 +281,7 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
   }
 
   async function loadLogs(): Promise<void> {
-    const result = await window.hermesAPI.readLogs(logFile, 300);
+    const result = await window.hermesAPI.readLogs(logFile, 300, profile);
     setLogContent(result.content);
     setLogPath(result.path);
   }
@@ -304,7 +311,7 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
   async function handleUpdateHermes(): Promise<void> {
     setUpdating(true);
     setUpdateResult(null);
-    const result = await window.hermesAPI.runHermesUpdate();
+    const result = await window.hermesAPI.runHermesUpdate(profile);
     setUpdating(false);
     if (result.success) {
       setUpdateResult(t("settings.updateSuccess"));
@@ -404,6 +411,7 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
         handleDoctor,
         handleUpdateHermes,
         profile,
+        runtimeDiagnostic,
       };
 
   return (

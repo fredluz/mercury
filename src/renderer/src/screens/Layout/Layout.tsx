@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import Chat, { ChatMessage } from "../Chat/Chat";
 import Sessions from "../Sessions/Sessions";
 import TraceLab from "../TraceLab/TraceLab";
@@ -13,6 +13,7 @@ import Models from "../Models/Models";
 import Providers from "../Providers/Providers";
 import Schedules from "../Schedules/Schedules";
 import RemoteNotice from "../../components/RemoteNotice";
+import { RuntimeDiagnosticNotice } from "../../components/RuntimeDiagnosticNotice";
 import MercuryLockup from "../../components/common/MercuryLockup";
 import {
   ChatBubble,
@@ -31,6 +32,7 @@ import {
   Activity,
 } from "../../assets/icons";
 import type { LucideIcon } from "lucide-react";
+import type { RuntimeDiagnostic } from "../../../../shared/runtime";
 import { useI18n } from "../../components/useI18n";
 import { markRendererPerf } from "../../perf";
 
@@ -96,6 +98,8 @@ function Layout(): React.JSX.Element {
   );
   // Remote-only mode — SSH tunnel has full access; only pure HTTP remote mode restricts screens
   const [remoteMode, setRemoteMode] = useState(false);
+  const [runtimeDiagnostic, setRuntimeDiagnostic] = useState<RuntimeDiagnostic | null>(null);
+  const activeProfileRef = useRef(activeProfile);
 
   const paneStyle = (target: View): React.CSSProperties => ({
     display: view === target ? "flex" : "none",
@@ -124,10 +128,33 @@ function Layout(): React.JSX.Element {
     });
   }, [view, visitedViews.size]);
 
-  // Re-check remote mode on tab switch (picks up Settings changes)
+  useEffect(() => {
+    activeProfileRef.current = activeProfile;
+  }, [activeProfile]);
+
+  const refreshRuntimeDiagnostic = useCallback(() => {
+    const requestedProfile = activeProfile;
+    window.hermesAPI
+      .getRuntimeDiagnostic(requestedProfile)
+      .then((diagnostic) => {
+        if (activeProfileRef.current === requestedProfile) setRuntimeDiagnostic(diagnostic);
+      })
+      .catch(() => {
+        if (activeProfileRef.current === requestedProfile) setRuntimeDiagnostic(null);
+      });
+  }, [activeProfile]);
+
+  // Re-check remote mode/runtime diagnostics on tab switch (picks up Settings changes)
   useEffect(() => {
     window.hermesAPI.isRemoteOnlyMode().then(setRemoteMode);
-  }, [view]);
+    refreshRuntimeDiagnostic();
+  }, [view, refreshRuntimeDiagnostic]);
+
+  useEffect(() => {
+    refreshRuntimeDiagnostic();
+    const interval = setInterval(refreshRuntimeDiagnostic, 10000);
+    return () => clearInterval(interval);
+  }, [refreshRuntimeDiagnostic]);
 
   // Mercury desktop app update state. This is separate from the Hermes Agent
   // engine updater in Settings.
@@ -325,11 +352,15 @@ function Layout(): React.JSX.Element {
         <div className="sidebar-footer">
           <div className="sidebar-footer-text">
             {activeProfile === "default" ? t("common.appName") : activeProfile}
+            {runtimeDiagnostic && runtimeDiagnostic.status !== "verified"
+              ? ` · runtime ${runtimeDiagnostic.status}`
+              : ""}
           </div>
         </div>
       </aside>
 
       <main className="content">
+        <RuntimeDiagnosticNotice diagnostic={runtimeDiagnostic} />
         <div style={paneStyle("chat")}>
           <Chat
             messages={messages}
@@ -338,6 +369,7 @@ function Layout(): React.JSX.Element {
             sessionTitle={currentSessionTitle}
             conversationVersion={conversationVersion}
             profile={activeProfile}
+            runtimeDiagnostic={runtimeDiagnostic}
             onSessionResolved={(sessionId) => {
               setCurrentSessionId(sessionId);
               setCurrentSessionProfile(activeProfile);
@@ -401,7 +433,7 @@ function Layout(): React.JSX.Element {
         {visitedViews.has("agents") && (
           <div style={paneStyle("agents")}>
             {remoteMode ? (
-              <RemoteNotice feature="Profiles" />
+              <RemoteNotice feature="Agents" />
             ) : (
               <Agents
                 activeProfile={activeProfile}
@@ -482,14 +514,14 @@ function Layout(): React.JSX.Element {
             {remoteMode ? (
               <RemoteNotice feature="Gateway" />
             ) : (
-              <Gateway profile={activeProfile} />
+              <Gateway profile={activeProfile} runtimeDiagnostic={runtimeDiagnostic} />
             )}
           </div>
         )}
 
         {visitedViews.has("settings") && (
           <div style={paneStyle("settings")}>
-            <Settings profile={activeProfile} />
+            <Settings profile={activeProfile} runtimeDiagnostic={runtimeDiagnostic} />
           </div>
         )}
       </main>

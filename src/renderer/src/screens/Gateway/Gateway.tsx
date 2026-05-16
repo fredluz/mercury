@@ -1,8 +1,16 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { GATEWAY_SECTIONS, GATEWAY_PLATFORMS } from "../../constants";
+import { RuntimeDiagnosticNotice } from "../../components/RuntimeDiagnosticNotice";
 import { useI18n } from "../../components/useI18n";
+import type { RuntimeDiagnostic } from "../../../../shared/runtime";
 
-function Gateway({ profile }: { profile?: string }): React.JSX.Element {
+function Gateway({
+  profile,
+  runtimeDiagnostic,
+}: {
+  profile?: string;
+  runtimeDiagnostic?: RuntimeDiagnostic | null;
+}): React.JSX.Element {
   const { t } = useI18n();
   const [gatewayRunning, setGatewayRunning] = useState(false);
   const [env, setEnv] = useState<Record<string, string>>({});
@@ -11,13 +19,21 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
   >({});
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
+  const profileRef = useRef(profile);
+
+  useEffect(() => {
+    profileRef.current = profile;
+  }, [profile]);
 
   const loadConfig = useCallback(async (): Promise<void> => {
     const envData = await window.hermesAPI.getEnv(profile);
+    if (profileRef.current !== profile) return;
     setEnv(envData);
-    const gwStatus = await window.hermesAPI.gatewayStatus();
+    const gwStatus = await window.hermesAPI.gatewayStatus(profile);
+    if (profileRef.current !== profile) return;
     setGatewayRunning(gwStatus);
     const platforms = await window.hermesAPI.getPlatformEnabled(profile);
+    if (profileRef.current !== profile) return;
     setPlatformEnabled(platforms);
   }, [profile]);
 
@@ -28,22 +44,24 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
   // Poll gateway status (10s interval to reduce IPC overhead)
   useEffect(() => {
     const interval = setInterval(async () => {
-      const status = await window.hermesAPI.gatewayStatus();
+      const status = await window.hermesAPI.gatewayStatus(profile);
+      if (profileRef.current !== profile) return;
       setGatewayRunning(status);
     }, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [profile]);
 
   async function toggleGateway(): Promise<void> {
     if (gatewayRunning) {
-      await window.hermesAPI.stopGateway();
+      await window.hermesAPI.stopGateway(profile);
       setGatewayRunning(false);
     } else {
-      const started = await window.hermesAPI.startGateway();
+      const started = await window.hermesAPI.startGateway(profile);
       setGatewayRunning(started);
       // Re-check status after a short delay to confirm it stayed up
       setTimeout(async () => {
-        const status = await window.hermesAPI.gatewayStatus();
+        const status = await window.hermesAPI.gatewayStatus(profile);
+        if (profileRef.current !== profile) return;
         setGatewayRunning(status);
       }, 2000);
     }
@@ -55,7 +73,8 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
     await window.hermesAPI.setPlatformEnabled(platform, newValue, profile);
     // Re-check gateway status after restart
     setTimeout(async () => {
-      const status = await window.hermesAPI.gatewayStatus();
+      const status = await window.hermesAPI.gatewayStatus(profile);
+      if (profileRef.current !== profile) return;
       setGatewayRunning(status);
     }, 3000);
   }
@@ -118,6 +137,7 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
             </button>
           </div>
           <div className="settings-field-hint">{t("gateway.gatewayHint")}</div>
+          <RuntimeDiagnosticNotice diagnostic={runtimeDiagnostic} showWhenVerified />
         </div>
       </div>
 

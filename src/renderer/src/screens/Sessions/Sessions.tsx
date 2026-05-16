@@ -111,7 +111,7 @@ function formatModel(model: string): string {
 
 function formatProfile(profile?: string): string {
   const clean = profile?.trim();
-  return clean || "unknown profile";
+  return clean || "unknown agent";
 }
 
 function sessionRowKey(sessionId: string, profile?: string): string {

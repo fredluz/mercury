@@ -242,7 +242,7 @@ export function SettingsPreferenceSections({ values }: SettingsPreferenceSection
                   className={`btn btn-sm ${logFile === f ? "btn-primary" : "btn-secondary"}`}
                   onClick={() => {
                     setLogFile(f);
-                    window.hermesAPI.readLogs(f, 300).then((r) => {
+                    window.hermesAPI.readLogs(f, 300, profile).then((r) => {
                       setLogContent(r.content);
                       setLogPath(r.path);
                     });

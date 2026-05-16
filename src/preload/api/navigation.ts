@@ -13,9 +13,14 @@ export const navigationApi = {
     ipcRenderer.invoke("list-skill-training-runs"),
 
   // Gateway
-  startGateway: (): Promise<boolean> => ipcRenderer.invoke("start-gateway"),
-  stopGateway: (): Promise<boolean> => ipcRenderer.invoke("stop-gateway"),
-  gatewayStatus: (): Promise<boolean> => ipcRenderer.invoke("gateway-status"),
+  startGateway: (profile?: string): Promise<boolean> =>
+    ipcRenderer.invoke("start-gateway", profile),
+  stopGateway: (profile?: string): Promise<boolean> =>
+    ipcRenderer.invoke("stop-gateway", profile),
+  gatewayStatus: (profile?: string): Promise<boolean> =>
+    ipcRenderer.invoke("gateway-status", profile),
+  restartGateway: (profile?: string): Promise<boolean> =>
+    ipcRenderer.invoke("restart-gateway", profile),
 
   // Platform toggles
   getPlatformEnabled: (profile?: string): Promise<Record<string, boolean>> =>

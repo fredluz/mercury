@@ -7,7 +7,11 @@ const mocks = vi.hoisted(() => ({
   ensureApiServerConfig: vi.fn(),
   isApiServerReady: vi.fn(),
   isRemoteMode: vi.fn(),
+  defaultLocalApiPortForProfile: vi.fn(),
+  getLocalApiPort: vi.fn(),
+  getLocalApiUrl: vi.fn(),
   readEnv: vi.fn(),
+  getConnectionConfig: vi.fn(),
 }));
 
 vi.mock("../src/main/hermes/chat-api", () => ({
@@ -22,10 +26,14 @@ vi.mock("../src/main/hermes/connection", () => ({
   ensureApiServerConfig: mocks.ensureApiServerConfig,
   isApiServerReady: mocks.isApiServerReady,
   isRemoteMode: mocks.isRemoteMode,
+  defaultLocalApiPortForProfile: mocks.defaultLocalApiPortForProfile,
+  getLocalApiPort: mocks.getLocalApiPort,
+  getLocalApiUrl: mocks.getLocalApiUrl,
 }));
 
 vi.mock("../src/main/config", () => ({
   readEnv: mocks.readEnv,
+  getConnectionConfig: mocks.getConnectionConfig,
 }));
 
 vi.mock("../src/main/install/paths", () => ({
@@ -73,7 +81,11 @@ beforeEach(() => {
   mocks.ensureApiServerConfig.mockReset();
   mocks.isApiServerReady.mockReset().mockResolvedValue(false);
   mocks.isRemoteMode.mockReset().mockReturnValue(false);
+  mocks.defaultLocalApiPortForProfile.mockReset().mockReturnValue(8642);
+  mocks.getLocalApiPort.mockReset().mockReturnValue(8642);
+  mocks.getLocalApiUrl.mockReset().mockReturnValue("http://127.0.0.1:8642");
   mocks.readEnv.mockReset().mockReturnValue({});
+  mocks.getConnectionConfig.mockReset().mockReturnValue({ mode: "local" });
 });
 
 afterEach(() => {

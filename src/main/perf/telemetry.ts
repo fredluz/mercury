@@ -255,6 +255,7 @@ export function recordMemorySnapshot(
   name: string,
   meta?: Record<string, unknown>,
 ): boolean {
+  if (!isPerfTelemetryEnabled(scope)) return false;
   const memory = process.memoryUsage();
   return recordPerfEvent({
     scope,

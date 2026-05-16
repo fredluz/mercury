@@ -61,6 +61,33 @@ const mainChannels = extractIpcHandleChannels(mainSrc);
 const preloadChannels = extractPreloadInvokeChannels(preloadSrc);
 
 describe("IPC Handler ↔ Preload Consistency", () => {
+  it("gateway handlers pass optional profile arguments", () => {
+    expect(mainSrc).toContain('ipcMain.handle("start-gateway", async (_event, profile?: string)');
+    expect(mainSrc).toContain('ipcMain.handle("stop-gateway", async (_event, profile?: string)');
+    expect(mainSrc).toContain('ipcMain.handle("gateway-status", (_event, profile?: string)');
+    expect(mainSrc).toContain('ipcMain.handle("restart-gateway", async (_event, profile?: string)');
+    expect(mainSrc).toContain("startGateway(profile)");
+    expect(mainSrc).toContain("stopGateway(true, profile)");
+    expect(mainSrc).toContain("isGatewayRunning(profile)");
+    expect(mainSrc).toContain("restartGateway(profile)");
+    expect(preloadSrc).toContain('ipcRenderer.invoke("start-gateway", profile)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("stop-gateway", profile)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("gateway-status", profile)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("restart-gateway", profile)');
+  });
+
+  it("runtime diagnostics are exposed and mutation handlers mark stale runtimes", () => {
+    expect(mainChannels).toContain("get-runtime-diagnostic");
+    expect(preloadChannels).toContain("get-runtime-diagnostic");
+    expect(mainSrc).toContain("getRuntimeDiagnostic(profile)");
+    expect(mainSrc).toContain("markRuntimeStale(profile");
+  });
+
+  it("gateway handlers fail closed in pure remote HTTP mode", () => {
+    expect(mainSrc).toContain('if (conn.mode === "remote") return false;');
+    expect(mainSrc).toContain('if (conn.mode === "remote") return {};');
+  });
+
   it("session handlers pass optional profile arguments", () => {
     expect(mainSrc).toContain("listSessions(limit, offset, profile)");
     expect(mainSrc).toContain("getSessionMessages(sessionId, profile)");
@@ -112,6 +139,7 @@ describe("IPC Handler ↔ Preload Consistency", () => {
 
 describe("New IPC handlers from v0.8/v0.9 features", () => {
   const newChannels = [
+    "get-runtime-diagnostic",
     "run-hermes-backup",
     "run-hermes-import",
     "read-logs",
@@ -155,6 +183,7 @@ describe("Legacy IPC handlers preserved", () => {
     "start-gateway",
     "stop-gateway",
     "gateway-status",
+    "restart-gateway",
     "get-platform-enabled",
     "set-platform-enabled",
     "list-sessions",

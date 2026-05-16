@@ -75,22 +75,32 @@ export async function sshSetToolsetEnabled(
     if (enabled) current.add(key); else current.delete(key);
 
     const toolsetLines = Array.from(current).sort().map((t) => `      - ${t}`).join("\n");
-    const newSection = `  cli:\n${toolsetLines}`;
+    const newSection = `  cli:\n${toolsetLines}\n  api_server:\n${toolsetLines}`;
 
     let newContent: string;
     if (content.includes("platform_toolsets")) {
       const lines = content.split("\n");
       const result: string[] = [];
-      let inPT = false, inCli = false, inserted = false;
+      let inPT = false, inManagedToolset = false, inserted = false;
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const trimmed = line.trimEnd();
         if (/^\s*platform_toolsets\s*:/.test(trimmed)) { inPT = true; result.push(line); continue; }
-        if (inPT && /^\s+cli\s*:/.test(trimmed)) { inCli = true; result.push(newSection); inserted = true; continue; }
-        if (inCli) { if (/^\s+-\s/.test(trimmed)) continue; inCli = false; result.push(line); continue; }
-        if (inPT && /^\S/.test(trimmed) && trimmed !== "") { inPT = false; if (!inserted) { result.push(newSection); } }
+        if (inPT && /^\s+(cli|api_server)\s*:/.test(trimmed)) {
+          inManagedToolset = true;
+          if (!inserted) { result.push(newSection); inserted = true; }
+          continue;
+        }
+        if (inManagedToolset) {
+          if (/^\s+-\s/.test(trimmed)) continue;
+          inManagedToolset = false;
+          result.push(line);
+          continue;
+        }
+        if (inPT && /^\S/.test(trimmed) && trimmed !== "") { inPT = false; if (!inserted) { result.push(newSection); inserted = true; } }
         result.push(line);
       }
+      if (inPT && !inserted) result.push(newSection);
       newContent = result.join("\n");
     } else {
       newContent = content.trimEnd() + "\n\nplatform_toolsets:\n" + newSection + "\n";

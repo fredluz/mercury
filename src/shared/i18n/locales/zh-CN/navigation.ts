@@ -1,7 +1,7 @@
 export default {
   chat: "聊天",
   sessions: "会话",
-  agents: "档案",
+  agents: "代理",
   models: "模型",
   providers: "提供商",
   skills: "技能",

@@ -12,6 +12,7 @@ import { ModelPicker } from "./components/ModelPicker";
 import { SlashMenu } from "./components/SlashMenu";
 import { useChatController } from "./hooks/useChatController";
 import type { ChatMessage } from "./types";
+import type { RuntimeDiagnostic } from "../../../../shared/runtime";
 
 export { AgentMarkdown };
 export type { ChatMessage };
@@ -23,6 +24,7 @@ interface ChatProps {
   sessionTitle?: string | null;
   conversationVersion: number;
   profile?: string;
+  runtimeDiagnostic?: RuntimeDiagnostic | null;
   onSessionStarted?: () => void;
   onSessionResolved?: (sessionId: string) => void;
   onSessionTitleChange?: (title: string) => void;
@@ -37,6 +39,7 @@ function Chat({
   sessionTitle,
   conversationVersion,
   profile,
+  runtimeDiagnostic,
   onSessionStarted,
   onSessionResolved,
   onSessionTitleChange,
@@ -68,6 +71,7 @@ function Chat({
         fastMode={chat.fastMode}
         messages={messages}
         profile={profile}
+        runtimeDiagnostic={runtimeDiagnostic}
         onFastModeChange={chat.setFastMode}
         onNewChat={onNewChat}
         onClear={chat.handleClear}

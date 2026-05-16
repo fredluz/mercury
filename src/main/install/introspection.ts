@@ -191,8 +191,13 @@ export function listMcpServers(
 export function readLogs(
   logFile = "agent.log",
   lines = 200,
+  profile?: string,
 ): { content: string; path: string } {
-  const logsDir = join(HERMES_HOME, "logs");
+  const home =
+    profile && profile !== "default"
+      ? join(HERMES_HOME, "profiles", profile)
+      : HERMES_HOME;
+  const logsDir = join(home, "logs");
   // Sanitize: only allow known log file names
   const allowed = ["agent.log", "errors.log", "gateway.log"];
   const file = allowed.includes(logFile) ? logFile : "agent.log";

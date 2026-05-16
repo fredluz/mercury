@@ -6,6 +6,7 @@ import type {
   SkillMarkdownImportResult,
 } from "../shared/skills";
 import type { PerfTelemetryConfig, RendererPerfEvent } from "../shared/perf";
+import type { RuntimeDiagnostic } from "../shared/runtime";
 import type {
   LocalChatTraceRequest,
   SkillTrainingRun,
@@ -29,6 +30,9 @@ interface InstallProgress {
 }
 
 interface HermesAPI {
+  // Runtime diagnostics
+  getRuntimeDiagnostic: (profile?: string) => Promise<RuntimeDiagnostic>;
+
   // Installation
   checkInstall: () => Promise<InstallStatus>;
   verifyInstall: () => Promise<boolean>;
@@ -41,7 +45,9 @@ interface HermesAPI {
   getHermesVersion: () => Promise<string | null>;
   refreshHermesVersion: () => Promise<string | null>;
   runHermesDoctor: () => Promise<string>;
-  runHermesUpdate: () => Promise<{ success: boolean; error?: string }>;
+  runHermesUpdate: (
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
 
   // OpenClaw migration
   checkOpenClaw: () => Promise<{ found: boolean; path: string | null }>;
@@ -103,8 +109,8 @@ interface HermesAPI {
     keyPath: string,
     remotePort: number,
   ) => Promise<boolean>;
-  isSshTunnelActive: () => Promise<boolean>;
-  startSshTunnel: () => Promise<boolean>;
+  isSshTunnelActive: (profile?: string) => Promise<boolean>;
+  startSshTunnel: (profile?: string) => Promise<boolean>;
   stopSshTunnel: () => Promise<boolean>;
 
   // Chat
@@ -139,9 +145,10 @@ interface HermesAPI {
   listSkillTrainingRuns: () => Promise<SkillTrainingRun[]>;
 
   // Gateway
-  startGateway: () => Promise<boolean>;
-  stopGateway: () => Promise<boolean>;
-  gatewayStatus: () => Promise<boolean>;
+  startGateway: (profile?: string) => Promise<boolean>;
+  stopGateway: (profile?: string) => Promise<boolean>;
+  gatewayStatus: (profile?: string) => Promise<boolean>;
+  restartGateway: (profile?: string) => Promise<boolean>;
 
   // Platform toggles
   getPlatformEnabled: (profile?: string) => Promise<Record<string, boolean>>;
@@ -511,6 +518,7 @@ interface HermesAPI {
   readLogs: (
     logFile?: string,
     lines?: number,
+    profile?: string,
   ) => Promise<{ content: string; path: string }>;
 }
 

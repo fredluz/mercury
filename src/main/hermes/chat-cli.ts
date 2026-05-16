@@ -4,6 +4,7 @@ import { HERMES_HOME, HERMES_PYTHON, HERMES_REPO, HERMES_SCRIPT, getEnhancedPath
 import { getModelConfig, readEnv } from "../config";
 import { stripAnsi } from "../utils";
 import type { ChatCallbacks, ChatHandle } from "./types";
+import { buildHermesProfileCommandArgs } from "./runtime";
 import {
   isStandaloneCliActivityLine,
   normalizeCliProgressLine,
@@ -45,11 +46,14 @@ export function sendMessageViaCli(
   const mc = getModelConfig(profile);
   const profileEnv = readEnv(profile);
 
-  const args = [HERMES_SCRIPT];
-  if (profile && profile !== "default") {
-    args.push("-p", profile);
-  }
-  args.push("chat", "-q", message, "-Q", "--source", "desktop");
+  const args = buildHermesProfileCommandArgs(HERMES_SCRIPT, profile, [
+    "chat",
+    "-q",
+    message,
+    "-Q",
+    "--source",
+    "desktop",
+  ]);
 
   if (resumeSessionId) {
     args.push("--resume", resumeSessionId);

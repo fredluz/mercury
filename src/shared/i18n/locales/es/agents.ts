@@ -1,12 +1,12 @@
 export default {
-  title: "Perfiles",
+  title: "Agentes",
   subtitle:
-    "Cada perfil es un espacio de trabajo aislado de Hermes con su propia configuración, memoria y habilidades",
+    "Cada agente es un espacio de trabajo aislado de Hermes con su propia configuración, memoria y habilidades",
   newAgent: "Nuevo agente",
   namePlaceholder: "Nombre del agente (p. ej. coder)",
   cloneConfig:
-    "Clonar la configuración y las API keys del perfil predeterminado",
-  createFailed: "No se pudo crear el perfil",
+    "Clonar la configuración y las API keys del agente predeterminado",
+  createFailed: "No se pudo crear el agente",
   creating: "Creando...",
   create: "Crear",
   active: "Activo",
@@ -15,7 +15,7 @@ export default {
   gatewayRunning: "Gateway en ejecución",
   gatewayOff: "Gateway desactivado",
   chat: "Chat",
-  actionsLabel: "Acciones del perfil",
+  actionsLabel: "Acciones del agente",
   actionChat: "Chatear con {{name}}",
   actionSkills: "Abrir habilidades de {{name}}",
   actionTools: "Abrir herramientas de {{name}}",

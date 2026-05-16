@@ -70,18 +70,42 @@ export async function sshGetSkillContent(config: SshConfig, skillPath: string): 
   return await sshReadFile(config, `${remote}/SKILL.md`);
 }
 
-export async function sshInstallSkill(config: SshConfig, identifier: string): Promise<{ success: boolean; error?: string }> {
+function hermesProfileArgs(profile?: string): string {
+  return profile && profile !== "default" ? `-p ${shellQuote(profile)}` : "";
+}
+
+function hermesProfileCommand(profile: string | undefined, args: string): string {
+  const profileArgs = hermesProfileArgs(profile);
+  return profileArgs ? `hermes ${profileArgs} ${args}` : `hermes ${args}`;
+}
+
+export function buildSshSkillCommand(
+  profile: string | undefined,
+  args: string,
+): string {
+  return hermesProfileCommand(profile, args);
+}
+
+export async function sshInstallSkill(
+  config: SshConfig,
+  identifier: string,
+  profile?: string,
+): Promise<{ success: boolean; error?: string }> {
   try {
-    await sshExec(config, `hermes skills install ${shellQuote(identifier)} --yes 2>&1`, undefined, 120000);
+    await sshExec(config, `${hermesProfileCommand(profile, `skills install ${shellQuote(identifier)} --yes`)} 2>&1`, undefined, 120000);
     return { success: true };
   } catch (err) {
     return { success: false, error: (err as Error).message };
   }
 }
 
-export async function sshUninstallSkill(config: SshConfig, name: string): Promise<{ success: boolean; error?: string }> {
+export async function sshUninstallSkill(
+  config: SshConfig,
+  name: string,
+  profile?: string,
+): Promise<{ success: boolean; error?: string }> {
   try {
-    await sshExec(config, `hermes skills uninstall ${shellQuote(name)} 2>&1`);
+    await sshExec(config, `${hermesProfileCommand(profile, `skills uninstall ${shellQuote(name)}`)} 2>&1`);
     return { success: true };
   } catch (err) {
     return { success: false, error: (err as Error).message };

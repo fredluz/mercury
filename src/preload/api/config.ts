@@ -92,11 +92,11 @@ export const configApi = {
       remotePort,
     ),
 
-  isSshTunnelActive: (): Promise<boolean> =>
-    ipcRenderer.invoke("is-ssh-tunnel-active"),
+  isSshTunnelActive: (profile?: string): Promise<boolean> =>
+    ipcRenderer.invoke("is-ssh-tunnel-active", profile),
 
-  startSshTunnel: (): Promise<boolean> =>
-    ipcRenderer.invoke("start-ssh-tunnel"),
+  startSshTunnel: (profile?: string): Promise<boolean> =>
+    ipcRenderer.invoke("start-ssh-tunnel", profile),
 
   stopSshTunnel: (): Promise<boolean> => ipcRenderer.invoke("stop-ssh-tunnel"),
 };

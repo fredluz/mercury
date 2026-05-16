@@ -1,4 +1,5 @@
 import type React from "react";
+import { RuntimeDiagnosticNotice } from "../../../components/RuntimeDiagnosticNotice";
 interface SettingsCoreSectionsProps {
   values: any;
 }
@@ -31,6 +32,7 @@ export function SettingsCoreSections({ values }: SettingsCoreSectionsProps): Rea
   connTesting,
   connStatus,
   connLoaded,
+  runtimeDiagnostic,
   sshHost,
   setSshHost,
   sshPort,
@@ -201,6 +203,8 @@ export function SettingsCoreSections({ values }: SettingsCoreSectionsProps): Rea
             </span>
           )}
         </div>
+
+        <RuntimeDiagnosticNotice diagnostic={runtimeDiagnostic} showWhenVerified />
 
         <div className="settings-field">
           <label className="settings-field-label">

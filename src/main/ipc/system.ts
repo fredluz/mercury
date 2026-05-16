@@ -9,10 +9,12 @@ import {
   readLogs,
 } from "../installer";
 import { getConnectionConfig } from "../config";
+import { getRuntimeDiagnostic, markRuntimeStale } from "../hermes";
 import {
   sshRunDump,
   sshDiscoverMemoryProviders,
   sshReadLogs,
+  sshListMcpServers,
 } from "../ssh-remote";
 import {
   getPerfTelemetryConfig,
@@ -32,14 +34,24 @@ export function registerSystemIpc(): void {
     return recordPerfEvent({ ...event, source: "renderer" });
   });
 
+  // Runtime diagnostics
+  ipcMain.handle("get-runtime-diagnostic", (_event, profile?: string) =>
+    getRuntimeDiagnostic(profile),
+  );
+
   // Backup / Import
   ipcMain.handle("run-hermes-backup", (_event, profile?: string) =>
     runHermesBackup(profile),
   );
   ipcMain.handle(
     "run-hermes-import",
-    (_event, archivePath: string, profile?: string) =>
-      runHermesImport(archivePath, profile),
+    async (_event, archivePath: string, profile?: string) => {
+      const result = await runHermesImport(archivePath, profile);
+      if (result.success) {
+        markRuntimeStale(profile, "Profile import changed profile runtime files.");
+      }
+      return result;
+    },
   );
 
   // Debug dump
@@ -50,9 +62,12 @@ export function registerSystemIpc(): void {
   });
 
   // MCP servers
-  ipcMain.handle("list-mcp-servers", (_event, profile?: string) =>
-    listMcpServers(profile),
-  );
+  ipcMain.handle("list-mcp-servers", (_event, profile?: string) => {
+    const conn = getConnectionConfig();
+    if (conn.mode === "ssh" && conn.ssh)
+      return sshListMcpServers(conn.ssh, profile);
+    return listMcpServers(profile);
+  });
 
   // Memory providers
   ipcMain.handle("discover-memory-providers", (_event, profile?: string) => {
@@ -63,10 +78,13 @@ export function registerSystemIpc(): void {
   });
 
   // Log viewer
-  ipcMain.handle("read-logs", (_event, logFile?: string, lines?: number) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshReadLogs(conn.ssh, logFile, lines);
-    return readLogs(logFile, lines);
-  });
+  ipcMain.handle(
+    "read-logs",
+    (_event, logFile?: string, lines?: number, profile?: string) => {
+      const conn = getConnectionConfig();
+      if (conn.mode === "ssh" && conn.ssh)
+        return sshReadLogs(conn.ssh, logFile, lines, profile);
+      return readLogs(logFile, lines, profile);
+    },
+  );
 }

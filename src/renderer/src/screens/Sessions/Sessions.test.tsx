@@ -156,6 +156,33 @@ describe("Sessions resume profile flow", () => {
     expect(onResumeSession).not.toHaveBeenCalled();
   });
 
+  it("renders unknown agent when a cached row has no profile", async () => {
+    const unprofiledRows = [
+      {
+        id: "session-unprofiled",
+        title: "Legacy session",
+        startedAt: 1_700_000_300,
+        source: "local",
+        messageCount: 1,
+        model: "openai/gpt-4o",
+      },
+    ];
+    vi.mocked(window.hermesAPI.listCachedSessions).mockResolvedValue(unprofiledRows);
+    vi.mocked(window.hermesAPI.syncSessionCache).mockResolvedValue(unprofiledRows);
+
+    render(
+      <Sessions
+        onResumeSession={vi.fn()}
+        onOpenSessionTrace={vi.fn()}
+        onNewChat={vi.fn()}
+        currentSessionId={null}
+      />,
+    );
+
+    await screen.findByText("Legacy session");
+    expect(screen.getByText("unknown agent")).toBeInTheDocument();
+  });
+
   it("opens all trace activity from the header", async () => {
     const onOpenTraceActivity = vi.fn();
     render(

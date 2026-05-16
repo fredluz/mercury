@@ -18,6 +18,13 @@ describe("shared i18n", () => {
     expect(t("welcome.title", "es")).toBe("Bienvenido a Hermes");
   });
 
+  it("uses Agent terminology for execution identities", () => {
+    expect(t("navigation.agents", "en")).toBe("Agents");
+    expect(t("agents.title", "en")).toBe("Agents");
+    expect(t("navigation.agents", "es")).toBe("Agentes");
+    expect(t("navigation.agents", "zh-CN")).toBe("代理");
+  });
+
   it("falls back to en when zh-CN key is missing", () => {
     expect(t("nonExistent.fallbackKey", "zh-CN")).toBe(
       "nonExistent.fallbackKey",

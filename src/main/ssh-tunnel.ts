@@ -17,15 +17,45 @@ export interface SshConfig {
 
 let tunnelProcess: ChildProcess | null = null;
 let activeConfig: SshConfig | null = null;
+let activeProfile = "default";
+let activeTunnelKey = "";
 let tunnelRunning = false;
 
-export function getSshTunnelUrl(): string | null {
+function normalizeProfile(profile?: string): string {
+  const trimmed = profile?.trim();
+  return trimmed && trimmed !== "default" ? trimmed : "default";
+}
+
+export function buildSshTunnelIdentityKey(
+  config: SshConfig,
+  profile?: string,
+): string {
+  return [
+    normalizeProfile(profile),
+    config.host || "",
+    config.username || "",
+    String(config.port || 22),
+    String(config.remotePort),
+    String(config.localPort),
+  ].join("|");
+}
+
+function matchesActiveTunnel(config?: SshConfig, profile?: string): boolean {
+  if (!activeConfig || !activeTunnelKey) return false;
+  if (!config) return true;
+  return activeTunnelKey === buildSshTunnelIdentityKey(config, profile);
+}
+
+export function getSshTunnelUrl(profile?: string, config?: SshConfig): string | null {
   if (!activeConfig || !tunnelRunning) return null;
+  const requestedProfile = normalizeProfile(profile);
+  if (requestedProfile !== activeProfile) return null;
+  if (config && !matchesActiveTunnel(config, requestedProfile)) return null;
   return `http://127.0.0.1:${activeConfig.localPort}`;
 }
 
-export function isSshTunnelActive(): boolean {
-  return tunnelProcess !== null && tunnelRunning;
+export function isSshTunnelActive(config?: SshConfig, profile?: string): boolean {
+  return tunnelProcess !== null && tunnelRunning && matchesActiveTunnel(config, profile);
 }
 
 function checkTunnelHealth(port: number, timeoutMs = 3000): Promise<boolean> {
@@ -57,8 +87,11 @@ async function waitForHealth(port: number, timeoutMs: number): Promise<void> {
   throw new Error(`SSH tunnel health check failed after ${timeoutMs}ms`);
 }
 
-export async function isSshTunnelHealthy(): Promise<boolean> {
-  return activeConfig !== null && tunnelRunning
+export async function isSshTunnelHealthy(
+  config?: SshConfig,
+  profile?: string,
+): Promise<boolean> {
+  return activeConfig !== null && tunnelRunning && matchesActiveTunnel(config, profile)
     ? checkTunnelHealth(activeConfig.localPort)
     : false;
 }
@@ -120,7 +153,7 @@ function buildSshArgs(config: SshConfig, localPort: number): string[] {
   ];
 }
 
-function sshTunnelMeta(config: SshConfig, localPort?: number): Record<string, unknown> {
+function sshTunnelMeta(config: SshConfig, localPort?: number, profile?: string): Record<string, unknown> {
   return {
     hostConfigured: Boolean(config.host?.trim()),
     usernameConfigured: Boolean(config.username?.trim()),
@@ -129,20 +162,27 @@ function sshTunnelMeta(config: SshConfig, localPort?: number): Record<string, un
     remotePort: config.remotePort,
     requestedLocalPort: config.localPort,
     localPort,
+    profile: normalizeProfile(profile),
   };
 }
 
-export async function startSshTunnel(config: SshConfig): Promise<void> {
-  await withPerfSpan("ssh", "ssh.tunnel.start", sshTunnelMeta(config), async () => {
+export async function startSshTunnel(
+  config: SshConfig,
+  profile?: string,
+): Promise<void> {
+  await withPerfSpan("ssh", "ssh.tunnel.start", sshTunnelMeta(config, undefined, profile), async () => {
+    if (isSshTunnelActive(config, profile) && (await isSshTunnelHealthy(config, profile))) return;
     stopSshTunnel();
 
     const localPort = await withPerfSpan(
       "ssh",
       "ssh.tunnel.find_free_port",
-      sshTunnelMeta(config),
+      sshTunnelMeta(config, undefined, profile),
       () => findFreePort(config.localPort || 18642),
     );
     activeConfig = { ...config, localPort };
+    activeProfile = normalizeProfile(profile);
+    activeTunnelKey = buildSshTunnelIdentityKey(config, profile);
     tunnelRunning = false;
 
     const spawnStart = performance.now();
@@ -159,7 +199,7 @@ export async function startSshTunnel(config: SshConfig): Promise<void> {
         durationMs: performance.now() - spawnStart,
         ok: false,
         error: error instanceof Error ? error.name : "Error",
-        meta: sshTunnelMeta(config, localPort),
+        meta: sshTunnelMeta(config, localPort, profile),
       });
       throw error;
     }
@@ -168,11 +208,13 @@ export async function startSshTunnel(config: SshConfig): Promise<void> {
       tunnelRunning = false;
       tunnelProcess = null;
       activeConfig = null;
+      activeTunnelKey = "";
+      activeProfile = "default";
       recordPerfEvent({
         scope: "ssh",
         name: "ssh.tunnel.process_exit",
         phase: "mark",
-        meta: sshTunnelMeta(config, localPort),
+        meta: sshTunnelMeta(config, localPort, profile),
       });
     });
 
@@ -180,12 +222,14 @@ export async function startSshTunnel(config: SshConfig): Promise<void> {
       tunnelRunning = false;
       tunnelProcess = null;
       activeConfig = null;
+      activeTunnelKey = "";
+      activeProfile = "default";
       recordPerfEvent({
         scope: "ssh",
         name: "ssh.tunnel.process_error",
         phase: "mark",
         ok: false,
-        meta: sshTunnelMeta(config, localPort),
+        meta: sshTunnelMeta(config, localPort, profile),
       });
     });
 
@@ -202,14 +246,14 @@ export async function startSshTunnel(config: SshConfig): Promise<void> {
       await withPerfSpan(
         "ssh",
         "ssh.tunnel.wait_for_port",
-        sshTunnelMeta(config, localPort),
+        sshTunnelMeta(config, localPort, profile),
         () => waitForPort(localPort, 12000),
       );
       tunnelRunning = true;
       await withPerfSpan(
         "ssh",
         "ssh.tunnel.wait_for_health",
-        sshTunnelMeta(config, localPort),
+        sshTunnelMeta(config, localPort, profile),
         () => waitForHealth(localPort, 20000),
       );
     } catch (err) {
@@ -227,6 +271,8 @@ export function stopSshTunnel(): void {
   }
   tunnelRunning = false;
   activeConfig = null;
+  activeTunnelKey = "";
+  activeProfile = "default";
   recordPerfEvent({
     scope: "ssh",
     name: "ssh.tunnel.stop",
@@ -238,9 +284,12 @@ export function stopSshTunnel(): void {
   });
 }
 
-export async function ensureSshTunnel(config: SshConfig): Promise<void> {
-  if (isSshTunnelActive() && await isSshTunnelHealthy()) return;
-  await startSshTunnel(config);
+export async function ensureSshTunnel(
+  config: SshConfig,
+  profile?: string,
+): Promise<void> {
+  if (isSshTunnelActive(config, profile) && await isSshTunnelHealthy(config, profile)) return;
+  await startSshTunnel(config, profile);
 }
 
 // Test SSH reachability + hermes health endpoint through a temporary tunnel
