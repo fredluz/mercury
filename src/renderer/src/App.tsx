@@ -7,6 +7,7 @@ import Setup from "./screens/Setup/Setup";
 import Layout from "./screens/Layout/Layout";
 import SplashScreen from "./screens/SplashScreen/SplashScreen";
 import { useI18n } from "./components/useI18n";
+import { markRendererPerf, measureRendererPerf } from "./perf";
 
 type Screen = "splash" | "welcome" | "installing" | "setup" | "main";
 
@@ -21,7 +22,8 @@ function App(): React.JSX.Element {
   const isMac = window.electron?.process?.platform === "darwin";
 
   const runInstallCheck = useCallback(async () => {
-    const startedAt = Date.now();
+    const startedAt = performance.now();
+    markRendererPerf("startup", "app.install-check.start");
     let next: Screen = "welcome";
     let error: string | null = null;
     let isRemote = false;
@@ -66,11 +68,16 @@ function App(): React.JSX.Element {
 
     if (error) setInstallError(error);
 
-    const elapsed = Date.now() - startedAt;
+    const elapsed = performance.now() - startedAt;
     const wait = Math.max(0, SPLASH_MIN_MS - elapsed);
     if (wait > 0) {
       await new Promise((r) => setTimeout(r, wait));
     }
+    measureRendererPerf("startup", "app.install-check", elapsed, {
+      nextScreen: next,
+      hasError: Boolean(error),
+      remoteConnection: isRemote,
+    });
     setScreen(next);
 
     // Lazy deep-verify in the background after the UI is up. If the
@@ -94,6 +101,10 @@ function App(): React.JSX.Element {
   useEffect(() => {
     runInstallCheck();
   }, [runInstallCheck]);
+
+  useEffect(() => {
+    markRendererPerf("startup", "app.screen.selected", { screen });
+  }, [screen]);
 
   const handleSplashFinished = useCallback(() => {
     /* splash transition is driven by the install check, not a timer */

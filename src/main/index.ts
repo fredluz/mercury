@@ -1,4 +1,5 @@
 import { app, shell, BrowserWindow, ipcMain, Menu } from "electron";
+import { performance } from "perf_hooks";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import type { AppUpdater } from "electron-updater";
@@ -14,6 +15,7 @@ import {
   sshReadRemoteApiKey,
 } from "./ssh-remote";
 import { registerIpcHandlers, abortActiveChat } from "./ipc";
+import { recordMemorySnapshot, recordPerfEvent } from "./perf/telemetry";
 
 process.on("uncaughtException", (err) => {
   console.error("[MAIN UNCAUGHT]", err);
@@ -25,7 +27,65 @@ process.on("unhandledRejection", (reason) => {
 
 let mainWindow: BrowserWindow | null = null;
 
+function recordStartupMark(name: string, meta?: Record<string, unknown>): void {
+  recordPerfEvent({
+    scope: "startup",
+    name,
+    phase: "mark",
+    nowMs: performance.now(),
+    meta,
+  });
+}
+
+function resourceUsageSummary(): Record<string, number> | undefined {
+  if (typeof process.resourceUsage !== "function") return undefined;
+  const usage = process.resourceUsage();
+  return {
+    userCPUTime: usage.userCPUTime,
+    systemCPUTime: usage.systemCPUTime,
+    maxRSS: usage.maxRSS,
+    fsRead: usage.fsRead,
+    fsWrite: usage.fsWrite,
+    voluntaryContextSwitches: usage.voluntaryContextSwitches,
+    involuntaryContextSwitches: usage.involuntaryContextSwitches,
+  };
+}
+
+function appMetricsSummary(): Record<string, unknown> | undefined {
+  if (!app.isReady()) return undefined;
+  const metrics = app.getAppMetrics();
+  const byType = metrics.reduce<Record<string, number>>((acc, metric) => {
+    acc[metric.type] = (acc[metric.type] ?? 0) + 1;
+    return acc;
+  }, {});
+  const memoryWorkingSetSize = metrics.reduce(
+    (sum, metric) => sum + (metric.memory?.workingSetSize ?? 0),
+    0,
+  );
+  return {
+    processCount: metrics.length,
+    byType,
+    memoryWorkingSetSize,
+  };
+}
+
+function recordStartupMemory(name: string, meta?: Record<string, unknown>): void {
+  recordMemorySnapshot("startup", name, {
+    ...meta,
+    resourceUsage: resourceUsageSummary(),
+    appMetrics: appMetricsSummary(),
+  });
+}
+
+recordStartupMark("main.module.evaluated", {
+  platform: process.platform,
+  packaged: app.isPackaged,
+});
+
 function createWindow(): void {
+  recordStartupMark("window.create.start");
+  recordStartupMemory("startup.memory.snapshot", { phaseName: "before-window-create" });
+
   mainWindow = new BrowserWindow({
     width: 1100,
     height: 750,
@@ -45,8 +105,24 @@ function createWindow(): void {
     },
   });
 
+  recordStartupMark("window.create.end", {
+    width: 1100,
+    height: 750,
+  });
+
   mainWindow.on("ready-to-show", () => {
+    recordStartupMark("window.ready-to-show");
+    recordStartupMemory("startup.memory.snapshot", { phaseName: "ready-to-show" });
     mainWindow!.show();
+  });
+
+  mainWindow.webContents.on("dom-ready", () => {
+    recordStartupMark("window.dom-ready");
+  });
+
+  mainWindow.webContents.on("did-finish-load", () => {
+    recordStartupMark("window.did-finish-load");
+    recordStartupMemory("startup.memory.snapshot", { phaseName: "did-finish-load" });
   });
 
   mainWindow.webContents.on("render-process-gone", (_event, details) => {
@@ -78,6 +154,9 @@ function createWindow(): void {
     return { action: "deny" };
   });
 
+  recordStartupMark("window.load.requested", {
+    target: is.dev && process.env["ELECTRON_RENDERER_URL"] ? "dev-url" : "file",
+  });
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
     mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
   } else {
@@ -187,6 +266,7 @@ function buildMenu(): void {
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
+  recordStartupMark("menu.built", { itemCount: template.length });
 }
 
 function isNightlyBuild(): boolean {
@@ -267,6 +347,9 @@ function setupUpdater(): void {
 }
 
 app.whenReady().then(() => {
+  recordStartupMark("app.whenReady.resolved");
+  recordStartupMemory("startup.memory.snapshot", { phaseName: "app-ready" });
+
   const nightly = isNightlyBuild();
   app.name = nightly ? "Mercury Nightly" : "Mercury";
   electronApp.setAppUserModelId(
@@ -278,7 +361,9 @@ app.whenReady().then(() => {
   });
 
   buildMenu();
+  recordStartupMark("ipc.register.start");
   registerIpcHandlers({ getMainWindow: () => mainWindow });
+  recordStartupMark("ipc.register.end");
   createWindow();
   setupUpdater();
 
