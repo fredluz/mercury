@@ -1,15 +1,23 @@
 # Contract Tests
 
-This document maps Mercury's current contract tests to the behavior they protect. Keep it updated when IPC/preload contracts, shared schemas, persistence behavior, or high-risk subsystem tests change.
+This document maps Mercury's current contract tests and deterministic contract checks to the behavior they protect. Keep it updated when IPC/preload contracts, shared schemas, persistence behavior, profile/session behavior, trace normalization, docs guard rules, or high-risk subsystem tests change.
 
 ## Source anchors
 
 - IPC/preload parity: `tests/ipc-handlers.test.ts`
 - Preload API surface: `tests/preload-api-surface.test.ts`
-- Trace-store skill-training derivation: `tests/trace-store.test.ts`
+- Chat IPC lifecycle: `tests/chat-ipc-lifecycle.test.ts`
+- Chat metadata helpers: `tests/chat-metadata.test.ts`
+- Chat title generation: `tests/hermes-title.test.ts`
+- Hermes trace-event normalization: `tests/hermes-trace-events.test.ts`
+- Trace-store persistence and skill-training derivation: `tests/trace-store.test.ts`
 - Manual Markdown skill import: `tests/skills-import.test.ts`
 - Session cache sync: `tests/session-cache-sync.test.ts`
-- Related docs: [Architecture overview](../architecture/overview.md), [IPC and preload contract](../contracts/ipc-preload.md)
+- Profile discovery: `tests/profiles.test.ts`
+- Profile-aware local sessions: `tests/sessions-profile-db.test.ts`
+- SSH remote config validation: `tests/ssh-remote.test.ts`
+- Docs freshness guard: `scripts/check-docs.mjs`, with evaluator coverage in `tests/docs-guard.test.ts`, via `npm run check:docs`
+- Related docs: [Architecture overview](../architecture/overview.md), [IPC and preload contract](../contracts/ipc-preload.md), [Trace schema](../contracts/trace-schema.md), and subsystem docs under `docs/subsystems/`.
 
 ## When to run contract tests
 
@@ -18,12 +26,17 @@ Run contract tests when a change touches any of these areas:
 - `src/main/ipc/**`, `src/main/index.ts` updater/menu IPC, or any `ipcMain.handle(...)` channel.
 - `src/preload/index.ts`, `src/preload/index.d.ts`, or `src/preload/api/**`.
 - Shared cross-process types under `src/shared/*`.
+- Chat IPC lifecycle, generated-title persistence, stream completion/error delivery, or trace side effects.
+- Chat metadata helpers, context-window inference, context usage display inputs, or generated-title request validation.
+- Hermes stream/CLI trace event normalization, artifact extraction, or legacy progress parsing.
 - Trace persistence, trace event schema, skill-training derivation, or real-app Trace Lab harness expectations.
 - Manual Markdown skill import behavior.
-- Session cache sync, generated session titles, session cache persistence, or session search inputs.
+- Session cache sync, generated session titles, session cache persistence, local session DB reads, or session search inputs.
 - Persistent files/profile behavior that affects renderer-visible data.
+- SSH config writes or remote connection-mode validation.
+- Docs guard rules or the mapped evergreen docs they require.
 
-For docs-only changes, manually verify links and file references. Full test runs are optional unless the docs change alongside source behavior.
+For docs-only changes, manually verify links and file references. Run `npm run check:docs` when the change set includes mapped high-risk code/test/script paths, or when updating the guard itself. Full test runs are optional unless the docs change alongside source behavior.
 
 ## Test responsibilities
 
@@ -71,22 +84,97 @@ Run this test when changing:
 - `src/preload/index.d.ts`
 - Renderer code that starts using a new `window.hermesAPI` method
 
-### `tests/trace-store.test.ts`
+### `tests/chat-ipc-lifecycle.test.ts`
 
-Protects trace-store skill-training derivation and focused trace persistence behavior.
+Protects chat IPC lifecycle hardening across streaming, trace side effects, and generated-title persistence.
 
 Current assertions:
 
+- Completion side-effect failures, such as trace finalization errors, do not prevent `chat-done` delivery or handler resolution.
+- Pre-send trace setup failures still allow transport startup and stream completion.
+- Trace-run creation failures still allow transport startup and stream completion.
+- `generate-chat-title` trims request fields, calls the title generator, and persists generated titles with the selected profile.
+- Error side-effect failures still deliver a single `chat-error` and reject the handler once.
+
+Run this test when changing:
+
+- `src/main/ipc/chat.ts`
+- `src/main/hermes/title.ts`
+- Chat trace setup/finalization behavior in `src/main/trace-store.ts`
+- Session title/profile update behavior in `src/main/session-cache.ts`
+
+### `tests/chat-metadata.test.ts`
+
+Protects shared chat metadata helpers used by renderer context usage and generated-title flows.
+
+Current assertions:
+
+- Known model/provider pairs infer expected context-window sizes.
+- Explicit context windows take precedence over inferred defaults.
+- Unknown models fall back to the default context window.
+- Context usage percentages handle normal, zero-window, and negative-token inputs safely.
+- Model-generated titles are sanitized and truncated near word boundaries.
+- Generated-title request validation accepts supported roles and rejects invalid request shapes.
+
+Run this test when changing:
+
+- `src/shared/chat-metadata.ts`
+- Renderer context usage display logic that depends on these helpers
+- Main/preload generated-title request or response validation
+- Saved model context-window behavior that relies on inference defaults
+
+### `tests/hermes-title.test.ts`
+
+Protects the main-process chat-title generation fallback contract.
+
+Current assertions:
+
+- Existing persisted session titles are sanitized and returned before the model path is attempted.
+- Gateway/model failures fall back to a sanitized heuristic title generated from the first user message.
+- Empty message lists fall back to the default heuristic title.
+
+Run this test when changing:
+
+- `src/main/hermes/title.ts`
+- `src/main/sessions.ts` title lookup behavior
+- `src/main/session-cache.ts` heuristic title generation
+- Model config or gateway connection code used by title generation
+
+### `tests/hermes-trace-events.test.ts`
+
+Protects normalization of Hermes stream events, CLI activity text, legacy progress labels, and artifact evidence before trace storage.
+
+Current assertions:
+
+- Failed image tool progress becomes structured `tool.failed` evidence with sensitive metadata removed.
+- Image artifact events are extracted only when assistant text contains image references or supported generated image paths.
+- Standalone legacy API progress labels are split from assistant prose without treating ordinary inline code as progress.
+- Standalone CLI activity lines are suppressible while natural prose remains visible.
+- Codex app-server image paths emit both `tool.progress` and `artifact.created` evidence when normalized from CLI progress text.
+
+Run this test when changing:
+
+- `src/main/hermes/trace-events.ts`
+- `src/shared/traces.ts` event type names used by normalization
+- Chat stream parsing that forwards structured trace events to the renderer or trace store
+- Trace Lab expectations around artifact evidence or legacy progress compatibility
+
+### `tests/trace-store.test.ts`
+
+Protects focused trace-store persistence behavior and skill-training derivation. It directly covers selected structured event types and sanitization paths; broader stream/CLI normalization, delegation, and transport event-shape coverage lives in `tests/hermes-trace-events.test.ts` and app-level harnesses.
+
+Current assertions:
+
+- Selected structured events (`tool.started` and `artifact.created`) persist through the trace store with secret metadata and detail text redacted.
+- `createLocalChatTrace()` creates a completed slash-command run with `run.started`, `message.user`, `slash.local`, optional response preview as `message.agent.delta`, `run.completed`, and sanitized metadata.
 - A `skill.eval` trace event with skill metadata is exposed through `listSkillTrainingRuns()` with linked run id, `needs-review` status, parsed score, skill name, and summary.
 - A `skill.promoted` event with score metadata above the trust range is clamped to `1`.
-- Structured event types such as tool/delegation/artifact/transport/local command events persist through the trace store without requiring a store version bump.
-- `createLocalChatTrace()` creates a completed run with `slash.local`, optional local response preview, and sanitized metadata.
 
 Run this test when changing:
 
 - `src/shared/traces.ts`
 - `src/main/trace-store.ts`
-- Trace event writes in `src/main/ipc/chat.ts`
+- Local slash-command trace creation in `src/main/ipc/chat.ts`
 - Trace Lab assumptions about skill-training runs
 
 ### `tests/skills-import.test.ts`
@@ -131,6 +219,70 @@ Run this test when changing:
 - Session title generation behavior
 - Session persistence or session cache file layout
 
+### `tests/profiles.test.ts`
+
+Protects profile discovery and active-profile marking.
+
+Current assertions:
+
+- Profile directories are listed even when they have neither `config.yaml` nor `.env`.
+- Profiles with only `.env` expose `hasEnv`.
+- Profiles with only `config.yaml` expose parsed provider/model metadata.
+- Dotfiles, dot-directories, and non-directory files under the profiles directory are ignored.
+- The default profile is returned even when the profiles directory is empty.
+- `<HERMES_HOME>/active_profile` marks the active named profile and clears the default active marker.
+
+Run this test when changing:
+
+- `src/main/profiles.ts`
+- `src/main/installer.ts` `HERMES_HOME` handling that affects profile paths
+- Profile list handlers in `src/main/ipc/config.ts`
+- Storage/profile docs that describe active-profile behavior
+
+### `tests/sessions-profile-db.test.ts`
+
+Protects profile-aware local session database reads.
+
+Current assertions:
+
+- `listSessions()` aggregates default and named profile databases, annotates each session with its profile, sorts newest first, and can filter to one profile.
+- `searchSessions()` searches the requested profile database, annotates results, and aggregates default plus named profiles when no profile is selected.
+- `getSessionMessages()` reads from the profile-specific database when duplicate session ids exist across profiles.
+
+Run this test when changing:
+
+- `src/main/sessions.ts`
+- `src/main/ssh/sessions-profiles.ts` if local and SSH profile session semantics are intentionally aligned
+- Session list/search/message IPC handlers in `src/main/ipc/sessions.ts`
+- Storage/profile docs that describe profile-aware session data
+
+### `tests/ssh-remote.test.ts`
+
+Protects SSH remote config-write validation before shelling out to the remote host.
+
+Current assertions:
+
+- `sshSetConfigValue()` rejects quote, backslash, newline, and carriage-return values before issuing remote config writes.
+
+Run this test when changing:
+
+- `src/main/ssh-remote.ts`
+- `src/main/ssh-tunnel.ts` config types used by remote writes
+- Connection-mode docs that describe SSH remote config updates
+
+## Deterministic docs guard
+
+`npm run check:docs` runs `scripts/check-docs.mjs`, which maps high-risk code/test/script paths to evergreen docs. `tests/docs-guard.test.ts` covers the exported evaluator rules, evergreen-doc matching, historical-doc rejection, explicit acknowledgements, and unmapped-file behavior. The guard checks unstaged, staged, and untracked files by default, supports `--staged` to narrow to staged changes only, and supports `--base <ref>` with optional `--head <ref>` for range checks.
+
+When a mapped high-risk file changes, the preferred fix is to update at least one mapped evergreen doc in the same change set. If no doc update is needed, acknowledge deliberately with a short reason:
+
+```bash
+node scripts/check-docs.mjs --ack "internal refactor, documented contract unchanged"
+MERCURY_DOCS_GUARD_ACK="internal refactor, documented contract unchanged" npm run check:docs
+```
+
+Historical investigations under `docs/investigations/**` are evidence and do not satisfy the guard unless a rule explicitly maps them.
+
 ## Real-app Trace Lab hardening harness
 
 `scripts/e2e-trace-lab-hardening.mjs` is a Playwright/Electron harness for release-style Trace Lab validation. It launches the built Mercury app (`out/main/index.js`) with an isolated temporary `HERMES_HOME`, symlinks the locally installed Hermes agent, drives chat scenarios through the renderer UI and preload APIs, verifies `desktop-traces.json`, opens Trace Lab, and writes:
@@ -165,7 +317,14 @@ Run targeted contract tests during focused changes:
 
 ```bash
 npm run test -- tests/ipc-handlers.test.ts tests/preload-api-surface.test.ts
-npm run test -- tests/trace-store.test.ts tests/skills-import.test.ts tests/session-cache-sync.test.ts
+npm run test -- tests/chat-ipc-lifecycle.test.ts tests/chat-metadata.test.ts tests/hermes-title.test.ts tests/hermes-trace-events.test.ts
+npm run test -- tests/trace-store.test.ts tests/skills-import.test.ts tests/session-cache-sync.test.ts tests/profiles.test.ts tests/sessions-profile-db.test.ts tests/ssh-remote.test.ts
+```
+
+Run the docs guard when mapped high-risk code/test/script paths change:
+
+```bash
+npm run check:docs
 ```
 
 Run the real-app hardening harness when a change touches Trace Lab coverage across the app path and credentials are available:
@@ -180,6 +339,7 @@ Run the broader project checks before submitting source changes that affect cont
 ```bash
 npm run test
 npm run typecheck
+npm run check:docs
 npm run check:loc
 ```
 
@@ -187,9 +347,9 @@ npm run check:loc
 
 ## Update policy
 
-When adding or changing a contract test:
+When adding or changing a contract test or docs guard rule:
 
-1. Name the source files and behavior the test protects.
-2. Add the test to this document if it guards IPC/preload, shared schemas, persistence, connection modes, user-visible workflows, or high-risk regressions.
-3. Link the test from the relevant evergreen architecture, contract, or subsystem doc.
+1. Name the source files and behavior the test or guard rule protects.
+2. Add the test or guard rule to this document if it covers IPC/preload, shared schemas, persistence, connection modes, user-visible workflows, docs freshness, or high-risk regressions.
+3. Link the test or guard from the relevant evergreen architecture, contract, subsystem, or contributor doc.
 4. Keep historical reports and investigations as evidence only; do not rely on them as the current test map.

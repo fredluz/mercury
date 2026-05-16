@@ -37,6 +37,7 @@ Thanks for your interest in contributing to Mercury! Whether it's a bug fix, a n
    ```bash
    npm run lint
    npm run typecheck
+   npm run check:docs
    ```
 
 4. Test your changes locally with `npm run dev` to make sure everything works as expected.
@@ -96,6 +97,15 @@ Start from the [Mercury documentation index](docs/index.md) when changing behavi
 - Contract tests or the behavior they protect; see [contract tests](docs/testing/contract-tests.md).
 
 Historical investigations, audits, E2E reports, and branch plans under `docs/` are evidence, not the primary current reference. Use them for context, then verify current behavior against source and evergreen docs.
+
+`npm run check:docs` flags mapped high-risk code, test, or script changes that lack a related evergreen doc update. The preferred fix is to update the mapped evergreen doc in the same PR. If the change deliberately does not need a docs update, acknowledge that with a short reason:
+
+```bash
+node scripts/check-docs.mjs --ack "internal refactor, documented contract unchanged"
+MERCURY_DOCS_GUARD_ACK="internal refactor, documented contract unchanged" npm run check:docs
+```
+
+Use acknowledgements only for intentional no-doc-needed cases; they are not a substitute for keeping the evergreen docs current.
 
 ## Community
 

@@ -6,12 +6,14 @@ This document describes Mercury's current renderer-to-main contract. It is an ev
 
 - Preload exposure: `src/preload/index.ts`
 - Preload fragments: `src/preload/api/index.ts`, `src/preload/api/*.ts`
+- Chat preload fragment: `src/preload/api/chat.ts`
 - Renderer-facing types: `src/preload/index.d.ts`
 - IPC composition: `src/main/ipc/index.ts`
+- Chat IPC handlers and event senders: `src/main/ipc/chat.ts`
 - IPC modules: `src/main/ipc/*.ts`
 - Main updater/menu handlers: `src/main/index.ts`
 - Renderer entrypoints that consume the contract: `src/renderer/src/App.tsx`, `src/renderer/src/screens/Layout/Layout.tsx`, `src/renderer/src/screens/Chat/hooks/useChatController.ts`
-- Contract tests: `tests/ipc-handlers.test.ts`, `tests/preload-api-surface.test.ts`
+- Contract tests: `tests/ipc-handlers.test.ts`, `tests/preload-api-surface.test.ts`, `tests/chat-ipc-lifecycle.test.ts`
 
 ## Contract shape
 
@@ -33,7 +35,7 @@ Current fragments in `src/preload/api/index.ts` are:
 | --- | --- | --- |
 | `installApi` | `src/preload/api/install.ts` | install checks, installer progress, Hermes version/doctor/update, OpenClaw migration, locale |
 | `configApi` | `src/preload/api/config.ts` | env/config/model config, connection mode, remote/SSH tests, SSH tunnel controls |
-| `chatApi` | `src/preload/api/chat.ts` | send/abort chat, local trace recording, and chat stream listeners |
+| `chatApi` | `src/preload/api/chat.ts` | send/abort chat, generated chat titles, local trace recording, chat stream listeners, and live activity trace events |
 | `navigationApi` | `src/preload/api/navigation.ts` | traces, gateway/platform toggles, sessions, profiles |
 | `knowledgeApi` | `src/preload/api/knowledge.ts` | memory, user profile, soul, tools, skills, Markdown skill import |
 | `modelsApi` | `src/preload/api/models.ts` | session cache/search, credential pool, models, Claw3D |
@@ -47,7 +49,7 @@ Current fragments in `src/preload/api/index.ts` are:
 | --- | --- |
 | `src/main/ipc/install.ts` | installation, verification, Hermes version/doctor/update, OpenClaw migration, install progress events |
 | `src/main/ipc/config.ts` | profile-aware env/config/model settings, locale, connection mode, remote/SSH tests, SSH tunnel controls |
-| `src/main/ipc/chat.ts` | `send-message`, `abort-chat`, chat stream events, active-chat abort handling, trace run writes |
+| `src/main/ipc/chat.ts` | `send-message`, `generate-chat-title`, `abort-chat`, chat stream events, active-chat abort handling, title persistence, trace run writes, and live chat activity events |
 | `src/main/ipc/trace.ts` | trace run reads, skill-training run reads, and local chat trace writes |
 | `src/main/ipc/gateway.ts` | gateway lifecycle and platform toggles |
 | `src/main/ipc/sessions.ts` | sessions, profiles, session cache sync, session search |
@@ -69,7 +71,7 @@ Examples by domain:
 
 - Install/version/update: `check-install`, `verify-install`, `start-install`, `get-hermes-version`, `refresh-hermes-version`, `run-hermes-doctor`, `run-hermes-update`, `check-openclaw`, `run-claw-migrate`, `get-locale`, `set-locale`, `get-app-version`, `check-for-updates`, `download-update`, `install-update`.
 - Config/connection: `get-env`, `set-env`, `get-config`, `set-config`, `get-hermes-home`, `get-model-config`, `set-model-config`, `is-remote-mode`, `is-remote-only-mode`, `get-connection-config`, `set-connection-config`, `set-ssh-config`, `test-remote-connection`, `test-ssh-connection`, `is-ssh-tunnel-active`, `start-ssh-tunnel`, `stop-ssh-tunnel`.
-- Chat: `send-message`, `abort-chat`.
+- Chat: `send-message`, `generate-chat-title`, `abort-chat`.
 - Trace Lab: `list-trace-runs`, `get-trace-run`, `list-skill-training-runs`, `record-local-chat-trace`.
 - Gateway/platform: `start-gateway`, `stop-gateway`, `gateway-status`, `get-platform-enabled`, `set-platform-enabled`.
 - Sessions/profiles/cache/search: `list-sessions`, `get-session-messages`, `list-profiles`, `create-profile`, `delete-profile`, `set-active-profile`, `list-cached-sessions`, `sync-session-cache`, `update-session-title`, `search-sessions`.
@@ -77,6 +79,33 @@ Examples by domain:
 - Models/credentials: `get-credential-pool`, `set-credential-pool`, `list-models`, `add-model`, `remove-model`, `update-model`.
 - Claw3D: `claw3d-status`, `claw3d-setup`, `claw3d-get-port`, `claw3d-set-port`, `claw3d-get-ws-url`, `claw3d-set-ws-url`, `claw3d-start-all`, `claw3d-stop-all`, `claw3d-get-logs`, `claw3d-start-dev`, `claw3d-stop-dev`, `claw3d-start-adapter`, `claw3d-stop-adapter`.
 - Cron/system: `list-cron-jobs`, `create-cron-job`, `remove-cron-job`, `pause-cron-job`, `resume-cron-job`, `trigger-cron-job`, `open-external`, `run-hermes-backup`, `run-hermes-import`, `run-hermes-dump`, `discover-memory-providers`, `list-mcp-servers`, `read-logs`.
+
+### Chat preload API
+
+`window.hermesAPI` exposes these chat methods from `src/preload/api/chat.ts` and `src/preload/index.d.ts`:
+
+| Preload method | IPC channel | Notes |
+| --- | --- | --- |
+| `sendMessage(message, profile?, resumeSessionId?, history?)` | `send-message` | Starts or resumes a Hermes chat run and streams renderer events while the returned promise settles with `{ response, sessionId? }`. |
+| `abortChat()` | `abort-chat` | Aborts the active run, if any, and finalizes the active trace as aborted. |
+| `generateChatTitle(request)` | `generate-chat-title` | Validates and normalizes a `GenerateChatTitleRequest`, prepares the chat backend, generates or falls back to a sanitized title, and persists it with `updateSessionTitle(sessionId, title, profile)` when a session id is supplied. |
+| `recordLocalChatTrace(request)` | `record-local-chat-trace` | Records local slash-command telemetry without calling Hermes. |
+| `onChatChunk(callback)` | `chat-chunk` | Streams assistant text chunks. |
+| `onChatDone(callback)` | `chat-done` | Reports terminal success/abort and the resolved session id when available. |
+| `onChatToolProgress(callback)` | `chat-tool-progress` | Legacy progress-label compatibility channel. Structured activity should prefer `onChatTraceEvent`. |
+| `onChatTraceEvent(callback)` | `chat-trace-event` | Streams persisted live activity `TraceEvent`s for tool, delegation, artifact, approval, and transport-error events. |
+| `onChatUsage(callback)` | `chat-usage` | Streams token/cost/rate-limit usage updates. |
+| `onChatError(callback)` | `chat-error` | Streams visible chat errors. |
+
+Every listener API returns a cleanup function that removes its `ipcRenderer` listener. Renderer code should register these listeners once per component lifecycle and call all returned cleanups on unmount.
+
+`generateChatTitle(request)` uses `GenerateChatTitleRequest` from `src/shared/chat-metadata.ts`:
+
+- `profile?: string`
+- `sessionId?: string`
+- `messages: Array<{ role: "user" | "agent" | "assistant"; content: string }>`
+
+The main handler rejects invalid request shapes before normalization. Title generation is best-effort from the renderer perspective: `useChatController` keeps the conversation usable when IPC/model title generation fails.
 
 ### Trace Lab local trace API
 
@@ -97,11 +126,15 @@ The handler creates a normal trace run, records `slash.local`, optionally record
 
 Current event channels exposed through preload listeners include:
 
-- Chat streaming: `chat-chunk`, `chat-done`, `chat-tool-progress`, `chat-usage`, `chat-error`.
+- Chat streaming: `chat-chunk`, `chat-done`, `chat-tool-progress`, `chat-trace-event`, `chat-usage`, `chat-error`.
 - Installer/update/migration progress: `install-progress`.
 - Auto-update state: `update-available`, `update-download-progress`, `update-downloaded`.
 - Native menu actions: `menu-new-chat`, `menu-search-sessions`.
 - Claw3D setup progress: `claw3d-setup-progress`.
+
+`chat-trace-event` is sent only for live activity event types accepted by `src/main/ipc/chat.ts`: `tool.*`, `delegation.*`, `artifact.created`, `approval.*`, and `transport.error`. The persisted `TraceEvent` object is sent after the main process records it, so renderer activity cards can share ids, run ids, timestamps, titles, details, and metadata with Trace Lab.
+
+`chat-tool-progress` remains exposed for older renderer/UI compatibility and compact progress labels. New structured transports should emit trace callbacks (`onTraceEvent`) so the renderer receives `chat-trace-event`; the main process suppresses duplicate legacy `tool.progress` records when a structured tool/delegation event immediately precedes a legacy progress label.
 
 `src/main/index.ts` also sends `update-error` from updater error handling. At the time of this document, no preload listener is exposed for that channel in `src/preload/api/app.ts` or `src/preload/index.d.ts`; do not assume renderer code handles it unless the contract is expanded.
 
@@ -138,7 +171,7 @@ Do not add renderer code that imports main-process modules directly. Renderer ac
 For IPC/preload changes, run:
 
 ```bash
-npm run test -- tests/ipc-handlers.test.ts tests/preload-api-surface.test.ts
+npm run test -- tests/ipc-handlers.test.ts tests/preload-api-surface.test.ts tests/chat-ipc-lifecycle.test.ts
 npm run typecheck
 ```
 

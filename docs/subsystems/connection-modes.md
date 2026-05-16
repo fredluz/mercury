@@ -10,8 +10,8 @@ Mercury supports three connection modes: local, pure remote HTTP, and SSH. This 
 - SSH tunnel: `src/main/ssh-tunnel.ts`
 - SSH compatibility exports: `src/main/ssh-remote.ts`
 - SSH domain implementations: `src/main/ssh/*`
-- IPC handlers that branch by mode: `src/main/ipc/config.ts`, `src/main/ipc/install.ts`, `src/main/ipc/chat.ts`, `src/main/ipc/knowledge.ts`, `src/main/ipc/sessions.ts`, `src/main/ipc/models.ts`, `src/main/ipc/system.ts`
-- Renderer gating: `src/renderer/src/App.tsx`, `src/renderer/src/screens/Layout/Layout.tsx`
+- IPC handlers that branch by mode: `src/main/ipc/config.ts`, `src/main/ipc/gateway.ts`, `src/main/ipc/install.ts`, `src/main/ipc/chat.ts`, `src/main/ipc/knowledge.ts`, `src/main/ipc/sessions.ts`, `src/main/ipc/models.ts`, `src/main/ipc/system.ts`
+- Renderer startup/gating/status checks: `src/renderer/src/App.tsx`, `src/renderer/src/screens/Layout/Layout.tsx`, `src/renderer/src/screens/Gateway/Gateway.tsx`
 
 ## Persisted connection config
 
@@ -169,8 +169,12 @@ Current restart triggers visible in IPC handlers:
 
 - Local `set-env` restarts the gateway when it is running and the key ends with `_API_KEY`, the key ends with `_TOKEN`, or the key is `HF_TOKEN`.
 - Local `set-model-config` restarts the gateway when it is running and provider/model/base URL changed.
+- Local `set-platform-enabled` writes the platform setting and restarts the local gateway when `isGatewayRunning()` is true so the platform config is picked up.
 - SSH `set-model-config` stops and starts the remote gateway when remote gateway is running and provider/model/base URL changed.
+- SSH `set-platform-enabled` writes remote config through `sshSetPlatformEnabled(...)` but does not automatically stop/start the remote gateway; the user may need to restart it for the toggle to take effect.
 - Successful local or SSH Markdown skill import returns `warning: "gateway-restart-required"` when a gateway is running; it does not restart the gateway itself in the current code.
+
+`Gateway.tsx` optimistically flips platform toggle UI state, invokes `setPlatformEnabled(...)`, then re-checks gateway status after a short delay. This matters most in local mode, where the handler may restart the gateway; in SSH mode the re-check observes remote status but the toggle write itself does not trigger a restart.
 
 ## Verification guidance
 

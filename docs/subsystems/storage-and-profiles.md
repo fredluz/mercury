@@ -5,15 +5,16 @@ This document describes Mercury's current profile scoping, persistent files, ses
 ## Source anchors
 
 - Profile path helpers: `src/main/utils.ts`
+- Profile discovery and active profile marking: `src/main/profiles.ts`
 - Config/env/connection/model/credential persistence: `src/main/config.ts`
 - Sessions and search: `src/main/sessions.ts`
 - Session cache: `src/main/session-cache.ts`
 - Memory/user profile: `src/main/memory.ts`
 - Soul: `src/main/soul.ts`
-- Models: `src/main/models.ts`
+- Models: `src/main/models.ts`, `src/main/default-models.ts`, `src/shared/chat-metadata.ts`
 - IPC routing: `src/main/ipc/config.ts`, `src/main/ipc/sessions.ts`, `src/main/ipc/knowledge.ts`, `src/main/ipc/models.ts`, `src/main/ipc/system.ts`
 - SSH implementations: `src/main/ssh/config.ts`, `src/main/ssh/sessions-profiles.ts`, `src/main/ssh/memory-soul.ts`, `src/main/ssh/runtime.ts`, `src/main/ssh/transport.ts`
-- Contract test: `tests/session-cache-sync.test.ts`
+- Contract tests: `tests/profiles.test.ts`, `tests/chat-metadata.test.ts`, `tests/session-cache-sync.test.ts`
 
 ## Profile scoping
 
@@ -23,6 +24,9 @@ Current behavior visible from callers:
 
 - Default profile uses `<HERMES_HOME>`.
 - Named profiles use a profile-specific home under the Hermes home. Source call sites consistently treat named profiles as separate homes for env/config/memory/soul/skills/session state.
+- `src/main/profiles.ts` always includes the default profile in `listProfiles()`.
+- Named profiles are any non-dot directories directly under `<HERMES_HOME>/profiles`; they do not need `config.yaml` or `.env` to be visible in the UI.
+- `<HERMES_HOME>/active_profile` is read to mark `ProfileInfo.isActive`. Missing or blank files default the active profile to `"default"`.
 - SSH implementations mirror this shape with remote paths under `~/.hermes` for default and `~/.hermes/profiles/<profile>` for named profiles.
 
 ## Persistent files
@@ -35,7 +39,8 @@ Current local persistent files used by the documented subsystems include:
 | `<profileHome>/.env` | `src/main/config.ts`, `src/main/memory.ts`, SSH config helpers | Profile environment variables/API keys. |
 | `<profileHome>/config.yaml` | `src/main/config.ts`, SSH config helpers | Hermes config values such as provider/default/base URL, streaming, platform/tool settings. |
 | `<HERMES_HOME>/auth.json` | `src/main/config.ts` | Credential pool under `credential_pool`. |
-| `<HERMES_HOME>/models.json` | `src/main/models.ts` | Saved model library. Seeded from defaults when missing. |
+| `<HERMES_HOME>/active_profile` | `src/main/profiles.ts` | Active profile name used by `listProfiles()` to mark `ProfileInfo.isActive`; missing/blank means `default`. |
+| `<HERMES_HOME>/models.json` | `src/main/models.ts` | Saved model library, including normalized context-window metadata. Seeded from defaults when missing. |
 | `<profileHome>/state.db` | `src/main/sessions.ts`, `src/main/session-cache.ts`, `src/main/memory.ts` | Hermes SQLite session/message database read by desktop. |
 | `<HERMES_HOME>/desktop/sessions.json` | `src/main/session-cache.ts` | Desktop session cache with generated titles, row `profile` metadata, global `lastSync`, and per-profile `profileSync`. |
 | `<profileHome>/memories/MEMORY.md` | `src/main/memory.ts`, `src/main/ssh/memory-soul.ts` | Memory entries separated by `\n§\n`. |
@@ -106,13 +111,15 @@ Credential pool handlers in `src/main/ipc/models.ts` do not currently branch to 
 - `model`
 - `baseUrl`
 - `createdAt`
+- `contextWindow?: number`
 
 Current behavior:
 
-- `listModels()` seeds `models.json` from `DEFAULT_MODELS` if the file is missing.
-- `addModel(...)` returns an existing model when the same `model` and `provider` already exist.
+- `listModels()` seeds `models.json` from `DEFAULT_MODELS` if the file is missing. Default models include explicit `contextWindow` values.
+- Loaded models are normalized with `inferContextWindow(provider, model, contextWindow)`, so an explicit saved value is preserved, known provider/model pairs get known token windows, and unknown models fall back to the shared metadata default.
+- `addModel(...)` returns an existing model when the same `model` and `provider` already exist; new entries store the inferred context window.
 - `removeModel(id)` removes by id and returns whether anything changed.
-- `updateModel(id, fields)` updates name/provider/model/baseUrl fields for an existing id.
+- `updateModel(id, fields)` updates name/provider/model/baseUrl/contextWindow fields for an existing id. When provider or model changes and no explicit `contextWindow` field is supplied, the old context window is cleared and re-inferred from the new provider/model pair.
 - `src/main/ipc/models.ts` uses SSH `sshListModels(...)` for listing in SSH mode, but add/remove/update currently call local model functions.
 
 ## Sessions and SQLite state
@@ -237,6 +244,7 @@ At the time of this doc, backup/import and MCP server listing do not branch to S
 For storage/profile changes, run targeted tests based on the touched area:
 
 ```bash
+npm run test -- tests/profiles.test.ts tests/chat-metadata.test.ts
 npm run test -- tests/session-cache-sync.test.ts tests/sessions-profile-db.test.ts
 npm run test -- tests/chat-ipc-lifecycle.test.ts
 npm run test -- tests/skills-import.test.ts

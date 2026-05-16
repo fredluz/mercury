@@ -52,7 +52,9 @@ Current local behavior:
 - `listBundledSkills()` walks `<HERMES_REPO>/skills/<category>/<skill>/SKILL.md` and returns bundled skills sorted by category/name.
 - `searchSkills(query)` shells out to Hermes CLI: `hermes skills browse --query <query> --json`; if JSON parsing fails or command fails, it returns an empty list.
 
-`listBundledSkills()` does not call the registry search; it reads bundled skills from the local Hermes repo directory.
+`listBundledSkills()` does not call the registry search locally; it reads bundled skills from the local Hermes repo directory.
+
+Current SSH behavior differs: `sshListBundledSkills()` calls remote registry browsing through `hermes skills browse --query "" --json` via SSH. It does not traverse a remote bundled-skills repository directory.
 
 ## Local install and uninstall
 
@@ -203,12 +205,12 @@ When `getConnectionConfig().mode === "ssh"`, skill handlers use `src/main/ssh/sk
 
 Current SSH behavior:
 
-- Installed skills are discovered under remote `~/.hermes/skills` or `~/.hermes/profiles/<profile>/skills`.
+- Installed skill listing is profile-aware: skills are discovered under remote `~/.hermes/skills` for default or `~/.hermes/profiles/<profile>/skills` for named profiles.
 - Returned remote skill paths are prefixed with `REMOTE:`.
 - `getSkillContent(...)` strips the `REMOTE:` prefix if present and reads remote `<path>/SKILL.md`.
-- Install runs `hermes skills install <identifier> --yes` on the remote host.
-- Uninstall runs `hermes skills uninstall <name>` on the remote host.
-- Markdown import uses the same `prepareSkillMarkdownImport(...)` validation/normalization as local import.
+- Install currently ignores the selected profile in SSH mode because `knowledge.ts` discards `_profile` before calling `sshInstallSkill(...)`; it runs `hermes skills install <identifier> --yes` on the remote host.
+- Uninstall currently ignores the selected profile in SSH mode for the same reason; it runs `hermes skills uninstall <name>` on the remote host.
+- Markdown import is profile-aware and uses the same `prepareSkillMarkdownImport(...)` validation/normalization as local import.
 - Remote Markdown import writes to `~/.hermes/skills/<category>/<name>/SKILL.md` or profile equivalent.
 - Remote Markdown import rejects duplicates unless `overwrite` is true.
 - Remote import returns a `REMOTE:` path normalized from `~` to `$HOME`.
@@ -219,7 +221,7 @@ If SSH Markdown import succeeds while the remote gateway is running, the IPC res
 
 Manual Markdown import is explicitly rejected in pure remote HTTP mode with failure code `write-failed` and an error explaining that import is only available in local and SSH modes because it writes to the selected profile filesystem.
 
-Other skill handlers in `knowledge.ts` only branch for SSH; in pure remote mode they currently use local implementations unless a specific handler rejects the operation.
+Other skill handlers in `knowledge.ts` only branch for SSH and otherwise fall through to local implementations. Therefore pure remote HTTP mode uses local list/content/install/uninstall/bundled behavior unless a specific handler, currently manual Markdown import, rejects the operation.
 
 ## Contract tests
 
