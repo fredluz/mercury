@@ -32,6 +32,7 @@ import {
 } from "../../assets/icons";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
+import { markRendererPerf } from "../../perf";
 
 type View =
   | "chat"
@@ -107,6 +108,21 @@ function Layout(): React.JSX.Element {
     setVisitedViews((prev) => (prev.has(v) ? prev : new Set(prev).add(v)));
     setView(v);
   }, []);
+
+  useEffect(() => {
+    markRendererPerf("startup", "layout.mounted", {
+      initialView: view,
+      visitedCount: visitedViews.size,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    markRendererPerf("startup", "layout.route.changed", {
+      view,
+      visitedCount: visitedViews.size,
+    });
+  }, [view, visitedViews.size]);
 
   // Re-check remote mode on tab switch (picks up Settings changes)
   useEffect(() => {
