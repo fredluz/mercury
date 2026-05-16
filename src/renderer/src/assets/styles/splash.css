@@ -8,7 +8,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--brand-cream);
+  background-color: var(--brand-cream);
+  background-image: url("../splash-background.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
 .splash-lockup {
