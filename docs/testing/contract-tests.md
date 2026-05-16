@@ -6,6 +6,7 @@ This document maps Mercury's current contract tests and deterministic contract c
 
 - IPC/preload parity: `tests/ipc-handlers.test.ts`
 - Preload API surface: `tests/preload-api-surface.test.ts`
+- Local perf telemetry safety: `tests/perf-telemetry.test.ts`
 - Chat IPC lifecycle: `tests/chat-ipc-lifecycle.test.ts`
 - Chat metadata helpers: `tests/chat-metadata.test.ts`
 - Chat title generation: `tests/hermes-title.test.ts`
@@ -16,8 +17,9 @@ This document maps Mercury's current contract tests and deterministic contract c
 - Profile discovery: `tests/profiles.test.ts`
 - Profile-aware local sessions: `tests/sessions-profile-db.test.ts`
 - SSH remote config validation: `tests/ssh-remote.test.ts`
+- Performance benchmark entrypoints: `scripts/e2e-startup-perf.mjs`, `scripts/perf-build-snapshot.mjs`, `scripts/e2e-chat-render-latency.mjs`, `scripts/e2e-sessions-latency.mjs`, `scripts/e2e-ssh-remote-latency.mjs`, plus opt-in bench tests.
 - Docs freshness guard: `scripts/check-docs.mjs`, with evaluator coverage in `tests/docs-guard.test.ts`, via `npm run check:docs`
-- Related docs: [Architecture overview](../architecture/overview.md), [IPC and preload contract](../contracts/ipc-preload.md), [Trace schema](../contracts/trace-schema.md), and subsystem docs under `docs/subsystems/`.
+- Related docs: [Architecture overview](../architecture/overview.md), [IPC and preload contract](../contracts/ipc-preload.md), [Trace schema](../contracts/trace-schema.md), [Performance benchmarks](performance-benchmarks.md), and subsystem docs under `docs/subsystems/`.
 
 ## When to run contract tests
 
@@ -26,6 +28,7 @@ Run contract tests when a change touches any of these areas:
 - `src/main/ipc/**`, `src/main/index.ts` updater/menu IPC, or any `ipcMain.handle(...)` channel.
 - `src/preload/index.ts`, `src/preload/index.d.ts`, or `src/preload/api/**`.
 - Shared cross-process types under `src/shared/*`.
+- Local performance telemetry helpers under `src/main/perf/**`, `src/renderer/src/perf.ts`, and `src/shared/perf.ts`.
 - Chat IPC lifecycle, generated-title persistence, stream completion/error delivery, or trace side effects.
 - Chat metadata helpers, context-window inference, context usage display inputs, or generated-title request validation.
 - Hermes stream/CLI trace event normalization, artifact extraction, or legacy progress parsing.
@@ -34,6 +37,7 @@ Run contract tests when a change touches any of these areas:
 - Session cache sync, generated session titles, session cache persistence, local session DB reads, or session search inputs.
 - Persistent files/profile behavior that affects renderer-visible data.
 - SSH config writes or remote connection-mode validation.
+- Package perf scripts, benchmark harnesses, or docs that describe performance artifacts.
 - Docs guard rules or the mapped evergreen docs they require.
 
 For docs-only changes, manually verify links and file references. Run `npm run check:docs` when the change set includes mapped high-risk code/test/script paths, or when updating the guard itself. Full test runs are optional unless the docs change alongside source behavior.
@@ -83,6 +87,25 @@ Run this test when changing:
 - `src/preload/index.ts`
 - `src/preload/index.d.ts`
 - Renderer code that starts using a new `window.hermesAPI` method
+
+### `tests/perf-telemetry.test.ts`
+
+Protects local opt-in performance telemetry safety.
+
+Current assertions:
+
+- Generic perf telemetry is disabled by default and does not create files.
+- `MERCURY_PERF_DIAG=1` reports enabled config and writes valid NDJSON with the current run id/sample config.
+- Legacy `MERCURY_SESSIONS_DIAG=1` still enables session-scoped telemetry for compatibility.
+- Secret-like keys and prompt/response/message content fields are redacted before writing.
+- Failed timed spans are recorded but the original operation error is rethrown.
+
+Run this test when changing:
+
+- `src/main/perf/telemetry.ts`
+- `src/shared/perf.ts`
+- Renderer perf helpers or metadata sent through `record-perf-event`
+- IPC/preload perf telemetry channels in `src/main/ipc/system.ts`, `src/preload/api/app.ts`, or `src/preload/index.d.ts`
 
 ### `tests/chat-ipc-lifecycle.test.ts`
 
@@ -283,6 +306,20 @@ MERCURY_DOCS_GUARD_ACK="internal refactor, documented contract unchanged" npm ru
 
 Historical investigations under `docs/investigations/**` are evidence and do not satisfy the guard unless a rule explicitly maps them.
 
+## Opt-in performance benchmarks
+
+Performance benchmarks are intentionally threshold-free unless a test documents a specific regression guard. They are local artifact producers, not always-on CI checks.
+
+- `npm run perf:build` runs a production build and writes a bundle snapshot through `scripts/perf-build-snapshot.mjs`.
+- `npm run perf:startup` runs a production build and launches the built Electron app through `scripts/e2e-startup-perf.mjs` with `MERCURY_PERF_DIAG=1`.
+- `npm run perf:chat-render` uses the env-gated synthetic chat stream and writes chat render/jank artifacts.
+- `npm run perf:sessions:bench` enables `tests/sessions-local-latency.bench.test.ts` with `MERCURY_SESSIONS_BENCH=1`.
+- `npm run perf:sessions:e2e` drives the built Sessions UI and labels the 300ms search debounce in artifacts.
+- `npm run perf:trace-store` enables `tests/trace-store-stress.bench.test.ts` with `MERCURY_TRACE_STORE_BENCH=1`.
+- `npm run perf:ssh-remote` is external-network-dependent and should report skipped/dependency status when credentials or reachable hosts are unavailable.
+
+See [Performance benchmarks](performance-benchmarks.md) for environment flags, artifact paths, and measured-evidence reporting rules.
+
 ## Real-app Trace Lab hardening harness
 
 `scripts/e2e-trace-lab-hardening.mjs` is a Playwright/Electron harness for release-style Trace Lab validation. It launches the built Mercury app (`out/main/index.js`) with an isolated temporary `HERMES_HOME`, symlinks the locally installed Hermes agent, drives chat scenarios through the renderer UI and preload APIs, verifies `desktop-traces.json`, opens Trace Lab, and writes:
@@ -316,7 +353,7 @@ The harness expects the richer trace contract now emitted by the app path, inclu
 Run targeted contract tests during focused changes:
 
 ```bash
-npm run test -- tests/ipc-handlers.test.ts tests/preload-api-surface.test.ts
+npm run test -- tests/perf-telemetry.test.ts tests/ipc-handlers.test.ts tests/preload-api-surface.test.ts
 npm run test -- tests/chat-ipc-lifecycle.test.ts tests/chat-metadata.test.ts tests/hermes-title.test.ts tests/hermes-trace-events.test.ts
 npm run test -- tests/trace-store.test.ts tests/skills-import.test.ts tests/session-cache-sync.test.ts tests/profiles.test.ts tests/sessions-profile-db.test.ts tests/ssh-remote.test.ts
 ```
@@ -341,6 +378,10 @@ npm run test
 npm run typecheck
 npm run check:docs
 npm run check:loc
+
+# Local perf artifacts when practical
+npm run perf:build
+npm run perf:startup
 ```
 
 `npm run lint` is also desirable when source changes are involved, but treat unrelated pre-existing lint failures separately from the contract change being validated.

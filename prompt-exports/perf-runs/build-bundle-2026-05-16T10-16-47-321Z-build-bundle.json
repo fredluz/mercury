@@ -1,0 +1,247 @@
+{
+  "runId": "build-bundle-2026-05-16T10-16-47-321Z",
+  "kind": "build-bundle-snapshot",
+  "date": "2026-05-16T10:16:47.725Z",
+  "repoRoot": "/Users/fredluz/Code/mercury",
+  "outDir": "out",
+  "totals": {
+    "all": {
+      "fileCount": 206,
+      "sizeBytes": 19143901,
+      "gzipBytes": 8148636
+    },
+    "main": {
+      "path": "out/main",
+      "fileCount": 1,
+      "sizeBytes": 391962,
+      "gzipBytes": 100147
+    },
+    "preload": {
+      "path": "out/preload",
+      "fileCount": 1,
+      "sizeBytes": 14518,
+      "gzipBytes": 2865
+    },
+    "renderer": {
+      "path": "out/renderer",
+      "fileCount": 204,
+      "sizeBytes": 18737421,
+      "gzipBytes": 8045624
+    }
+  },
+  "totalsByExtension": [
+    {
+      "extension": ".ttf",
+      "sizeBytes": 12324400,
+      "gzipBytes": 4892663,
+      "files": 6
+    },
+    {
+      "extension": ".js",
+      "sizeBytes": 4613088,
+      "gzipBytes": 1156552,
+      "files": 196
+    },
+    {
+      "extension": ".png",
+      "sizeBytes": 2096830,
+      "gzipBytes": 2083040,
+      "files": 2
+    },
+    {
+      "extension": ".css",
+      "sizeBytes": 109106,
+      "gzipBytes": 16082,
+      "files": 1
+    },
+    {
+      "extension": ".html",
+      "sizeBytes": 477,
+      "gzipBytes": 299,
+      "files": 1
+    }
+  ],
+  "topFiles": [
+    {
+      "path": "out/renderer/assets/index-DFBSMGaS.js",
+      "sizeBytes": 2457976,
+      "gzipBytes": 654426
+    },
+    {
+      "path": "out/renderer/assets/GoogleSans-MediumItalic-Bv2n2KwC.ttf",
+      "sizeBytes": 2096976,
+      "gzipBytes": 894654
+    },
+    {
+      "path": "out/renderer/assets/GoogleSans-Italic-C3blLTX1.ttf",
+      "sizeBytes": 2094388,
+      "gzipBytes": 807923
+    },
+    {
+      "path": "out/renderer/assets/GoogleSans-SemiBold-Bdxd_UVx.ttf",
+      "sizeBytes": 2034836,
+      "gzipBytes": 851365
+    },
+    {
+      "path": "out/renderer/assets/GoogleSans-Medium-CZh8QHMK.ttf",
+      "sizeBytes": 2034704,
+      "gzipBytes": 824224
+    },
+    {
+      "path": "out/renderer/assets/GoogleSans-Bold-DIfsCpfL.ttf",
+      "sizeBytes": 2032964,
+      "gzipBytes": 779933
+    },
+    {
+      "path": "out/renderer/assets/GoogleSans-Regular-Cewu3fzG.ttf",
+      "sizeBytes": 2030532,
+      "gzipBytes": 734564
+    },
+    {
+      "path": "out/renderer/assets/splash-background-B7IQ67W-.png",
+      "sizeBytes": 1832710,
+      "gzipBytes": 1818817
+    },
+    {
+      "path": "out/renderer/assets/index-cXE_ykVY.js",
+      "sizeBytes": 1555521,
+      "gzipBytes": 303946
+    },
+    {
+      "path": "out/main/index.js",
+      "sizeBytes": 391962,
+      "gzipBytes": 100147
+    },
+    {
+      "path": "out/renderer/assets/icon-BZJTkh8S.png",
+      "sizeBytes": 264120,
+      "gzipBytes": 264223
+    },
+    {
+      "path": "out/renderer/assets/index-DMQ15Y64.css",
+      "sizeBytes": 109106,
+      "gzipBytes": 16082
+    },
+    {
+      "path": "out/renderer/assets/one-dark-Bwoa1fn-.js",
+      "sizeBytes": 15217,
+      "gzipBytes": 1902
+    },
+    {
+      "path": "out/preload/index.js",
+      "sizeBytes": 14518,
+      "gzipBytes": 2865
+    },
+    {
+      "path": "out/renderer/assets/livecodeserver-D81ptnwR.js",
+      "sizeBytes": 1006,
+      "gzipBytes": 498
+    },
+    {
+      "path": "out/renderer/assets/ruleslanguage-BVcFJ9Gh.js",
+      "sizeBytes": 997,
+      "gzipBytes": 496
+    },
+    {
+      "path": "out/renderer/assets/taggerscript-f5pkOoDh.js",
+      "sizeBytes": 988,
+      "gzipBytes": 492
+    },
+    {
+      "path": "out/renderer/assets/vbscript-html-DQkkNUhN.js",
+      "sizeBytes": 988,
+      "gzipBytes": 495
+    },
+    {
+      "path": "out/renderer/assets/actionscript-90xkDYp9.js",
+      "sizeBytes": 987,
+      "gzipBytes": 489
+    },
+    {
+      "path": "out/renderer/assets/coffeescript-DxY8vWBz.js",
+      "sizeBytes": 987,
+      "gzipBytes": 490
+    },
+    {
+      "path": "out/renderer/assets/mathematica-CHtwQh-7.js",
+      "sizeBytes": 979,
+      "gzipBytes": 493
+    },
+    {
+      "path": "out/renderer/assets/mojolicious-pcbUCagr.js",
+      "sizeBytes": 979,
+      "gzipBytes": 492
+    },
+    {
+      "path": "out/renderer/assets/php-template-B8o43hl1.js",
+      "sizeBytes": 979,
+      "gzipBytes": 493
+    },
+    {
+      "path": "out/renderer/assets/angelscript-ClG-XkTw.js",
+      "sizeBytes": 978,
+      "gzipBytes": 491
+    },
+    {
+      "path": "out/renderer/assets/applescript-BKw7MYXi.js",
+      "sizeBytes": 978,
+      "gzipBytes": 488
+    }
+  ],
+  "rendererHtml": {
+    "path": "out/renderer/index.html",
+    "assets": [
+      {
+        "ref": "./assets/index-cXE_ykVY.js",
+        "path": "out/renderer/assets/index-cXE_ykVY.js",
+        "exists": true,
+        "kind": "js"
+      },
+      {
+        "ref": "./assets/index-DMQ15Y64.css",
+        "path": "out/renderer/assets/index-DMQ15Y64.css",
+        "exists": true,
+        "kind": "css"
+      }
+    ]
+  },
+  "initialRendererAssets": [
+    {
+      "ref": "./assets/index-cXE_ykVY.js",
+      "path": "out/renderer/assets/index-cXE_ykVY.js",
+      "exists": true,
+      "kind": "js",
+      "size": {
+        "path": "out/renderer/assets/index-cXE_ykVY.js",
+        "sizeBytes": 1555521,
+        "gzipBytes": 303946
+      }
+    },
+    {
+      "ref": "./assets/index-DMQ15Y64.css",
+      "path": "out/renderer/assets/index-DMQ15Y64.css",
+      "exists": true,
+      "kind": "css",
+      "size": {
+        "path": "out/renderer/assets/index-DMQ15Y64.css",
+        "sizeBytes": 109106,
+        "gzipBytes": 16082
+      }
+    }
+  ],
+  "dynamicImports": [
+    {
+      "path": "out/renderer/assets/index-DFBSMGaS.js",
+      "imports": [
+        "./html_renderer"
+      ]
+    },
+    {
+      "path": "out/renderer/assets/index-cXE_ykVY.js",
+      "imports": [
+        "./index-DFBSMGaS.js",
+        "./one-dark-Bwoa1fn-.js"
+      ]
+    }
+  ]
+}

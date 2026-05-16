@@ -26,6 +26,7 @@ Use evergreen docs first when you need to understand or change Mercury. These pa
 ### Testing
 
 - [Contract tests](testing/contract-tests.md) — IPC/preload parity, preload API surface, trace-store, skill import, and session-cache sync tests.
+- [Performance benchmarks](testing/performance-benchmarks.md) — local opt-in perf scripts, telemetry flags, artifact paths, and measured-evidence rules.
 
 ## Historical evidence
 

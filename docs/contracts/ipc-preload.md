@@ -12,6 +12,7 @@ This document describes Mercury's current renderer-to-main contract. It is an ev
 - Chat IPC handlers and event senders: `src/main/ipc/chat.ts`
 - IPC modules: `src/main/ipc/*.ts`
 - Main updater/menu handlers: `src/main/index.ts`
+- Performance telemetry helpers: `src/main/perf/telemetry.ts`, `src/renderer/src/perf.ts`, `src/shared/perf.ts`
 - Renderer entrypoints that consume the contract: `src/renderer/src/App.tsx`, `src/renderer/src/screens/Layout/Layout.tsx`, `src/renderer/src/screens/Chat/hooks/useChatController.ts`
 - Contract tests: `tests/ipc-handlers.test.ts`, `tests/preload-api-surface.test.ts`, `tests/chat-ipc-lifecycle.test.ts`
 
@@ -39,7 +40,7 @@ Current fragments in `src/preload/api/index.ts` are:
 | `navigationApi` | `src/preload/api/navigation.ts` | traces, gateway/platform toggles, sessions, profiles |
 | `knowledgeApi` | `src/preload/api/knowledge.ts` | memory, user profile, soul, tools, skills, Markdown skill import |
 | `modelsApi` | `src/preload/api/models.ts` | session cache/search, credential pool, models, Claw3D |
-| `appApi` | `src/preload/api/app.ts` | updates, menu events, cron jobs, shell, backup/import, dump/log/system helpers |
+| `appApi` | `src/preload/api/app.ts` | updates, menu events, cron jobs, shell, backup/import, dump/log/system helpers, local perf telemetry |
 
 ## IPC composition and handler ownership
 
@@ -57,7 +58,7 @@ Current fragments in `src/preload/api/index.ts` are:
 | `src/main/ipc/models.ts` | credential pool and model CRUD |
 | `src/main/ipc/claw3d.ts` | Claw3D status/setup/config/start/stop/logs and setup progress events |
 | `src/main/ipc/cron.ts` | cron job listing and lifecycle actions |
-| `src/main/ipc/system.ts` | external URLs, backup/import, debug dump, MCP servers, memory providers, logs |
+| `src/main/ipc/system.ts` | external URLs, backup/import, debug dump, MCP servers, memory providers, logs, local perf telemetry |
 
 `src/main/index.ts` also registers updater/version invoke handlers in `setupUpdater()` and sends native menu/update events to the renderer.
 
@@ -78,7 +79,7 @@ Examples by domain:
 - Knowledge/skills: `read-memory`, `add-memory-entry`, `update-memory-entry`, `remove-memory-entry`, `write-user-profile`, `read-soul`, `write-soul`, `reset-soul`, `get-toolsets`, `set-toolset-enabled`, `list-installed-skills`, `list-bundled-skills`, `get-skill-content`, `install-skill`, `uninstall-skill`, `import-skill-markdown`.
 - Models/credentials: `get-credential-pool`, `set-credential-pool`, `list-models`, `add-model`, `remove-model`, `update-model`.
 - Claw3D: `claw3d-status`, `claw3d-setup`, `claw3d-get-port`, `claw3d-set-port`, `claw3d-get-ws-url`, `claw3d-set-ws-url`, `claw3d-start-all`, `claw3d-stop-all`, `claw3d-get-logs`, `claw3d-start-dev`, `claw3d-stop-dev`, `claw3d-start-adapter`, `claw3d-stop-adapter`.
-- Cron/system: `list-cron-jobs`, `create-cron-job`, `remove-cron-job`, `pause-cron-job`, `resume-cron-job`, `trigger-cron-job`, `open-external`, `run-hermes-backup`, `run-hermes-import`, `run-hermes-dump`, `discover-memory-providers`, `list-mcp-servers`, `read-logs`.
+- Cron/system/perf: `list-cron-jobs`, `create-cron-job`, `remove-cron-job`, `pause-cron-job`, `resume-cron-job`, `trigger-cron-job`, `open-external`, `run-hermes-backup`, `run-hermes-import`, `run-hermes-dump`, `discover-memory-providers`, `list-mcp-servers`, `read-logs`, `get-perf-telemetry-config`, `record-perf-event`.
 
 ### Chat preload API
 
@@ -121,6 +122,17 @@ Fields:
 - `metadata?: Record<string, unknown>` — optional sanitized metadata.
 
 The handler creates a normal trace run, records `slash.local`, optionally records a local `message.agent.delta`, and immediately finishes the run as `completed`. Renderer code should treat this as best-effort telemetry and should not block local command UX on trace failures.
+
+### Local performance telemetry API
+
+`window.hermesAPI` exposes two local diagnostics methods from `src/preload/api/app.ts` and `src/preload/index.d.ts`:
+
+| Preload method | IPC channel | Notes |
+| --- | --- | --- |
+| `getPerfTelemetryConfig()` | `get-perf-telemetry-config` | Returns whether local telemetry is enabled and the optional run id/sample config. It is enabled only by `MERCURY_PERF_DIAG=1` or sessions-only `MERCURY_SESSIONS_DIAG=1`. |
+| `recordPerfEvent(event)` | `record-perf-event` | Sends sanitized renderer timing marks/measures to the main telemetry writer. It returns `false` when telemetry is disabled or the event shape is invalid. |
+
+These channels are local-only diagnostics, not external analytics. Renderer callers should use `src/renderer/src/perf.ts` rather than calling `recordPerfEvent` directly. Event metadata must be limited to timings, counts, lengths, route/screen names, and booleans; do not include prompt text, assistant text, raw SSH commands, credentials, tokens, URLs with secrets, file contents, or stderr/stdout. Main-side sanitization in `src/main/perf/telemetry.ts` is a safety net, not permission to send sensitive fields.
 
 ### Main-to-renderer event channels
 
@@ -171,7 +183,7 @@ Do not add renderer code that imports main-process modules directly. Renderer ac
 For IPC/preload changes, run:
 
 ```bash
-npm run test -- tests/ipc-handlers.test.ts tests/preload-api-surface.test.ts tests/chat-ipc-lifecycle.test.ts
+npm run test -- tests/perf-telemetry.test.ts tests/ipc-handlers.test.ts tests/preload-api-surface.test.ts tests/chat-ipc-lifecycle.test.ts
 npm run typecheck
 ```
 

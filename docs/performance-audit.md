@@ -3,6 +3,26 @@
 Date: 2026-05-13  
 Scope: audit/documentation only for Work item 4. No source-code optimizations were made.
 
+## 2026-05-16 benchmark scaffold update
+
+Startup/build/chat/session/trace/SSH measurement entrypoints now live in [Performance benchmarks](testing/performance-benchmarks.md). Use those commands for current evidence instead of relying on the historical inline Node snippets below.
+
+Current local commands:
+
+```bash
+npm run perf:build
+npm run perf:startup
+npm run perf:chat-render
+npm run perf:sessions:bench
+npm run perf:sessions:e2e
+npm run perf:trace-store
+npm run perf:ssh-remote
+```
+
+Artifacts are written under `prompt-exports/perf-runs/` and `prompt-exports/sessions-latency-runs/`. `perf:ssh-remote` depends on reachable external SSH/remote services and may report skipped/dependency status instead of a local performance value.
+
+The bundle numbers in the 2026-05-13 baseline are historical until refreshed with `npm run perf:build`. Startup timings should be treated as measured only when backed by a current `npm run perf:startup` artifact; hypotheses about import cost or route weight remain inference unless isolated by a benchmark.
+
 ## Baseline environment
 
 - Node: `v26.0.0`
