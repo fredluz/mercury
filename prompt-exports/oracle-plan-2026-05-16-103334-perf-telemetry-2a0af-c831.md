@@ -950,3 +950,8 @@ npm run perf:ssh-remote
 - [x] Chat render benchmark batch completed by session `04E64FC8-E939-4E6D-9BCE-E916F26E37EA`.
   - Added env-gated synthetic chat stream, renderer chat perf marks, chat render E2E script, and tests.
   - Validation passed: `npx vitest run tests/chat-synthetic-stream.test.ts tests/chat-ipc-lifecycle.test.ts src/renderer/src/screens/Chat/hooks/useChatController.test.tsx && npm run typecheck:node && npm run typecheck:web && node --check scripts/e2e-chat-render-latency.mjs`.
+
+- [x] SSH/remote latency batch completed by session `39F24FEE-8258-4B41-A0E9-DC965CCE3C3B`.
+  - Added SSH/tunnel telemetry and SSH/remote benchmark harness.
+  - Validation passed: `node --check scripts/e2e-ssh-remote-latency.mjs && npx vitest run tests/ssh-remote.test.ts tests/perf-telemetry.test.ts && npm run typecheck:node && node scripts/e2e-ssh-remote-latency.mjs --case=explicit --mode=ssh --run-id=ssh-remote-skip-smoke`.
+  - Repo advanced concurrently to local commits during this batch; current uncommitted SSH batch diff is isolated to `scripts/e2e-ssh-remote-latency.mjs`, `src/main/ssh-tunnel.ts`, and smoke artifact.

@@ -1,6 +1,6 @@
 {
   "runId": "ssh-remote-skip-smoke",
-  "generatedAt": "2026-05-16T10:09:32.381Z",
+  "generatedAt": "2026-05-16T10:10:43.059Z",
   "caseName": "explicit",
   "requestedMode": "ssh",
   "samples": 1,
