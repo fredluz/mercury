@@ -116,13 +116,10 @@ jobs:
           fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n');
           NODE
 
-      - name: Build app
-        run: npm run build
-
-      - name: Package macOS nightly artifacts
+      - name: Build macOS nightly artifacts
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: npx electron-builder --config electron-builder.nightly.yml --mac dmg zip --${{ matrix.arch }} --publish never
+        run: npm run build:nightly:mac -- --${{ matrix.arch }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -175,14 +172,11 @@ jobs:
           fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n');
           NODE
 
-      - name: Build app
-        run: npm run build
-
       - name: Install rpmbuild
         run: sudo apt-get update && sudo apt-get install -y rpm
 
-      - name: Package Linux nightly artifacts
-        run: npx electron-builder --config electron-builder.nightly.yml --linux AppImage deb rpm --publish never
+      - name: Build Linux nightly artifacts
+        run: npm run build:nightly:linux
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -235,11 +229,8 @@ jobs:
           fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n');
           NODE
 
-      - name: Build app
-        run: npm run build
-
-      - name: Package Windows nightly artifacts
-        run: npx electron-builder --config electron-builder.nightly.yml --win nsis --x64 --publish never
+      - name: Build Windows nightly artifacts
+        run: npm run build:nightly:win
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

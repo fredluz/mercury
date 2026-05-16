@@ -81,13 +81,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build app
-        run: npm run build
-
-      - name: Package macOS artifacts
+      - name: Build macOS main artifacts
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: npx electron-builder --mac dmg zip --${{ matrix.arch }} --publish never
+        run: npm run build:main:mac -- --${{ matrix.arch }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -117,14 +114,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build app
-        run: npm run build
-
       - name: Install rpmbuild
         run: sudo apt-get update && sudo apt-get install -y rpm
 
-      - name: Package Linux artifacts
-        run: npx electron-builder --linux AppImage deb rpm --publish never
+      - name: Build Linux main artifacts
+        run: npm run build:main:linux
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -154,11 +148,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build app
-        run: npm run build
-
-      - name: Package Windows artifacts
-        run: npx electron-builder --win nsis --x64 --publish never
+      - name: Build Windows main artifacts
+        run: npm run build:main:win
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
