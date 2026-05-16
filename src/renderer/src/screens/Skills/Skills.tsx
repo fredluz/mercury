@@ -1,15 +1,18 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Search, X, Download, Refresh, Plus } from "../../assets/icons";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { Search, X, Refresh, Plus } from "../../assets/icons";
 import { SkillModals } from "./components/SkillModals";
+import {
+  SkillCategorySection,
+  type InstalledSkill,
+  type SkillListItem,
+} from "./components/SkillCategorySection";
+import {
+  SkillDetailPanel,
+  type SelectedSkillDetail,
+  type SkillAgentUsage,
+} from "./components/SkillDetailPanel";
 import { useI18n } from "../../components/useI18n";
 import type { SkillMarkdownImportRequest } from "../../../../shared/skills";
-
-interface InstalledSkill {
-  name: string;
-  category: string;
-  description: string;
-  path: string;
-}
 
 interface BundledSkill {
   name: string;
@@ -19,11 +22,54 @@ interface BundledSkill {
   installed: boolean;
 }
 
+interface ProfileInfo {
+  name: string;
+  isDefault: boolean;
+}
+
 interface SkillsProps {
   profile?: string;
 }
 
 type Tab = "installed" | "browse";
+
+type GroupedSkills = Array<{
+  category: string;
+  skills: SkillListItem[];
+  enabledCount: number;
+  totalCount: number;
+}>;
+
+function normalizePart(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function skillKey(skill: { category: string; name: string }): string {
+  return `${normalizePart(skill.category)}\u0000${normalizePart(skill.name)}`;
+}
+
+function groupSkills(skills: SkillListItem[]): GroupedSkills {
+  const groups = new Map<string, SkillListItem[]>();
+  for (const skill of skills) {
+    const category = skill.category || "";
+    const group = groups.get(category) ?? [];
+    group.push(skill);
+    groups.set(category, group);
+  }
+
+  return [...groups.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([category, group]) => ({
+      category,
+      skills: group.sort((a, b) => a.name.localeCompare(b.name)),
+      enabledCount: group.filter((skill) => skill.enabled).length,
+      totalCount: group.length,
+    }));
+}
+
+function selectedProfileName(profile?: string): string {
+  return profile || "default";
+}
 
 function Skills({ profile }: SkillsProps): React.JSX.Element {
   const { t } = useI18n();
@@ -32,10 +78,11 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
   const [bundledSkills, setBundledSkills] = useState<BundledSkill[]>([]);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
-  const [detailSkill, setDetailSkill] = useState<InstalledSkill | null>(null);
-  const [detailContent, setDetailContent] = useState("");
+  const [selectedDetail, setSelectedDetail] = useState<SelectedSkillDetail | null>(null);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  const [bulkActionInProgress, setBulkActionInProgress] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [importOpen, setImportOpen] = useState(false);
@@ -47,6 +94,7 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+  const detailRequestRef = useRef(0);
 
   const loadInstalled = useCallback(async (): Promise<void> => {
     const list = await window.hermesAPI.listInstalledSkills(profile);
@@ -60,42 +108,208 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
 
   const loadAll = useCallback(async (): Promise<void> => {
     setLoading(true);
-    await Promise.all([loadInstalled(), loadBundled()]);
-    setLoading(false);
-  }, [loadInstalled, loadBundled]);
+    setError("");
+    try {
+      await Promise.all([loadInstalled(), loadBundled()]);
+    } catch (err) {
+      setError((err as Error).message || t("skills.loadFailed"));
+    } finally {
+      setLoading(false);
+    }
+  }, [loadInstalled, loadBundled, t]);
 
   useEffect(() => {
     void Promise.resolve().then(() => loadAll());
   }, [loadAll]);
 
-  async function handleViewDetail(skill: InstalledSkill): Promise<void> {
-    setDetailSkill(skill);
-    const content = await window.hermesAPI.getSkillContent(skill.path);
-    setDetailContent(content);
+  const installedByKey = useMemo(() => {
+    const map = new Map<string, InstalledSkill>();
+    for (const skill of installedSkills) map.set(skillKey(skill), skill);
+    return map;
+  }, [installedSkills]);
+
+  async function loadAgentsUsingSkill(
+    skill: InstalledSkill,
+  ): Promise<{ agents: SkillAgentUsage[]; unavailable: boolean }> {
+    let profiles: ProfileInfo[];
+    try {
+      profiles = await window.hermesAPI.listProfiles();
+    } catch {
+      return { agents: [], unavailable: true };
+    }
+
+    const selected = selectedProfileName(profile);
+    const results = await Promise.allSettled(
+      profiles.map(async (agent) => {
+        const skills = await window.hermesAPI.listInstalledSkills(agent.name);
+        return skills.some((candidate) => skillKey(candidate) === skillKey(skill))
+          ? { name: agent.name, isSelected: agent.name === selected || (agent.isDefault && selected === "default") }
+          : null;
+      }),
+    );
+
+    const agents = results
+      .filter((result): result is PromiseFulfilledResult<SkillAgentUsage | null> => result.status === "fulfilled")
+      .map((result) => result.value)
+      .filter((agent): agent is SkillAgentUsage => agent !== null)
+      .sort((a, b) => Number(b.isSelected) - Number(a.isSelected) || a.name.localeCompare(b.name));
+
+    return {
+      agents,
+      unavailable: results.length > 0 && results.every((result) => result.status === "rejected"),
+    };
   }
 
-  async function handleInstall(name: string): Promise<void> {
-    setActionInProgress(name);
+  async function handleViewDetail(skill: SkillListItem): Promise<void> {
+    const installedSkill = skill.installedSkill;
+    if (!installedSkill) {
+      setNotice(t("skills.detailUnavailableForBundled"));
+      return;
+    }
+
+    const requestId = detailRequestRef.current + 1;
+    detailRequestRef.current = requestId;
+    setSelectedDetail({
+      skill: installedSkill,
+      markdown: "",
+      markdownLoading: true,
+      metadata: null,
+      metadataLoading: true,
+      agents: [],
+      agentsLoading: true,
+      agentsUnavailable: false,
+      error: "",
+    });
     setError("");
-    const result = await window.hermesAPI.installSkill(name, profile);
-    setActionInProgress(null);
-    if (result.success) {
-      await loadInstalled();
-    } else {
-      setError(result.error || t("skills.installFailed"));
+
+    const [contentResult, metadataResult, agentsResult] = await Promise.allSettled([
+      window.hermesAPI.getSkillContent(installedSkill.path),
+      window.hermesAPI.getSkillMetadata(installedSkill.path),
+      loadAgentsUsingSkill(installedSkill),
+    ]);
+
+    if (detailRequestRef.current !== requestId) return;
+
+    setSelectedDetail((current) => {
+      if (!current || skillKey(current.skill) !== skillKey(installedSkill)) return current;
+      const next: SelectedSkillDetail = {
+        ...current,
+        markdownLoading: false,
+        metadataLoading: false,
+        agentsLoading: false,
+      };
+
+      if (contentResult.status === "fulfilled") {
+        next.markdown = contentResult.value;
+      } else {
+        next.error = t("skills.detailLoadFailed");
+      }
+
+      if (metadataResult.status === "fulfilled") {
+        next.metadata = metadataResult.value;
+      } else {
+        next.metadata = {
+          path: installedSkill.path,
+          scripts: [],
+          references: [],
+          metadataAvailable: false,
+          unavailableReason: t("skills.metadataUnavailable"),
+        };
+      }
+
+      if (agentsResult.status === "fulfilled") {
+        next.agents = agentsResult.value.agents;
+        next.agentsUnavailable = agentsResult.value.unavailable;
+      } else {
+        next.agentsUnavailable = true;
+      }
+
+      return next;
+    });
+  }
+
+  async function handleInstallSkill(skill: SkillListItem): Promise<void> {
+    const key = skillKey(skill);
+    setActionInProgress(key);
+    setError("");
+    setNotice("");
+    try {
+      const result = await window.hermesAPI.installSkill(skill.name, profile);
+      if (result.success) {
+        await loadInstalled();
+        setNotice(t("skills.skillEnabled", { name: skill.name }));
+      } else {
+        setError(result.error || t("skills.installFailed"));
+      }
+    } finally {
+      setActionInProgress(null);
     }
   }
 
-  async function handleUninstall(name: string): Promise<void> {
-    setActionInProgress(name);
+  async function handleDisableSkill(skill: SkillListItem | InstalledSkill): Promise<void> {
+    const installedSkill = "installedSkill" in skill ? skill.installedSkill : skill;
+    const targetName = installedSkill?.name || skill.name;
+    const key = skillKey(skill);
+    setActionInProgress(key);
     setError("");
-    const result = await window.hermesAPI.uninstallSkill(name, profile);
-    setActionInProgress(null);
-    if (result.success) {
-      setDetailSkill(null);
+    setNotice("");
+    try {
+      const result = await window.hermesAPI.uninstallSkill(targetName, profile);
+      if (result.success) {
+        if (selectedDetail && skillKey(selectedDetail.skill) === key) {
+          setSelectedDetail(null);
+        }
+        await loadInstalled();
+        setNotice(t("skills.skillDisabled", { name: targetName }));
+      } else {
+        setError(result.error || t("skills.uninstallFailed"));
+      }
+    } finally {
+      setActionInProgress(null);
+    }
+  }
+
+  async function handleCategoryAction(
+    category: string,
+    skills: SkillListItem[],
+    action: "enable" | "disable",
+  ): Promise<void> {
+    const targets = skills.filter((skill) => (action === "enable" ? !skill.enabled : skill.enabled));
+    if (targets.length === 0) return;
+
+    setBulkActionInProgress(`${category}:${action}`);
+    setError("");
+    setNotice("");
+    let updated = 0;
+    const failures: string[] = [];
+
+    for (const target of targets) {
+      try {
+        const result = action === "enable"
+          ? await window.hermesAPI.installSkill(target.name, profile)
+          : await window.hermesAPI.uninstallSkill(target.installedSkill?.name || target.name, profile);
+        if (result.success) {
+          updated += 1;
+        } else {
+          failures.push(target.name);
+        }
+      } catch {
+        failures.push(target.name);
+      }
+    }
+
+    setBulkActionInProgress(null);
+    try {
       await loadInstalled();
-    } else {
-      setError(result.error || t("skills.uninstallFailed"));
+    } catch (err) {
+      setError((err as Error).message || t("skills.loadFailed"));
+    }
+
+    if (updated > 0) {
+      setNotice(t("skills.bulkActionSucceeded", { count: updated }));
+    }
+    if (failures.length > 0) {
+      setError(t("skills.bulkActionFailed", { names: failures.join(", ") }));
     }
   }
 
@@ -126,6 +340,7 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
       setImportMarkdown("");
       setImportOverwrite(false);
       setImportError("");
+      setSelectedDetail(null);
       setTab("installed");
       await loadInstalled();
       setNotice(
@@ -140,42 +355,74 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
     }
   }
 
-  const installedNames = new Set(
-    installedSkills.map((s) => s.name.toLowerCase()),
+  const installedItems: SkillListItem[] = useMemo(
+    () =>
+      installedSkills.map((skill) => ({
+        source: "installed",
+        name: skill.name,
+        category: skill.category,
+        description: skill.description,
+        path: skill.path,
+        enabled: true,
+        installedSkill: skill,
+      })),
+    [installedSkills],
   );
 
-  // Filter logic
-  const filteredInstalled = installedSkills.filter((s) => {
-    if (search) {
-      const q = search.toLowerCase();
-      return (
-        s.name.toLowerCase().includes(q) ||
-        s.description.toLowerCase().includes(q) ||
-        s.category.toLowerCase().includes(q)
-      );
-    }
-    return true;
+  const bundledItems: SkillListItem[] = useMemo(
+    () =>
+      bundledSkills.map((skill) => {
+        const exactInstalled = installedByKey.get(skillKey(skill));
+        const fallbackInstalled = exactInstalled ?? installedSkills.find(
+          (installed) =>
+            !installed.category && normalizePart(installed.name) === normalizePart(skill.name),
+        );
+        return {
+          source: "bundled",
+          name: skill.name,
+          category: skill.category,
+          description: skill.description,
+          sourceLabel: skill.source,
+          enabled: Boolean(fallbackInstalled),
+          installedSkill: fallbackInstalled,
+        };
+      }),
+    [bundledSkills, installedByKey, installedSkills],
+  );
+
+  const filteredInstalled = installedItems.filter((skill) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      skill.name.toLowerCase().includes(q) ||
+      skill.description.toLowerCase().includes(q) ||
+      skill.category.toLowerCase().includes(q)
+    );
   });
 
-  const filteredBundled = bundledSkills.filter((s) => {
+  const filteredBundled = bundledItems.filter((skill) => {
     let matches = true;
     if (search) {
       const q = search.toLowerCase();
       matches =
-        s.name.toLowerCase().includes(q) ||
-        s.description.toLowerCase().includes(q) ||
-        s.category.toLowerCase().includes(q);
+        skill.name.toLowerCase().includes(q) ||
+        skill.description.toLowerCase().includes(q) ||
+        skill.category.toLowerCase().includes(q);
     }
-    if (categoryFilter) {
-      matches = matches && s.category === categoryFilter;
-    }
+    if (categoryFilter) matches = matches && skill.category === categoryFilter;
     return matches;
   });
 
-  // Get unique categories for filter pills
-  const categories = Array.from(
-    new Set(bundledSkills.map((s) => s.category)),
-  ).sort();
+  const visibleGroups = groupSkills(tab === "installed" ? filteredInstalled : filteredBundled);
+  const selectedKey = selectedDetail ? skillKey(selectedDetail.skill) : null;
+  const categories = Array.from(new Set(bundledSkills.map((s) => s.category))).sort();
+
+  function toggleCategory(category: string): void {
+    setCollapsedCategories((current) => ({
+      ...current,
+      [category]: !current[category],
+    }));
+  }
 
   if (loading) {
     return (
@@ -189,30 +436,27 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
 
   return (
     <div className="skills-container">
-      <SkillModals values={{
-        t,
-        detailSkill,
-        setDetailSkill,
-        detailContent,
-        actionInProgress,
-        handleUninstall,
-        importOpen,
-        setImportOpen,
-        importName,
-        setImportName,
-        importCategory,
-        setImportCategory,
-        importDescription,
-        setImportDescription,
-        importMarkdown,
-        setImportMarkdown,
-        importOverwrite,
-        setImportOverwrite,
-        importing,
-        importError,
-        setImportError,
-        handleImportMarkdown,
-      }} />
+      <SkillModals
+        values={{
+          t,
+          importOpen,
+          setImportOpen,
+          importName,
+          setImportName,
+          importCategory,
+          setImportCategory,
+          importDescription,
+          setImportDescription,
+          importMarkdown,
+          setImportMarkdown,
+          importOverwrite,
+          setImportOverwrite,
+          importing,
+          importError,
+          setImportError,
+          handleImportMarkdown,
+        }}
+      />
 
       <div className="skills-header">
         <div>
@@ -255,158 +499,120 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="skills-tabs">
-        <button
-          className={`skills-tab ${tab === "installed" ? "active" : ""}`}
-          onClick={() => setTab("installed")}
-        >
-          {t("skills.installedTab")} ({installedSkills.length})
-        </button>
-        <button
-          className={`skills-tab ${tab === "browse" ? "active" : ""}`}
-          onClick={() => setTab("browse")}
-        >
-          {t("skills.browseTab")} ({bundledSkills.length})
-        </button>
-      </div>
-
-      {/* Search */}
-      <div className="skills-search">
-        <Search size={15} />
-        <input
-          ref={searchRef}
-          className="skills-search-input"
-          type="text"
-          placeholder={
-            tab === "installed"
-              ? t("skills.filterInstalled")
-              : t("skills.search")
-          }
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+      {selectedDetail ? (
+        <SkillDetailPanel
+          detail={selectedDetail}
+          actionInProgress={actionInProgress}
+          onBack={() => setSelectedDetail(null)}
+          onDisable={handleDisableSkill}
+          skillKey={skillKey}
+          t={t}
         />
-        {search && (
-          <button
-            className="btn-ghost skills-search-clear"
-            onClick={() => {
-              setSearch("");
-              searchRef.current?.focus();
-            }}
-          >
-            <X size={14} />
-          </button>
-        )}
-      </div>
-
-      {/* Category filter pills (browse tab only) */}
-      {tab === "browse" && categories.length > 0 && (
-        <div className="skills-category-pills">
-          <button
-            className={`skills-pill ${categoryFilter === null ? "active" : ""}`}
-            onClick={() => setCategoryFilter(null)}
-          >
-            {t("skills.all")}
-          </button>
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              className={`skills-pill ${categoryFilter === cat ? "active" : ""}`}
-              onClick={() =>
-                setCategoryFilter(categoryFilter === cat ? null : cat)
-              }
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Grid */}
-      {tab === "installed" ? (
-        filteredInstalled.length === 0 ? (
-          <div className="skills-empty">
-            <p className="skills-empty-text">
-              {search
-                ? t("skills.noMatchingInstalled")
-                : t("skills.noInstalled")}
-            </p>
-            <p className="skills-empty-hint">
-              {search
-                ? t("skills.noMatchingHint")
-                : t("skills.noInstalledHint")}
-            </p>
-          </div>
-        ) : (
-          <div className="skills-grid">
-            {filteredInstalled.map((skill) => (
-              <button
-                key={`${skill.category}/${skill.name}`}
-                className="skills-card"
-                onClick={() => handleViewDetail(skill)}
-              >
-                <div className="skills-card-category">{skill.category}</div>
-                <div className="skills-card-name">{skill.name}</div>
-                {skill.description && (
-                  <div className="skills-card-description">
-                    {skill.description}
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-        )
-      ) : filteredBundled.length === 0 ? (
-        <div className="skills-empty">
-          <p className="skills-empty-text">{t("skills.noBrowseResults")}</p>
-          <p className="skills-empty-hint">{t("skills.noBrowseResultsHint")}</p>
-        </div>
       ) : (
-        <div className="skills-grid">
-          {filteredBundled.map((skill) => {
-            const isInstalled = installedNames.has(skill.name.toLowerCase());
-            const isActioning = actionInProgress === skill.name;
-            return (
-              <div
-                key={`${skill.category}/${skill.name}`}
-                className="skills-card"
+        <>
+          <div className="skills-tabs">
+            <button
+              className={`skills-tab ${tab === "installed" ? "active" : ""}`}
+              onClick={() => setTab("installed")}
+            >
+              {t("skills.installedTab")} ({installedSkills.length})
+            </button>
+            <button
+              className={`skills-tab ${tab === "browse" ? "active" : ""}`}
+              onClick={() => setTab("browse")}
+            >
+              {t("skills.browseTab")} ({bundledSkills.length})
+            </button>
+          </div>
+
+          <div className="skills-search">
+            <Search size={15} />
+            <input
+              ref={searchRef}
+              className="skills-search-input"
+              type="text"
+              placeholder={
+                tab === "installed" ? t("skills.filterInstalled") : t("skills.search")
+              }
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {search && (
+              <button
+                className="btn-ghost skills-search-clear"
+                onClick={() => {
+                  setSearch("");
+                  searchRef.current?.focus();
+                }}
               >
-                <div className="skills-card-category">{skill.category}</div>
-                <div className="skills-card-name">{skill.name}</div>
-                {skill.description && (
-                  <div className="skills-card-description">
-                    {skill.description}
-                  </div>
-                )}
-                <div className="skills-card-footer">
-                  {isInstalled ? (
-                    <span className="skills-card-installed-badge">
-                      {t("skills.installedBadge")}
-                    </span>
-                  ) : (
-                    <button
-                      className="btn btn-primary btn-sm skills-card-install-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleInstall(skill.name);
-                      }}
-                      disabled={isActioning}
-                    >
-                      {isActioning ? (
-                        t("skills.installing")
-                      ) : (
-                        <>
-                          <Download size={13} />
-                          {t("skills.install")}
-                        </>
-                      )}
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {tab === "browse" && categories.length > 0 && (
+            <div className="skills-category-pills">
+              <button
+                className={`skills-pill ${categoryFilter === null ? "active" : ""}`}
+                onClick={() => setCategoryFilter(null)}
+              >
+                {t("skills.all")}
+              </button>
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  className={`skills-pill ${categoryFilter === cat ? "active" : ""}`}
+                  onClick={() => setCategoryFilter(categoryFilter === cat ? null : cat)}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {visibleGroups.length === 0 ? (
+            <div className="skills-empty">
+              <p className="skills-empty-text">
+                {tab === "installed"
+                  ? search
+                    ? t("skills.noMatchingInstalled")
+                    : t("skills.noInstalled")
+                  : t("skills.noBrowseResults")}
+              </p>
+              <p className="skills-empty-hint">
+                {tab === "installed"
+                  ? search
+                    ? t("skills.noMatchingHint")
+                    : t("skills.noInstalledHint")
+                  : t("skills.noBrowseResultsHint")}
+              </p>
+            </div>
+          ) : (
+            <div className="skills-category-list">
+              {visibleGroups.map((group) => (
+                <SkillCategorySection
+                  key={group.category}
+                  category={group.category}
+                  skills={group.skills}
+                  collapsed={Boolean(collapsedCategories[group.category])}
+                  enabledCount={group.enabledCount}
+                  totalCount={group.totalCount}
+                  actionInProgress={actionInProgress}
+                  bulkActionInProgress={bulkActionInProgress}
+                  selectedKey={selectedKey}
+                  onToggleCollapsed={toggleCategory}
+                  onOpenDetail={handleViewDetail}
+                  onEnableSkill={handleInstallSkill}
+                  onDisableSkill={handleDisableSkill}
+                  onEnableCategory={(category, skills) => handleCategoryAction(category, skills, "enable")}
+                  onDisableCategory={(category, skills) => handleCategoryAction(category, skills, "disable")}
+                  skillKey={skillKey}
+                  t={t}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

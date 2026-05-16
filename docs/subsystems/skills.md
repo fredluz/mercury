@@ -1,6 +1,6 @@
 # Skills Subsystem
 
-This document describes Mercury's current skill listing, content, install/uninstall, manual Markdown import, validation, local/SSH/remote behavior, and gateway restart warning semantics.
+This document describes Mercury's current skill listing, grouped Skills UI, content, metadata, install/uninstall, manual Markdown import, validation, local/SSH/remote behavior, and gateway restart warning semantics.
 
 ## Source anchors
 
@@ -20,11 +20,29 @@ Skills are exposed through `window.hermesAPI` methods implemented in `src/preloa
 - `listInstalledSkills(profile?)`
 - `listBundledSkills()`
 - `getSkillContent(skillPath)`
+- `getSkillMetadata(skillPath)`
 - `installSkill(identifier, profile?)`
 - `uninstallSkill(name, profile?)`
 - `importSkillMarkdown(request, profile?)`
 
-The renderer-facing TypeScript declarations live in `src/preload/index.d.ts` and use request/result types from `src/shared/skills.ts` for Markdown import.
+The renderer-facing TypeScript declarations live in `src/preload/index.d.ts` and use request/result types from `src/shared/skills.ts` for Markdown import and metadata.
+
+## Renderer UI semantics
+
+The Skills screen groups both installed and browse results by `category` into collapsible sections. Each section shows an enabled count and category-level bulk actions.
+
+Mercury does not persist a separate skill-enabled flag. In the current V1 UI, **enabled for the selected Agent** means the skill is installed in that Agent profile, and **disabled** means the skill is uninstalled from that Agent profile:
+
+- Individual Enable -> `installSkill(skill.name, profile?)`
+- Individual Disable -> `uninstallSkill(skill.name, profile?)`
+- Category Enable all -> sequentially installs currently disabled skills in that visible category.
+- Category Disable all / Disable enabled -> sequentially uninstalls currently enabled skills in that visible category.
+
+Bulk actions continue after individual failures, reload installed skills afterward, and surface a partial-failure notice listing failed skill names.
+
+The installed-skill detail experience is an in-screen page/panel instead of a modal. It renders `SKILL.md` Markdown on the left and metadata on the right. Browse results can open details only when the bundled skill is already installed for the selected Agent; otherwise users are prompted to install it first.
+
+"Agents using this skill" is derived in the renderer by calling `listProfiles()` and then `listInstalledSkills(profile.name)` for each Agent. Matching prefers case-insensitive `category/name` identity.
 
 ## Local installed skills
 
@@ -187,6 +205,7 @@ The parser only treats a delimiter line matching a newline followed by `---` as 
 - `list-installed-skills` -> local `listInstalledSkills(profile)`.
 - `list-bundled-skills` -> local `listBundledSkills()`.
 - `get-skill-content` -> local `getSkillContent(skillPath)`.
+- `get-skill-metadata` -> local `getSkillMetadata(skillPath)`.
 - `install-skill` -> local `installSkill(identifier, profile)`.
 - `uninstall-skill` -> local `uninstallSkill(name, profile)`.
 - `import-skill-markdown` -> local `importSkillMarkdown(request, profile)`.
@@ -208,8 +227,9 @@ Current SSH behavior:
 - Installed skill listing is profile-aware: skills are discovered under remote `~/.hermes/skills` for default or `~/.hermes/profiles/<profile>/skills` for named profiles.
 - Returned remote skill paths are prefixed with `REMOTE:`.
 - `getSkillContent(...)` strips the `REMOTE:` prefix if present and reads remote `<path>/SKILL.md`.
-- Install currently ignores the selected profile in SSH mode because `knowledge.ts` discards `_profile` before calling `sshInstallSkill(...)`; it runs `hermes skills install <identifier> --yes` on the remote host.
-- Uninstall currently ignores the selected profile in SSH mode for the same reason; it runs `hermes skills uninstall <name>` on the remote host.
+- `getSkillMetadata(...)` strips the `REMOTE:` prefix if present and lists immediate children under remote `scripts/` and `references/`; SSH failures degrade to `metadataAvailable: false` instead of breaking the detail page.
+- Install is profile-aware in SSH mode and runs `hermes -p <profile> skills install <identifier> --yes` for non-default profiles.
+- Uninstall is profile-aware in SSH mode and runs `hermes -p <profile> skills uninstall <name>` for non-default profiles.
 - Markdown import is profile-aware and uses the same `prepareSkillMarkdownImport(...)` validation/normalization as local import.
 - Remote Markdown import writes to `~/.hermes/skills/<category>/<name>/SKILL.md` or profile equivalent.
 - Remote Markdown import rejects duplicates unless `overwrite` is true.
@@ -237,16 +257,18 @@ Other skill handlers in `knowledge.ts` only branch for SSH and otherwise fall th
 
 IPC/preload surface tests also protect skill API availability:
 
-- `tests/ipc-handlers.test.ts` checks `import-skill-markdown` has both a main handler and preload invoke.
-- `tests/preload-api-surface.test.ts` checks `importSkillMarkdown` exists in both preload implementation and `HermesAPI` types.
+- `tests/skills-import.test.ts` checks Markdown import and local `getSkillMetadata()` scripts/references discovery.
+- `tests/ipc-handlers.test.ts` checks `get-skill-metadata` and `import-skill-markdown` have both main handlers and preload invokes.
+- `tests/preload-api-surface.test.ts` checks `getSkillMetadata` and `importSkillMarkdown` exist in both preload implementation and `HermesAPI` types.
+- `src/renderer/src/screens/Skills/Skills.test.tsx` covers grouping/collapse, individual and category enable/disable actions, detail metadata, Agents using a skill, and manual Markdown import.
 
 ## Verification guidance
 
 For skill changes, run:
 
 ```bash
-npm run test -- tests/skills-import.test.ts
-npm run test -- tests/ipc-handlers.test.ts tests/preload-api-surface.test.ts
+npm run test -- src/renderer/src/screens/Skills/Skills.test.tsx
+npm run test -- tests/skills-import.test.ts tests/ipc-handlers.test.ts tests/preload-api-surface.test.ts
 npm run typecheck
 ```
 

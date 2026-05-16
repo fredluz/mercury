@@ -171,6 +171,13 @@ describe("New APIs from v0.8/v0.9 features", () => {
     expect(typeMethods).toContain("discoverMemoryProviders");
   });
 
+  it("has skill metadata API", () => {
+    expect(preloadMethods).toContain("getSkillMetadata");
+    expect(typeMethods).toContain("getSkillMetadata");
+    expect(preloadSrc).toContain('ipcRenderer.invoke("get-skill-metadata", skillPath)');
+    expect(preloadTypes).toContain("SkillMetadata");
+  });
+
   it("has manual Markdown skill import API", () => {
     expect(preloadMethods).toContain("importSkillMarkdown");
     expect(typeMethods).toContain("importSkillMarkdown");
@@ -259,6 +266,7 @@ describe("Legacy APIs preserved (backward compat)", () => {
     "listInstalledSkills",
     "listBundledSkills",
     "getSkillContent",
+    "getSkillMetadata",
     "installSkill",
     "uninstallSkill",
     "importSkillMarkdown",

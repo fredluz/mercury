@@ -34,3 +34,17 @@ export type PreparedSkillMarkdownImport = {
   description: string;
   markdown: string;
 };
+
+export type SkillAssociatedFile = {
+  name: string;
+  relativePath: string;
+  kind: "file" | "directory";
+};
+
+export type SkillMetadata = {
+  path: string;
+  scripts: SkillAssociatedFile[];
+  references: SkillAssociatedFile[];
+  metadataAvailable: boolean;
+  unavailableReason?: string;
+};

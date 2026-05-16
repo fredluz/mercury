@@ -21,6 +21,7 @@ Use evergreen docs first when you need to understand or change Mercury. These pa
 - [Connection modes](subsystems/connection-modes.md) — local, remote HTTP, SSH, gateway, tunnel, and capability-gating behavior.
 - [Chat and tracing](subsystems/chat-and-tracing.md) — renderer chat flow, streaming events, Hermes dispatch, abort/completion handling, and trace persistence.
 - [Storage and profiles](subsystems/storage-and-profiles.md) — `HERMES_HOME`, profile scoping, persistent files, sessions, memory, soul, models, and backups/imports.
+- [Memory](memory.md) — built-in and provider memory behavior, profile isolation, autonomous agent memory writes, and verification recipes.
 - [Skills](subsystems/skills.md) — skill listing, content, install/uninstall, Markdown import, local/SSH/remote behavior, and restart warnings.
 
 ### Testing

@@ -1,7 +1,7 @@
 import type { SshConfig } from "../ssh-tunnel";
 import { type InstalledSkill, type SkillSearchResult } from "../skills";
 import { isValidSkillImportProfile, prepareSkillMarkdownImport } from "../skills/importer";
-import type { SkillMarkdownImportRequest, SkillMarkdownImportResult } from "../../shared/skills";
+import type { SkillMarkdownImportRequest, SkillMarkdownImportResult, SkillMetadata } from "../../shared/skills";
 import { normalizeRemotePath, pythonJsonInput, shellQuote, sshExec, sshFileExists, sshPython, sshReadFile, sshWriteFile } from "./transport";
 
 // ── Skills ───────────────────────────────────────────────────────────────────
@@ -68,6 +68,61 @@ export async function sshGetSkillContent(config: SshConfig, skillPath: string): 
     ? skillPath.slice(REMOTE_PREFIX.length)
     : skillPath;
   return await sshReadFile(config, `${remote}/SKILL.md`);
+}
+
+export async function sshGetSkillMetadata(
+  config: SshConfig,
+  skillPath: string,
+): Promise<SkillMetadata> {
+  const remote = skillPath.startsWith(REMOTE_PREFIX)
+    ? skillPath.slice(REMOTE_PREFIX.length)
+    : skillPath;
+  const unavailable = (reason: string): SkillMetadata => ({
+    path: skillPath,
+    scripts: [],
+    references: [],
+    metadataAvailable: false,
+    unavailableReason: reason,
+  });
+
+  if (remote.includes("\0")) {
+    return unavailable("Skill metadata is unavailable for this skill.");
+  }
+
+  const script = `
+import os, json, sys
+payload = json.load(sys.stdin)
+base = payload.get("path", "")
+
+def item(kind, name):
+    return {"name": name, "relativePath": kind + "/" + name, "kind": "directory" if os.path.isdir(os.path.join(base, kind, name)) else "file"}
+
+def collect(kind):
+    directory = os.path.join(base, kind)
+    if not os.path.isdir(directory):
+        return []
+    try:
+        return sorted([item(kind, name) for name in os.listdir(directory)], key=lambda entry: entry["name"].lower())
+    except Exception:
+        return []
+
+skill_file = os.path.join(base, "SKILL.md")
+if chr(0) in base or not os.path.isdir(base) or not os.path.isfile(skill_file):
+    print(json.dumps({"path": payload.get("originalPath", base), "scripts": [], "references": [], "metadataAvailable": False, "unavailableReason": "Skill metadata is unavailable for this skill."}))
+else:
+    print(json.dumps({"path": payload.get("originalPath", base), "scripts": collect("scripts"), "references": collect("references"), "metadataAvailable": True}))
+`;
+
+  try {
+    const out = await sshPython(
+      config,
+      script,
+      pythonJsonInput({ path: remote, originalPath: skillPath }),
+    );
+    return JSON.parse(out.trim()) as SkillMetadata;
+  } catch {
+    return unavailable("Skill metadata is unavailable for this skill.");
+  }
 }
 
 function hermesProfileArgs(profile?: string): string {

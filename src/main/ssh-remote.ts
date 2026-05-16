@@ -6,6 +6,7 @@ export { sshExec } from "./ssh/transport";
 export {
   sshListInstalledSkills,
   sshGetSkillContent,
+  sshGetSkillMetadata,
   sshInstallSkill,
   sshUninstallSkill,
   sshImportSkillMarkdown,

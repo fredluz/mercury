@@ -4,6 +4,7 @@ import type { AppLocale } from "../shared/i18n/types";
 import type {
   SkillMarkdownImportRequest,
   SkillMarkdownImportResult,
+  SkillMetadata,
 } from "../shared/skills";
 import type { PerfTelemetryConfig, RendererPerfEvent } from "../shared/perf";
 import type { RuntimeDiagnostic } from "../shared/runtime";
@@ -264,6 +265,7 @@ interface HermesAPI {
     }>
   >;
   getSkillContent: (skillPath: string) => Promise<string>;
+  getSkillMetadata: (skillPath: string) => Promise<SkillMetadata>;
   installSkill: (
     identifier: string,
     profile?: string,

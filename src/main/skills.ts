@@ -1,6 +1,7 @@
 import { execFileSync } from "child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { join } from "path";
+import type { SkillAssociatedFile, SkillMetadata } from "../shared/skills";
 import { homedir } from "os";
 import { HERMES_HOME, HERMES_PYTHON, HERMES_SCRIPT, HERMES_REPO, getEnhancedPath } from "./install/paths";
 import { profileHome } from "./utils";
@@ -122,6 +123,93 @@ export function getSkillContent(skillPath: string): string {
     return readFileSync(skillFile, "utf-8");
   } catch {
     return "";
+  }
+}
+
+function unavailableSkillMetadata(skillPath: string, reason: string): SkillMetadata {
+  return {
+    path: skillPath,
+    scripts: [],
+    references: [],
+    metadataAvailable: false,
+    unavailableReason: reason,
+  };
+}
+
+function listAssociatedFiles(
+  skillPath: string,
+  directoryName: "scripts" | "references",
+): SkillAssociatedFile[] {
+  const directoryPath = join(skillPath, directoryName);
+  if (!existsSync(directoryPath)) return [];
+
+  let directoryStat;
+  try {
+    directoryStat = statSync(directoryPath);
+  } catch {
+    return [];
+  }
+  if (!directoryStat.isDirectory()) return [];
+
+  try {
+    return readdirSync(directoryPath)
+      .flatMap((entry) => {
+        try {
+          const entryPath = join(directoryPath, entry);
+          const entryStat = statSync(entryPath);
+          return [
+            {
+              name: entry,
+              relativePath: `${directoryName}/${entry}`,
+              kind: entryStat.isDirectory() ? "directory" : "file",
+            } satisfies SkillAssociatedFile,
+          ];
+        } catch {
+          return [];
+        }
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Get associated scripts/references for a skill directory.
+ */
+export function getSkillMetadata(skillPath: string): SkillMetadata {
+  if (skillPath.includes("\0")) {
+    return unavailableSkillMetadata(
+      skillPath,
+      "Skill metadata is unavailable for this skill.",
+    );
+  }
+
+  try {
+    const skillFile = join(skillPath, "SKILL.md");
+    if (
+      !existsSync(skillPath) ||
+      !statSync(skillPath).isDirectory() ||
+      !existsSync(skillFile) ||
+      !statSync(skillFile).isFile()
+    ) {
+      return unavailableSkillMetadata(
+        skillPath,
+        "Skill metadata is unavailable for this skill.",
+      );
+    }
+
+    return {
+      path: skillPath,
+      scripts: listAssociatedFiles(skillPath, "scripts"),
+      references: listAssociatedFiles(skillPath, "references"),
+      metadataAvailable: true,
+    };
+  } catch {
+    return unavailableSkillMetadata(
+      skillPath,
+      "Skill metadata is unavailable for this skill.",
+    );
   }
 }
 

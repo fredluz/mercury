@@ -13,11 +13,12 @@ import {
   listInstalledSkills,
   listBundledSkills,
   getSkillContent,
+  getSkillMetadata,
   installSkill,
   uninstallSkill,
   importSkillMarkdown,
 } from "../skills";
-import type { SkillMarkdownImportRequest } from "../../shared/skills";
+import type { SkillMarkdownImportRequest, SkillMetadata } from "../../shared/skills";
 import { isGatewayRunning, markRuntimeStale } from "../hermes";
 import {
   sshReadMemory,
@@ -33,6 +34,7 @@ import {
   sshListInstalledSkills,
   sshListBundledSkills,
   sshGetSkillContent,
+  sshGetSkillMetadata,
   sshInstallSkill,
   sshUninstallSkill,
   sshImportSkillMarkdown,
@@ -155,6 +157,21 @@ export function registerKnowledgeIpc(): void {
     if (conn.mode === "ssh" && conn.ssh)
       return sshGetSkillContent(conn.ssh, skillPath);
     return getSkillContent(skillPath);
+  });
+  ipcMain.handle("get-skill-metadata", (_event, skillPath: string): SkillMetadata | Promise<SkillMetadata> => {
+    const conn = getConnectionConfig();
+    if (conn.mode === "ssh" && conn.ssh)
+      return sshGetSkillMetadata(conn.ssh, skillPath);
+    if (conn.mode === "remote") {
+      return {
+        path: skillPath,
+        scripts: [],
+        references: [],
+        metadataAvailable: false,
+        unavailableReason: "Skill metadata is unavailable in remote HTTP mode.",
+      };
+    }
+    return getSkillMetadata(skillPath);
   });
   ipcMain.handle(
     "install-skill",

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, rmSync } from "fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -163,5 +163,34 @@ describe("manual Markdown skill import", () => {
     );
     expect(written).toContain('description: "foo --- bar"');
     expect(written).toContain("# Body");
+  });
+
+  it("returns associated scripts and references metadata", async () => {
+    const { importSkillMarkdown, getSkillMetadata } = await import(
+      "../src/main/skills"
+    );
+
+    const result = importSkillMarkdown({ markdown: "# meta-skill" });
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(result.error);
+
+    mkdirSync(join(result.skill.path, "scripts"));
+    mkdirSync(join(result.skill.path, "references", "examples"), {
+      recursive: true,
+    });
+    writeFileSync(join(result.skill.path, "scripts", "check.py"), "print('ok')");
+    writeFileSync(join(result.skill.path, "references", "guide.md"), "# Guide");
+
+    expect(getSkillMetadata(result.skill.path)).toMatchObject({
+      path: result.skill.path,
+      metadataAvailable: true,
+      scripts: [
+        { name: "check.py", relativePath: "scripts/check.py", kind: "file" },
+      ],
+      references: [
+        { name: "examples", relativePath: "references/examples", kind: "directory" },
+        { name: "guide.md", relativePath: "references/guide.md", kind: "file" },
+      ],
+    });
   });
 });

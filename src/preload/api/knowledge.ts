@@ -2,6 +2,7 @@ import { ipcRenderer } from "electron";
 import type {
   SkillMarkdownImportRequest,
   SkillMarkdownImportResult,
+  SkillMetadata,
 } from "../../shared/skills";
 
 export const knowledgeApi = {
@@ -71,6 +72,8 @@ export const knowledgeApi = {
   > => ipcRenderer.invoke("list-bundled-skills"),
   getSkillContent: (skillPath: string): Promise<string> =>
     ipcRenderer.invoke("get-skill-content", skillPath),
+  getSkillMetadata: (skillPath: string): Promise<SkillMetadata> =>
+    ipcRenderer.invoke("get-skill-metadata", skillPath),
   installSkill: (
     identifier: string,
     profile?: string,
