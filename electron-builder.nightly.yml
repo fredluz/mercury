@@ -1,0 +1,63 @@
+appId: com.fredluz.mercury.nightly
+productName: Mercury Nightly
+extraMetadata:
+  name: mercury-nightly
+  productName: Mercury Nightly
+directories:
+  buildResources: build
+files:
+  - "!**/.vscode/*"
+  - "!src/*"
+  - "!electron.vite.config.{js,ts,mjs,cjs}"
+  - "!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}"
+  - "!{.env,.env.*,.npmrc,pnpm-lock.yaml}"
+  - "!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}"
+asarUnpack:
+  - resources/**
+win:
+  executableName: mercury-nightly
+  icon: build/nightly-icon.ico
+nsis:
+  artifactName: mercury-nightly-${version}-setup.${ext}
+  shortcutName: Mercury Nightly
+  uninstallDisplayName: Mercury Nightly
+  createDesktopShortcut: always
+  oneClick: true
+  perMachine: false
+mac:
+  icon: build/nightly-icon.icns
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.inherit.plist
+  artifactName: mercury-nightly-${version}-${arch}.${ext}
+  extendInfo:
+    - NSCameraUsageDescription: Application requests access to the device's camera.
+    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
+    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
+    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  notarize: false
+dmg:
+  artifactName: mercury-nightly-${version}-${arch}.${ext}
+linux:
+  icon: build/nightly-icon.png
+  target:
+    - AppImage
+    - deb
+    - rpm
+  maintainer: electronjs.org
+  vendor: FredLuz
+  category: Utility
+  synopsis: Nightly build of Mercury AI assistant desktop app
+  description: >-
+    Mercury Nightly is a side-by-side prerelease build of Mercury — a native
+    desktop front end for Hermes Agent.
+appImage:
+  artifactName: mercury-nightly-${version}-${arch}.${ext}
+deb:
+  artifactName: mercury-nightly-${version}-${arch}.${ext}
+rpm:
+  artifactName: mercury-nightly-${version}-${arch}.${ext}
+npmRebuild: false
+publish:
+  provider: github
+  owner: fredluz
+  repo: mercury

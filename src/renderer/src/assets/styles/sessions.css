@@ -21,6 +21,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+}
+
+.sessions-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .sessions-title {
@@ -138,12 +147,52 @@
   border: 1px solid var(--border);
   background: var(--bg-secondary);
   border-radius: var(--radius-md);
-  cursor: pointer;
   transition:
     background var(--transition),
     border-color var(--transition);
   text-align: left;
   font-family: var(--font-sans);
+}
+
+.sessions-card-primary {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sessions-card-trace {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    border-color var(--transition),
+    color var(--transition);
+}
+
+.sessions-card-trace:hover {
+  border-color: var(--border-focus);
+  background: var(--accent-subtle);
+  color: var(--accent-text);
 }
 
 .sessions-card:hover {

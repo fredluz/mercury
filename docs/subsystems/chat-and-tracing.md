@@ -293,13 +293,15 @@ Trace runs are persisted to `<HERMES_HOME>/desktop-traces.json` and capped by th
 
 ## Trace Lab conversation view
 
-Persistence remains run-based: each send-message call creates one `TraceRun`. Trace Lab groups those runs into conversation/session rows in the renderer so the dashboard starts from the full conversation and nests individual runs/messages underneath it.
+Persistence remains run-based: each send-message call creates one `TraceRun`. Trace Lab groups those runs into conversation/session rows in the renderer so the dashboard starts from the full conversation and nests individual runs/messages underneath it. The screen is launched from Sessions: each session row can open its session trace detail, while the Sessions header exposes Trace Activity for all traces and orphan/non-session fallback rows.
 
 Grouping uses, in order:
 
 1. `TraceRun.sessionId` from completed Hermes responses;
 2. `session.resumed` event metadata/detail for resumed runs that failed, aborted, or have not yet received a terminal session id;
 3. a one-run fallback for local slash commands, old stores, or traces with no session evidence.
+
+Session-backed renderer keys include both profile and session id (`session:<profile>:<sessionId>`) to match Sessions rows across profile-specific databases. When a trace is opened from a session row, Trace Lab preselects/filter-matches that profile/session target and hides its internal Recent activity list so Sessions remains the list used to access other conversations. The all-trace fallback keeps the Recent activity list visible.
 
 The selected conversation detail renders a merged Event Timeline first, then aggregate facts and constituent message summaries, with skill/evolution summaries at the bottom. The inspector remains scoped to the currently selected event metadata/artifact evidence.
 

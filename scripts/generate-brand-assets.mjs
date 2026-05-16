@@ -15,7 +15,13 @@ const committedOutputs = {
   icns: join(root, 'build/icon.icns'),
   resourcesPng: join(root, 'resources/icon.png'),
   rendererPng: join(root, 'src/renderer/src/assets/icon.png'),
-  docsPng: join(root, 'docs/assets/mercury-logo.png')
+  docsPng: join(root, 'docs/assets/mercury-logo.png'),
+  nightlyBuildPng: join(root, 'build/nightly-icon.png'),
+  nightlyIco: join(root, 'build/nightly-icon.ico'),
+  nightlyIcns: join(root, 'build/nightly-icon.icns'),
+  nightlyResourcesPng: join(root, 'resources/nightly-icon.png'),
+  nightlyRendererPng: join(root, 'src/renderer/src/assets/nightly-icon.png'),
+  nightlyDocsPng: join(root, 'docs/assets/mercury-nightly-logo.png')
 }
 
 const checkMode = process.argv.includes('--check')
@@ -27,7 +33,13 @@ const outputs = checkMode
       icns: join(generatedRoot, 'build/icon.icns'),
       resourcesPng: join(generatedRoot, 'resources/icon.png'),
       rendererPng: join(generatedRoot, 'src/renderer/src/assets/icon.png'),
-      docsPng: join(generatedRoot, 'docs/assets/mercury-logo.png')
+      docsPng: join(generatedRoot, 'docs/assets/mercury-logo.png'),
+      nightlyBuildPng: join(generatedRoot, 'build/nightly-icon.png'),
+      nightlyIco: join(generatedRoot, 'build/nightly-icon.ico'),
+      nightlyIcns: join(generatedRoot, 'build/nightly-icon.icns'),
+      nightlyResourcesPng: join(generatedRoot, 'resources/nightly-icon.png'),
+      nightlyRendererPng: join(generatedRoot, 'src/renderer/src/assets/nightly-icon.png'),
+      nightlyDocsPng: join(generatedRoot, 'docs/assets/mercury-nightly-logo.png')
     }
   : committedOutputs
 
@@ -47,6 +59,14 @@ function ensureTool(command) {
   }
 }
 
+function ensurePythonPillow() {
+  try {
+    execFileSync('python3', ['-c', 'import PIL.Image, PIL.ImageOps'], { stdio: 'ignore' })
+  } catch {
+    throw new Error('Missing required Python package: Pillow. Install it with `python3 -m pip install Pillow`.')
+  }
+}
+
 function ensureParent(path) {
   mkdirSync(dirname(path), { recursive: true })
 }
@@ -55,6 +75,20 @@ function resizePng(input, outputPath, size) {
   ensureParent(outputPath)
   copyFileSync(input, outputPath)
   run('sips', ['-z', String(size), String(size), outputPath])
+}
+
+function invertPng(input, outputPath) {
+  ensureParent(outputPath)
+  execFileSync(
+    'python3',
+    [
+      '-c',
+      `from PIL import Image, ImageOps\nimport sys\nim = Image.open(sys.argv[1]).convert('RGBA')\nr, g, b, a = im.split()\nrgb = Image.merge('RGB', (r, g, b))\ninverted = ImageOps.invert(rgb)\nout = Image.merge('RGBA', (*inverted.split(), a))\nout.save(sys.argv[2])`,
+      input,
+      outputPath
+    ],
+    { stdio: 'inherit' }
+  )
 }
 
 function makeIco(pngPaths, outputPath) {
@@ -127,6 +161,7 @@ if (!existsSync(source)) {
 
 ensureTool('sips')
 ensureTool('iconutil')
+ensurePythonPillow()
 
 const actualSha = sha256(source)
 if (actualSha !== sourceSha256) {
@@ -140,10 +175,17 @@ if (dimensions.width !== sourceWidth || dimensions.height !== sourceHeight) {
 
 const tmp = mkdtempSync(join(tmpdir(), 'mercury-brand-'))
 try {
+  const invertedSource = join(tmp, 'mercury-logo-source-inverted.png')
+  invertPng(source, invertedSource)
+
   resizePng(source, outputs.buildPng, 1024)
   resizePng(source, outputs.resourcesPng, 512)
   resizePng(source, outputs.rendererPng, 512)
   resizePng(source, outputs.docsPng, 1024)
+  resizePng(invertedSource, outputs.nightlyBuildPng, 1024)
+  resizePng(invertedSource, outputs.nightlyResourcesPng, 512)
+  resizePng(invertedSource, outputs.nightlyRendererPng, 512)
+  resizePng(invertedSource, outputs.nightlyDocsPng, 1024)
 
   const icoSizes = [16, 24, 32, 48, 64, 128, 256]
   const icoPngs = icoSizes.map((size) => {
@@ -152,6 +194,13 @@ try {
     return path
   })
   makeIco(icoPngs, outputs.ico)
+
+  const nightlyIcoPngs = icoSizes.map((size) => {
+    const path = join(tmp, `nightly_icon_${size}x${size}.png`)
+    resizePng(invertedSource, path, size)
+    return path
+  })
+  makeIco(nightlyIcoPngs, outputs.nightlyIco)
 
   const iconset = join(tmp, 'icon.iconset')
   mkdirSync(iconset, { recursive: true })
@@ -171,6 +220,13 @@ try {
     resizePng(source, join(iconset, name), size)
   }
   run('iconutil', ['-c', 'icns', iconset, '-o', outputs.icns])
+
+  const nightlyIconset = join(tmp, 'nightly.iconset')
+  mkdirSync(nightlyIconset, { recursive: true })
+  for (const [name, size] of icnsEntries) {
+    resizePng(invertedSource, join(nightlyIconset, name), size)
+  }
+  run('iconutil', ['-c', 'icns', nightlyIconset, '-o', outputs.nightlyIcns])
 
   for (const path of Object.values(outputs)) {
     assertNonEmpty(path)

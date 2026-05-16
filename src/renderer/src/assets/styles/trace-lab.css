@@ -124,6 +124,14 @@
   align-items: start;
 }
 
+.trace-workbench--session {
+  grid-template-columns: minmax(0, 1fr) minmax(310px, 380px);
+}
+
+.trace-lab--session .trace-detail {
+  min-height: 420px;
+}
+
 .trace-run-list,
 .trace-detail,
 .trace-inspector {
@@ -438,4 +446,19 @@
   font-size: 11px;
   font-weight: 700;
   text-transform: capitalize;
+}
+
+@media (max-width: 1180px) {
+  .trace-workbench,
+  .trace-workbench--session {
+    grid-template-columns: 1fr;
+  }
+
+  .trace-lab-header {
+    flex-direction: column;
+  }
+
+  .trace-header-actions {
+    justify-content: flex-start;
+  }
 }

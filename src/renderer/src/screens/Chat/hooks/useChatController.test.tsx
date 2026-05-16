@@ -4,6 +4,14 @@ import { useState } from "react";
 import { useChatController } from "./useChatController";
 import type { ChatMessage } from "../types";
 
+const perfMocks = vi.hoisted(() => ({
+  markRendererPerf: vi.fn(),
+}));
+
+vi.mock("../../../perf", () => ({
+  markRendererPerf: perfMocks.markRendererPerf,
+}));
+
 vi.mock("../../../components/useI18n", () => ({
   useI18n: () => ({
     locale: "en",
@@ -201,6 +209,31 @@ describe("useChatController send lifecycle", () => {
       await waitFor(() => expect(result.current.controller.isLoading).toBe(false));
     },
   );
+
+  it("records chat perf metadata without raw prompt or response content", async () => {
+    const send = deferred<{ response: string; sessionId?: string }>();
+    sendMessageMock().mockReturnValueOnce(send.promise);
+    const { result } = renderHook(() => useControllerProbe());
+
+    await act(async () => {
+      result.current.controller.setInput("SECRET_PROMPT_DO_NOT_LOG");
+    });
+    act(() => {
+      void result.current.controller.handleSend();
+    });
+
+    await act(async () => {
+      send.resolve({ response: "SECRET_RESPONSE_DO_NOT_LOG", sessionId: "session-1" });
+      await send.promise;
+    });
+
+    await waitFor(() => expect(perfMocks.markRendererPerf).toHaveBeenCalled());
+    const serializedPerfCalls = JSON.stringify(perfMocks.markRendererPerf.mock.calls);
+    expect(serializedPerfCalls).not.toContain("SECRET_PROMPT_DO_NOT_LOG");
+    expect(serializedPerfCalls).not.toContain("SECRET_RESPONSE_DO_NOT_LOG");
+    expect(serializedPerfCalls).toContain("messageLength");
+    expect(serializedPerfCalls).toContain("responseLength");
+  });
 
   it("preserves an external empty resume session id for the next send", async () => {
     sendMessageMock().mockResolvedValueOnce({ response: "", sessionId: undefined });

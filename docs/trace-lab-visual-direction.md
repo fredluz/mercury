@@ -33,4 +33,5 @@ Pi was run with `opencode-go/kimi-k2.6` and the installed Visual Explainer skill
 - Center detail now opens with a six-stage run map: Ask, Planning, Tool Calls, Files Edited, Skill Notes, Answer.
 - Inspector now translates selected events into "What happened" and "Why it matters".
 - Skill Evaluation now has a scored-card visual treatment and a clearer empty state.
-- Existing trace list, timeline, and inspector selectors remain intact for E2E coverage.
+- Existing trace list, timeline, and inspector selectors remain intact for all-trace E2E coverage.
+- Sessions is now the entry point for trace review: session rows launch a session-scoped Trace Lab detail without the internal Recent activity list, while the Sessions Trace Activity action preserves an all-trace fallback for orphan/non-session traces.

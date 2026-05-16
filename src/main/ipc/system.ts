@@ -1,4 +1,5 @@
 import { ipcMain, shell } from "electron";
+import type { RendererPerfEvent } from "../../shared/perf";
 import {
   runHermesBackup,
   runHermesImport,
@@ -13,11 +14,22 @@ import {
   sshDiscoverMemoryProviders,
   sshReadLogs,
 } from "../ssh-remote";
+import {
+  getPerfTelemetryConfig,
+  recordPerfEvent,
+} from "../perf/telemetry";
 
 export function registerSystemIpc(): void {
   // Shell
   ipcMain.handle("open-external", (_event, url: string) => {
     shell.openExternal(url);
+  });
+
+  // Local performance telemetry (opt-in via MERCURY_PERF_DIAG=1)
+  ipcMain.handle("get-perf-telemetry-config", () => getPerfTelemetryConfig());
+  ipcMain.handle("record-perf-event", (_event, event: RendererPerfEvent) => {
+    if (!event || typeof event !== "object") return false;
+    return recordPerfEvent({ ...event, source: "renderer" });
   });
 
   // Backup / Import

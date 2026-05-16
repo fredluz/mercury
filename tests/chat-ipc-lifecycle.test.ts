@@ -196,10 +196,30 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  delete process.env.MERCURY_CHAT_SYNTHETIC_STREAM;
   warnSpy.mockRestore();
 });
 
 describe("chat IPC lifecycle hardening", () => {
+  it("skips backend preparation when synthetic stream mode is explicitly enabled", async () => {
+    process.env.MERCURY_CHAT_SYNTHETIC_STREAM = "1";
+    const handler = await setupHandler();
+    const event = createEvent();
+
+    const invokePromise = handler(event, "hello", "default");
+    const callbacks = await waitForTransportCallbacks();
+    callbacks.onChunk("synthetic answer");
+    callbacks.onDone("synthetic-session-test");
+
+    await expect(invokePromise).resolves.toEqual({
+      response: "synthetic answer",
+      sessionId: "synthetic-session-test",
+    });
+    expect(mocks.startGateway).not.toHaveBeenCalled();
+    expect(mocks.ensureSshTunnelIfNeeded).not.toHaveBeenCalled();
+    expect(mocks.getConnectionConfig).not.toHaveBeenCalled();
+  });
+
   it("still sends chat-done and resolves when completion side effects throw", async () => {
     const handler = await setupHandler();
     const event = createEvent();
@@ -284,6 +304,32 @@ describe("chat IPC lifecycle hardening", () => {
     expect(sentChannels(event.sender, "chat-done")).toEqual([
       ["chat-done", "session-without-trace-run"],
     ]);
+  });
+
+  it("short-circuits generated chat titles in synthetic stream mode", async () => {
+    process.env.MERCURY_CHAT_SYNTHETIC_STREAM = "1";
+    await setupHandler();
+    const handler = mocks.handlers.get("generate-chat-title") as
+      | GenerateTitleHandler
+      | undefined;
+    expect(handler).toBeTypeOf("function");
+
+    await expect(
+      handler!({}, {
+        profile: "default",
+        sessionId: "synthetic-session-title",
+        messages: [{ role: "user", content: "Distinct prompt should not be sent" }],
+      }),
+    ).resolves.toBe("Synthetic chat benchmark");
+
+    expect(mocks.generateChatTitle).not.toHaveBeenCalled();
+    expect(mocks.startGateway).not.toHaveBeenCalled();
+    expect(mocks.ensureSshTunnelIfNeeded).not.toHaveBeenCalled();
+    expect(mocks.updateSessionTitle).toHaveBeenCalledWith(
+      "synthetic-session-title",
+      "Synthetic chat benchmark",
+      "default",
+    );
   });
 
   it("passes profile when persisting generated chat titles", async () => {

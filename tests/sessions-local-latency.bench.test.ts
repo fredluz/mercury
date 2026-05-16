@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { join } from "path";
-import { mkdirSync, rmSync, existsSync, writeFileSync } from "fs";
+import { mkdirSync, rmSync, existsSync, statSync, writeFileSync } from "fs";
 import { performance } from "perf_hooks";
 
 const { TEST_HOME, RUN_ID, ARTIFACT_PATH } = vi.hoisted(() => {
@@ -54,10 +54,31 @@ interface TimedSamples {
   summary: SampleSummary;
 }
 
+interface SeedResult {
+  sessions: number;
+  messagesPerSession: number;
+  largeMessages: boolean;
+  fts: true;
+  query: string;
+  seedMs: number;
+  dbSizeBytes: number;
+}
+
 const DB_PATH = join(TEST_HOME, "state.db");
 const QUERY = "latencyneedle";
 const WARMUPS = Number(process.env.MERCURY_SESSIONS_BENCH_WARMUPS || 5);
 const SAMPLES = Number(process.env.MERCURY_SESSIONS_BENCH_SAMPLES || 30);
+const SCALE_SESSIONS = Number(process.env.MERCURY_SESSIONS_BENCH_SESSIONS || 1000);
+const SCALE_MESSAGES = Number(process.env.MERCURY_SESSIONS_BENCH_MESSAGES || 8);
+const SCALE_LARGE_MESSAGES =
+  process.env.MERCURY_SESSIONS_BENCH_LARGE_MESSAGES === "1" ||
+  process.env.MERCURY_SESSIONS_BENCH_LARGE_MESSAGES === "true";
+const RUN_SCALE =
+  process.env.MERCURY_SESSIONS_BENCH_SCALE === "1" ||
+  (process.env.MERCURY_SESSIONS_BENCH_SCALE === undefined &&
+    (process.env.MERCURY_SESSIONS_BENCH_SESSIONS !== undefined ||
+      process.env.MERCURY_SESSIONS_BENCH_MESSAGES !== undefined ||
+      process.env.MERCURY_SESSIONS_BENCH_LARGE_MESSAGES !== undefined));
 const describeBench = process.env.MERCURY_SESSIONS_BENCH === "1" ? describe : describe.skip;
 
 function summarize(samples: number[]): SampleSummary {
@@ -88,58 +109,79 @@ function timeSamples(fn: () => unknown): TimedSamples {
   return { samples, summary: summarize(samples) };
 }
 
-function seedDb(options: { sessions: number; messagesPerSession: number; largeMessages?: boolean }): void {
+function seedDb(options: { sessions: number; messagesPerSession: number; largeMessages?: boolean }): SeedResult {
+  const seedStart = performance.now();
   mkdirSync(TEST_HOME, { recursive: true });
   const db = new Database(DB_PATH);
-  db.exec(`
-    DROP TABLE IF EXISTS messages_fts;
-    DROP TABLE IF EXISTS messages;
-    DROP TABLE IF EXISTS sessions;
-    CREATE TABLE sessions (
-      id TEXT PRIMARY KEY,
-      source TEXT,
-      started_at INTEGER,
-      ended_at INTEGER,
-      message_count INTEGER,
-      model TEXT,
-      title TEXT
-    );
-    CREATE TABLE messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id TEXT,
-      role TEXT,
-      content TEXT,
-      timestamp INTEGER
-    );
-    CREATE VIRTUAL TABLE messages_fts USING fts5(content);
-  `);
+  try {
+    db.exec(`
+      DROP TABLE IF EXISTS messages_fts;
+      DROP TABLE IF EXISTS messages;
+      DROP TABLE IF EXISTS sessions;
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY,
+        source TEXT,
+        started_at INTEGER,
+        ended_at INTEGER,
+        message_count INTEGER,
+        model TEXT,
+        title TEXT
+      );
+      CREATE TABLE messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT,
+        role TEXT,
+        content TEXT,
+        timestamp INTEGER
+      );
+      CREATE VIRTUAL TABLE messages_fts USING fts5(content);
+    `);
 
-  const insertSession = db.prepare(
-    `INSERT INTO sessions (id, source, started_at, ended_at, message_count, model, title)
-     VALUES (?, 'cli', ?, NULL, ?, 'gpt-4o', ?)`,
-  );
-  const insertMessage = db.prepare(
-    `INSERT INTO messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)`,
-  );
-  const insertFts = db.prepare(`INSERT INTO messages_fts (rowid, content) VALUES (?, ?)`);
-  const now = Math.floor(Date.now() / 1000);
-  const filler = options.largeMessages ? ` ${"filler ".repeat(2000)}` : "";
+    const insertSession = db.prepare(
+      `INSERT INTO sessions (id, source, started_at, ended_at, message_count, model, title)
+       VALUES (?, 'cli', ?, NULL, ?, 'gpt-4o', ?)`,
+    );
+    const insertMessage = db.prepare(
+      `INSERT INTO messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)`,
+    );
+    const insertFts = db.prepare(`INSERT INTO messages_fts (rowid, content) VALUES (?, ?)`);
+    const now = Math.floor(Date.now() / 1000);
+    const filler = options.largeMessages ? ` ${"filler ".repeat(2000)}` : "";
 
-  for (let i = 0; i < options.sessions; i++) {
-    const id = `session-${i}`;
-    insertSession.run(id, now + i, options.messagesPerSession, i % 2 === 0 ? null : `Title ${i}`);
-    for (let j = 0; j < options.messagesPerSession; j++) {
-      const role = j % 2 === 0 ? "user" : "assistant";
-      const content =
-        j === 0
-          ? `Find ${QUERY} in session ${i}.${filler}`
-          : `Message ${j} in session ${i}.${filler}`;
-      const result = insertMessage.run(id, role, content, now + i + j);
-      insertFts.run(result.lastInsertRowid, content);
-    }
+    const insertAll = db.transaction(() => {
+      for (let i = 0; i < options.sessions; i++) {
+        const id = `session-${i}`;
+        insertSession.run(
+          id,
+          now + i,
+          options.messagesPerSession,
+          i % 2 === 0 ? null : `Title ${i}`,
+        );
+        for (let j = 0; j < options.messagesPerSession; j++) {
+          const role = j % 2 === 0 ? "user" : "assistant";
+          const content =
+            j === 0
+              ? `Find ${QUERY} in session ${i}.${filler}`
+              : `Message ${j} in session ${i}.${filler}`;
+          const result = insertMessage.run(id, role, content, now + i + j);
+          insertFts.run(result.lastInsertRowid, content);
+        }
+      }
+    });
+    insertAll();
+  } finally {
+    db.close();
   }
 
-  db.close();
+  return {
+    sessions: options.sessions,
+    messagesPerSession: options.messagesPerSession,
+    largeMessages: Boolean(options.largeMessages),
+    fts: true,
+    query: QUERY,
+    seedMs: performance.now() - seedStart,
+    dbSizeBytes: statSync(DB_PATH).size,
+  };
 }
 
 function removeHome(): void {
@@ -156,7 +198,7 @@ function writeArtifact(data: unknown): void {
 describeBench("Sessions local latency benchmark", () => {
   it("captures local list/sync/search baseline samples", () => {
     removeHome();
-    seedDb({ sessions: 5, messagesPerSession: 6 });
+    const smallSeed = seedDb({ sessions: 5, messagesPerSession: 6 });
 
     const emptyCacheSyncStart = performance.now();
     const initialSync = syncSessionCache();
@@ -169,10 +211,47 @@ describeBench("Sessions local latency benchmark", () => {
     expect(searchSessions(QUERY, 20)).toHaveLength(5);
 
     removeHome();
-    seedDb({ sessions: 5, messagesPerSession: 6, largeMessages: true });
+    const largeSeed = seedDb({ sessions: 5, messagesPerSession: 6, largeMessages: true });
     syncSessionCache();
     const searchLarge = timeSamples(() => searchSessions(QUERY, 20));
     expect(searchSessions(QUERY, 20)).toHaveLength(5);
+
+    let scale:
+      | {
+          seed: SeedResult;
+          emptyCacheSyncMs: number;
+          listCached: TimedSamples;
+          warmSync: TimedSamples;
+          search: TimedSamples;
+          resultCount: number;
+        }
+      | undefined;
+    if (RUN_SCALE) {
+      removeHome();
+      const scaleSeed = seedDb({
+        sessions: SCALE_SESSIONS,
+        messagesPerSession: SCALE_MESSAGES,
+        largeMessages: SCALE_LARGE_MESSAGES,
+      });
+      const scaleSyncStart = performance.now();
+      const scaleInitialSync = syncSessionCache();
+      const scaleEmptyCacheSyncMs = performance.now() - scaleSyncStart;
+      const scaleListCached = timeSamples(() => listCachedSessions(50));
+      const scaleWarmSync = timeSamples(() => syncSessionCache());
+      const scaleSearch = timeSamples(() => searchSessions(QUERY, 20));
+      const scaleResultCount = searchSessions(QUERY, 20).length;
+
+      expect(scaleInitialSync.length).toBeGreaterThan(0);
+      expect(scaleResultCount).toBeGreaterThan(0);
+      scale = {
+        seed: scaleSeed,
+        emptyCacheSyncMs: scaleEmptyCacheSyncMs,
+        listCached: scaleListCached,
+        warmSync: scaleWarmSync,
+        search: scaleSearch,
+        resultCount: scaleResultCount,
+      };
+    }
 
     const artifact = {
       runId: RUN_ID,
@@ -181,8 +260,9 @@ describeBench("Sessions local latency benchmark", () => {
       samples: SAMPLES,
       warmups: WARMUPS,
       dataset: {
-        small: { sessions: 5, messagesPerSession: 6, fts: true, query: QUERY },
-        large: { sessions: 5, messagesPerSession: 6, fts: true, query: QUERY },
+        small: smallSeed,
+        large: largeSeed,
+        scale: scale?.seed || null,
       },
       metrics: {
         emptyCacheSyncMs,
@@ -190,6 +270,15 @@ describeBench("Sessions local latency benchmark", () => {
         warmSync,
         searchSmall,
         searchLarge,
+        scale: scale
+          ? {
+              emptyCacheSyncMs: scale.emptyCacheSyncMs,
+              listCached: scale.listCached,
+              warmSync: scale.warmSync,
+              search: scale.search,
+              resultCount: scale.resultCount,
+            }
+          : null,
       },
     };
     writeArtifact(artifact);
@@ -200,5 +289,10 @@ describeBench("Sessions local latency benchmark", () => {
     expect(warmSync.summary.median).toBeGreaterThanOrEqual(0);
     expect(searchSmall.summary.median).toBeGreaterThanOrEqual(0);
     expect(searchLarge.summary.median).toBeGreaterThanOrEqual(0);
+    if (scale) {
+      expect(scale.listCached.summary.median).toBeGreaterThanOrEqual(0);
+      expect(scale.warmSync.summary.median).toBeGreaterThanOrEqual(0);
+      expect(scale.search.summary.median).toBeGreaterThanOrEqual(0);
+    }
   });
 });

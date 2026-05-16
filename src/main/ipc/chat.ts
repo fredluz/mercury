@@ -28,6 +28,7 @@ import {
 } from "../ssh-remote";
 import { updateSessionProfile, updateSessionTitle } from "../session-cache";
 import { generateChatTitle as resolveChatTitle } from "../hermes/title";
+import { isSyntheticChatStreamEnabled } from "../hermes/synthetic-chat";
 import type { IpcRegistrationContext } from "./types";
 
 type ChatResponse = { response: string; sessionId?: string };
@@ -99,6 +100,8 @@ export function abortActiveChat(): void {
 }
 
 async function prepareChatBackend(profile?: string): Promise<void> {
+  if (isSyntheticChatStreamEnabled()) return;
+
   if (!isRemoteMode() && !isGatewayRunning()) {
     startGateway(profile);
   }
@@ -403,6 +406,18 @@ export function registerChatIpc({
     }
 
     const normalizedRequest = normalizeGenerateChatTitleRequest(request);
+    if (isSyntheticChatStreamEnabled()) {
+      const title = "Synthetic chat benchmark";
+      if (normalizedRequest.sessionId) {
+        updateSessionTitle(
+          normalizedRequest.sessionId,
+          title,
+          normalizedRequest.profile,
+        );
+      }
+      return title;
+    }
+
     await prepareChatBackend(normalizedRequest.profile);
     const title = await resolveChatTitle(normalizedRequest);
     if (normalizedRequest.sessionId && title) {

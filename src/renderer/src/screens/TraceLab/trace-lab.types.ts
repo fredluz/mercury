@@ -73,11 +73,19 @@ export const EVENT_ICONS: Record<string, typeof Activity> = {
   "skill.rejected": AlertCircle,
 };
 
+export type TraceSessionTarget = {
+  sessionId: string;
+  title?: string | null;
+  profile?: string | null;
+};
+
 export type TraceConversation = {
   key: string;
   sessionId?: string;
   title: string;
   profileLabel: string;
+  profiles: string[];
+  primaryProfile: string;
   status: TraceRun["status"];
   startedAt: number;
   updatedAt: number;

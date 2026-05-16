@@ -4,21 +4,22 @@ import type {
   Narrative,
   RunFilter,
   TraceConversation,
+  TraceSessionTarget,
 } from "./trace-lab.types";
 
 export function buildTraceConversations(runs: TraceRun[]): TraceConversation[] {
-  const groups = new Map<string, { sessionId?: string; runs: TraceRun[] }>();
+  const groups = new Map<string, { sessionId?: string; profile: string; runs: TraceRun[] }>();
 
   for (const run of runs) {
-    const { key, sessionId } = conversationIdentity(run);
-    const group = groups.get(key) || { sessionId, runs: [] };
+    const { key, sessionId, profile } = conversationIdentity(run);
+    const group = groups.get(key) || { sessionId, profile, runs: [] };
     if (!group.sessionId && sessionId) group.sessionId = sessionId;
     group.runs.push(run);
     groups.set(key, group);
   }
 
   return Array.from(groups.entries())
-    .map(([key, group]) => buildConversation(key, group.sessionId, group.runs))
+    .map(([key, group]) => buildConversation(key, group.sessionId, group.profile, group.runs))
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
@@ -96,9 +97,38 @@ export function traceRunMatchesFilter(run: TraceRun, filter: RunFilter): boolean
   return traceConversationMatchesFilter(buildTraceConversations([run])[0], filter);
 }
 
+export function normalizeTraceProfile(profile?: string | null): string {
+  return profile?.trim() || "default";
+}
+
+export function traceConversationMatchesSessionTarget(
+  conversation: TraceConversation,
+  target: TraceSessionTarget,
+): boolean {
+  const sessionId = target.sessionId.trim();
+  if (!sessionId || conversation.sessionId !== sessionId) return false;
+
+  const profile = target.profile?.trim();
+  if (!profile) return true;
+  const normalizedProfile = normalizeTraceProfile(profile);
+  return conversation.profiles.some(
+    (conversationProfile) => normalizeTraceProfile(conversationProfile) === normalizedProfile,
+  );
+}
+
+export function filterTraceConversationsForSessionTarget(
+  conversations: TraceConversation[],
+  target: TraceSessionTarget,
+): TraceConversation[] {
+  return conversations.filter((conversation) =>
+    traceConversationMatchesSessionTarget(conversation, target),
+  );
+}
+
 function buildConversation(
   key: string,
   sessionId: string | undefined,
+  primaryProfile: string,
   runs: TraceRun[],
 ): TraceConversation {
   const sortedRuns = runs
@@ -109,13 +139,16 @@ function buildConversation(
     run.updatedAt > latest.updatedAt ? run : latest,
   );
   const usage = aggregateUsage(sortedRuns);
-  const profileLabel = summarizeProfiles(sortedRuns);
+  const profiles = collectProfiles(sortedRuns);
+  const profileLabel = summarizeProfiles(profiles);
 
   return {
     key,
     sessionId,
     title: firstRun?.title || (sessionId ? `Session ${shortId(sessionId)}` : "Trace conversation"),
     profileLabel,
+    profiles,
+    primaryProfile,
     status: aggregateStatus(sortedRuns),
     startedAt: Math.min(...sortedRuns.map((run) => run.startedAt)),
     updatedAt: Math.max(...sortedRuns.map((run) => run.updatedAt)),
@@ -132,13 +165,14 @@ function buildConversation(
   };
 }
 
-function conversationIdentity(run: TraceRun): { key: string; sessionId?: string } {
+function conversationIdentity(run: TraceRun): { key: string; sessionId?: string; profile: string } {
+  const profile = normalizeTraceProfile(run.profile);
   const sessionId = firstNonEmptyString(
     run.sessionId,
     sessionIdFromResumeEvent(run),
   );
-  if (sessionId) return { key: `session:${sessionId}`, sessionId };
-  return { key: `run:${run.id}` };
+  if (sessionId) return { key: `session:${profile}:${sessionId}`, sessionId, profile };
+  return { key: `run:${run.id}`, profile };
 }
 
 function sessionIdFromResumeEvent(run: TraceRun): string | undefined {
@@ -183,8 +217,11 @@ function runNeedsAttention(run: TraceRun): boolean {
   );
 }
 
-function summarizeProfiles(runs: TraceRun[]): string {
-  const profiles = Array.from(new Set(runs.map((run) => run.profile).filter(Boolean)));
+function collectProfiles(runs: TraceRun[]): string[] {
+  return Array.from(new Set(runs.map((run) => normalizeTraceProfile(run.profile))));
+}
+
+function summarizeProfiles(profiles: string[]): string {
   if (profiles.length <= 1) return profiles[0] || "default";
   return `${profiles[0]} +${profiles.length - 1}`;
 }

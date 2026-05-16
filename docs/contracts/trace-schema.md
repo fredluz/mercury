@@ -221,8 +221,9 @@ Derived fields:
 Trace Lab renders the richer contract in `src/renderer/src/screens/TraceLab/*` without changing the persisted store shape:
 
 - `trace-lab.types.ts` owns labels and icons for every current event type plus renderer-only conversation/timeline types.
-- The persisted unit remains one `TraceRun` per send-message call. Trace Lab derives conversation groups at render time by preferring `run.sessionId`, then a `session.resumed` event's `metadata.sessionId` or detail, then falling back to a one-run `run:<id>` conversation for local or old traces.
-- The Recent activity sidebar lists conversation-level rows first and can expand each conversation to its constituent runs/messages.
+- The persisted unit remains one `TraceRun` per send-message call. Trace Lab derives conversation groups at render time by preferring `run.sessionId`, then a `session.resumed` event's `metadata.sessionId` or detail, then falling back to a one-run `run:<id>` conversation for local or old traces. Session-backed renderer grouping is profile-aware (`session:<profile>:<sessionId>`) so Sessions rows from different profile databases do not merge in the trace UI.
+- Trace Lab is accessed from Sessions rather than as a standalone sidebar destination. A per-session trace action opens a session-scoped detail surface; the Sessions-level Trace Activity fallback opens the all-trace view for orphan/non-session traces.
+- The Recent activity sidebar lists conversation-level rows first and can expand each conversation to its constituent runs/messages in all-trace mode. Session-scoped mode reuses the same detail/timeline/inspector UI but hides the internal Recent activity list so Sessions remains the conversation list.
 - The selected conversation detail starts with a merged Event Timeline across all constituent runs, using composite `runId:eventId` UI keys so event ids remain run-scoped.
 - Search and filters operate on conversation groups and include conversation fields, all constituent run fields, event title/detail/type, and JSON-stringified metadata. The “needs attention” filter includes failed/aborted runs and failed tool/delegation/transport events; the “skill signals” filter matches any `skill.*` event in the conversation.
 - Conversation facts aggregate started/updated timestamps, agent-run count, tokens, cost, status, and skill-signal presence from the grouped runs.
@@ -230,7 +231,7 @@ Trace Lab renders the richer contract in `src/renderer/src/screens/TraceLab/*` w
 - `EventInspector` remains focused on the selected structured event: it explains the event type, renders metadata values safely, and shows an artifact card for `artifact.created` events.
 - Artifact cards do not auto-load remote URLs. They display the reference and use the existing `window.hermesAPI.openExternal(...)` shell API when the metadata provides an `http(s)://`, `file://`, or absolute local path reference.
 
-No schema migration is required for the conversation view. Older traces without session identifiers remain valid and are displayed as one-run conversations.
+No schema migration is required for the conversation view. Older traces without session identifiers remain valid and are displayed as one-run conversations through the Sessions Trace Activity fallback.
 
 ## Skill status and score derivation
 

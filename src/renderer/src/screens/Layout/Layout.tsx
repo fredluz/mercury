@@ -36,7 +36,7 @@ import { useI18n } from "../../components/useI18n";
 type View =
   | "chat"
   | "sessions"
-  | "traces"
+  | "traceDetail"
   | "agents"
   | "models"
   | "providers"
@@ -48,10 +48,22 @@ type View =
   | "gateway"
   | "settings";
 
-const NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
+type NavView = Exclude<View, "traceDetail">;
+
+type TraceLaunchState =
+  | { mode: "all" }
+  | {
+      mode: "session";
+      target: {
+        sessionId: string;
+        title?: string | null;
+        profile?: string | null;
+      };
+    };
+
+const NAV_ITEMS: { view: NavView; icon: LucideIcon; labelKey: string }[] = [
   { view: "chat", icon: ChatBubble, labelKey: "navigation.chat" },
   { view: "sessions", icon: Clock, labelKey: "navigation.sessions" },
-  { view: "traces", icon: Activity, labelKey: "navigation.traces" },
   { view: "agents", icon: Users, labelKey: "navigation.agents" },
   { view: "models", icon: Layers, labelKey: "navigation.models" },
   { view: "providers", icon: KeyRound, labelKey: "navigation.providers" },
@@ -74,6 +86,8 @@ function Layout(): React.JSX.Element {
   const [sessionsRefreshToken, setSessionsRefreshToken] = useState(0);
   const [conversationVersion, setConversationVersion] = useState(0);
   const [activeProfile, setActiveProfile] = useState("default");
+  const [traceLaunch, setTraceLaunch] = useState<TraceLaunchState>({ mode: "all" });
+  const [traceLaunchVersion, setTraceLaunchVersion] = useState(0);
   // Tabs lazy-mount on first visit, then stay mounted (display:none toggle).
   // Keeps IPC refetch / DOM rebuild off the tab-switch hot path.
   const [visitedViews, setVisitedViews] = useState<Set<View>>(
@@ -99,11 +113,18 @@ function Layout(): React.JSX.Element {
     window.hermesAPI.isRemoteOnlyMode().then(setRemoteMode);
   }, [view]);
 
-  // Auto-update state
+  // Mercury desktop app update state. This is separate from the Hermes Agent
+  // engine updater in Settings.
   const [updateVersion, setUpdateVersion] = useState<string | null>(null);
   const [updateState, setUpdateState] = useState<
-    "available" | "downloading" | "ready" | null
-  >(null);
+    | "idle"
+    | "checking"
+    | "available"
+    | "downloading"
+    | "ready"
+    | "current"
+    | "error"
+  >("idle");
   const [downloadPercent, setDownloadPercent] = useState(0);
 
   useEffect(() => {
@@ -119,21 +140,62 @@ function Layout(): React.JSX.Element {
     const cleanupDownloaded = window.hermesAPI.onUpdateDownloaded(() => {
       setUpdateState("ready");
     });
+    const cleanupNotAvailable = window.hermesAPI.onUpdateNotAvailable(() => {
+      if (updateState === "checking") setUpdateState("current");
+    });
+    const cleanupError = window.hermesAPI.onUpdateError(() => {
+      if (updateState === "checking" || updateState === "downloading") {
+        setUpdateState("error");
+      }
+    });
     return () => {
       cleanupAvailable();
       cleanupProgress();
       cleanupDownloaded();
+      cleanupNotAvailable();
+      cleanupError();
     };
-  }, []);
+  }, [updateState]);
 
   async function handleUpdate(): Promise<void> {
+    if (updateState === "checking" || updateState === "downloading") return;
+
     if (updateState === "available") {
       setUpdateState("downloading");
       await window.hermesAPI.downloadUpdate();
-    } else if (updateState === "ready") {
+      return;
+    }
+
+    if (updateState === "ready") {
       await window.hermesAPI.installUpdate();
+      return;
+    }
+
+    setUpdateState("checking");
+    const version = await window.hermesAPI.checkForUpdates();
+    if (version) {
+      setUpdateVersion(version);
+      setUpdateState("available");
+    } else {
+      setUpdateState("current");
     }
   }
+
+  const updateDisabled = updateState === "checking" || updateState === "downloading";
+  const updateButtonLabel =
+    updateState === "checking"
+      ? t("common.checkingForUpdates")
+      : updateState === "available"
+      ? t("common.updateMercuryVersion", { version: updateVersion })
+      : updateState === "downloading"
+      ? t("common.downloading", { percent: downloadPercent })
+      : updateState === "ready"
+      ? t("common.restartToUpdate")
+      : updateState === "current"
+      ? t("common.mercuryUpToDate")
+      : updateState === "error"
+      ? t("common.updateCheckFailed")
+      : t("common.updateMercury");
 
   const handleNewChat = useCallback(() => {
     // Abort any in-flight chat before clearing
@@ -169,6 +231,29 @@ function Layout(): React.JSX.Element {
     setConversationVersion((value) => value + 1);
   }, []);
 
+  const handleOpenSessionTrace = useCallback(
+    (sessionId: string, title?: string | null, profile?: string | null) => {
+      const rowProfile = profile?.trim() || activeProfile;
+      setTraceLaunch({
+        mode: "session",
+        target: { sessionId, title: title ?? null, profile: rowProfile },
+      });
+      setTraceLaunchVersion((value) => value + 1);
+      goTo("traceDetail");
+    },
+    [activeProfile, goTo],
+  );
+
+  const handleOpenTraceActivity = useCallback(() => {
+    setTraceLaunch({ mode: "all" });
+    setTraceLaunchVersion((value) => value + 1);
+    goTo("traceDetail");
+  }, [goTo]);
+
+  const handleBackToSessions = useCallback(() => {
+    goTo("sessions");
+  }, [goTo]);
+
   const handleResumeSession = useCallback(
     async (sessionId: string, title?: string | null, profile?: string) => {
       const rowProfile = profile?.trim() || undefined;
@@ -197,11 +282,22 @@ function Layout(): React.JSX.Element {
           <MercuryLockup className="sidebar-brand-lockup" />
         </div>
 
+        <div className="sidebar-update-panel">
+          <button
+            className={`sidebar-update-btn sidebar-update-${updateState}`}
+            onClick={handleUpdate}
+            disabled={updateDisabled}
+          >
+            <Download size={13} />
+            <span>{updateButtonLabel}</span>
+          </button>
+        </div>
+
         <nav className="sidebar-nav">
           {NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => (
             <button
               key={v}
-              className={`sidebar-nav-item ${view === v ? "active" : ""}`}
+              className={`sidebar-nav-item ${view === v || (view === "traceDetail" && v === "sessions") ? "active" : ""}`}
               onClick={() => goTo(v)}
             >
               <Icon size={16} />
@@ -211,24 +307,6 @@ function Layout(): React.JSX.Element {
         </nav>
 
         <div className="sidebar-footer">
-          {updateState && (
-            <button className="sidebar-update-btn" onClick={handleUpdate}>
-              <Download size={13} />
-              {updateState === "available" && (
-                <span>
-                  {t("common.updateAvailable", { version: updateVersion })}
-                </span>
-              )}
-              {updateState === "downloading" && (
-                <span>
-                  {t("common.downloading", { percent: downloadPercent })}
-                </span>
-              )}
-              {updateState === "ready" && (
-                <span>{t("common.restartToUpdate")}</span>
-              )}
-            </button>
-          )}
           <div className="sidebar-footer-text">
             {activeProfile === "default" ? t("common.appName") : activeProfile}
           </div>
@@ -265,10 +343,25 @@ function Layout(): React.JSX.Element {
         {visitedViews.has("sessions") && (
           <div style={paneStyle("sessions")}>
             {remoteMode ? (
-              <RemoteNotice feature="Sessions" />
+              <div className="sessions-container">
+                <div className="sessions-header">
+                  <div className="sessions-header-top">
+                    <h2 className="sessions-title">{t("sessions.title")}</h2>
+                    <div className="sessions-header-actions">
+                      <button className="btn btn-secondary" onClick={handleOpenTraceActivity}>
+                        <Activity size={14} />
+                        {t("sessions.traceActivity")}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <RemoteNotice feature="Sessions" />
+              </div>
             ) : (
               <Sessions
                 onResumeSession={handleResumeSession}
+                onOpenSessionTrace={handleOpenSessionTrace}
+                onOpenTraceActivity={handleOpenTraceActivity}
                 onNewChat={handleNewChat}
                 currentSessionId={currentSessionId}
                 currentSessionProfile={currentSessionProfile}
@@ -278,9 +371,14 @@ function Layout(): React.JSX.Element {
           </div>
         )}
 
-        {visitedViews.has("traces") && (
-          <div style={paneStyle("traces")}>
-            <TraceLab />
+        {visitedViews.has("traceDetail") && (
+          <div style={paneStyle("traceDetail")}>
+            <TraceLab
+              mode={traceLaunch.mode}
+              sessionTarget={traceLaunch.mode === "session" ? traceLaunch.target : null}
+              reloadToken={traceLaunchVersion}
+              onBackToSessions={handleBackToSessions}
+            />
           </div>
         )}
 

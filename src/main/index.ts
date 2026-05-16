@@ -3,6 +3,7 @@ import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import type { AppUpdater } from "electron-updater";
 import icon from "../../resources/icon.png?asset";
+import nightlyIcon from "../../resources/nightly-icon.png?asset";
 import { getConnectionConfig } from "./config";
 import { stopGateway, stopHealthPolling, setSshRemoteApiKey } from "./hermes";
 import { startSshTunnel, stopSshTunnel } from "./ssh-tunnel";
@@ -36,7 +37,7 @@ function createWindow(): void {
     ...(process.platform === "darwin"
       ? { trafficLightPosition: { x: 16, y: 16 } }
       : {}),
-    ...(process.platform === "linux" ? { icon } : {}),
+    ...(process.platform === "linux" ? { icon: isNightlyBuild() ? nightlyIcon : icon } : {}),
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false,
@@ -188,6 +189,10 @@ function buildMenu(): void {
   Menu.setApplicationMenu(menu);
 }
 
+function isNightlyBuild(): boolean {
+  return app.getVersion().includes("-nightly.") || app.getName().toLowerCase().includes("nightly");
+}
+
 function setupUpdater(): void {
   // IPC handlers must always be registered to avoid invoke errors
   ipcMain.handle("get-app-version", () => app.getVersion());
@@ -208,6 +213,7 @@ function setupUpdater(): void {
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowPrerelease = isNightlyBuild();
 
   autoUpdater.on("update-available", (info) => {
     mainWindow?.webContents.send("update-available", {
@@ -226,6 +232,12 @@ function setupUpdater(): void {
     mainWindow?.webContents.send("update-downloaded");
   });
 
+  autoUpdater.on("update-not-available", (info) => {
+    mainWindow?.webContents.send("update-not-available", {
+      version: info.version,
+    });
+  });
+
   autoUpdater.on("error", (err) => {
     mainWindow?.webContents.send("update-error", err.message);
   });
@@ -233,7 +245,8 @@ function setupUpdater(): void {
   ipcMain.handle("check-for-updates", async () => {
     try {
       const result = await autoUpdater.checkForUpdates();
-      return result?.updateInfo?.version || null;
+      const version = result?.updateInfo?.version || null;
+      return version && version !== app.getVersion() ? version : null;
     } catch {
       return null;
     }
@@ -254,8 +267,11 @@ function setupUpdater(): void {
 }
 
 app.whenReady().then(() => {
-  app.name = "Mercury";
-  electronApp.setAppUserModelId("com.fredluz.mercury");
+  const nightly = isNightlyBuild();
+  app.name = nightly ? "Mercury Nightly" : "Mercury";
+  electronApp.setAppUserModelId(
+    nightly ? "com.fredluz.mercury.nightly" : "com.fredluz.mercury",
+  );
 
   app.on("browser-window-created", (_, window) => {
     optimizer.watchWindowShortcuts(window);

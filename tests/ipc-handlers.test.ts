@@ -120,6 +120,8 @@ describe("New IPC handlers from v0.8/v0.9 features", () => {
     "discover-memory-providers",
     "import-skill-markdown",
     "record-local-chat-trace",
+    "get-perf-telemetry-config",
+    "record-perf-event",
   ];
 
   for (const ch of newChannels) {

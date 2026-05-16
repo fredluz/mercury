@@ -1,0 +1,302 @@
+name: Nightly Release
+
+on:
+  schedule:
+    # 05:00 UTC every day.
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run all build jobs but skip prerelease publish"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nightly-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare Nightly
+    runs-on: ubuntu-latest
+    outputs:
+      base_version: ${{ steps.version.outputs.base_version }}
+      nightly_version: ${{ steps.version.outputs.nightly_version }}
+      tag: ${{ steps.version.outputs.tag }}
+      short_sha: ${{ steps.version.outputs.short_sha }}
+      tag_exists: ${{ steps.check.outputs.exists }}
+      is_dry_run: ${{ steps.mode.outputs.is_dry_run }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Compute nightly version
+        id: version
+        shell: bash
+        run: |
+          BASE_VERSION=$(node -p "require('./package.json').version")
+          DATE=$(date -u +%Y%m%d)
+          SHORT_SHA=${GITHUB_SHA::7}
+          NIGHTLY_VERSION="${BASE_VERSION}-nightly.${DATE}.${GITHUB_RUN_NUMBER}"
+          TAG="nightly-${DATE}-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
+          echo "base_version=$BASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "nightly_version=$NIGHTLY_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "Nightly version: $NIGHTLY_VERSION"
+          echo "Nightly tag: $TAG"
+
+      - name: Check if tag already exists
+        id: check
+        shell: bash
+        run: |
+          if git ls-remote --tags origin "refs/tags/${{ steps.version.outputs.tag }}" | grep -q .; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${{ steps.version.outputs.tag }} already exists — skipping."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute dry-run flag
+        id: mode
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "is_dry_run=true" >> "$GITHUB_OUTPUT"
+            echo "Dry run: builds will run, publish will be skipped."
+          else
+            echo "is_dry_run=false" >> "$GITHUB_OUTPUT"
+            echo "Nightly prerelease publish will run if tag does not exist."
+          fi
+
+  build_mac:
+    name: Build macOS Nightly (${{ matrix.arch }})
+    needs: prepare
+    if: needs.prepare.outputs.tag_exists == 'false'
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [x64, arm64]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply nightly package metadata
+        shell: bash
+        env:
+          NIGHTLY_VERSION: ${{ needs.prepare.outputs.nightly_version }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const version = process.env.NIGHTLY_VERSION;
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          pkg.name = 'mercury-nightly';
+          pkg.productName = 'Mercury Nightly';
+          pkg.version = version;
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+          lock.name = 'mercury-nightly';
+          lock.version = version;
+          if (lock.packages && lock.packages['']) {
+            lock.packages[''].name = 'mercury-nightly';
+            lock.packages[''].version = version;
+          }
+          fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n');
+          NODE
+
+      - name: Build app
+        run: npm run build
+
+      - name: Package macOS nightly artifacts
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npx electron-builder --config electron-builder.nightly.yml --mac dmg zip --${{ matrix.arch }} --publish never
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-mac-${{ matrix.arch }}-artifacts
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.blockmap
+            dist/latest-mac.yml
+
+  build_linux:
+    name: Build Linux Nightly
+    needs: prepare
+    if: needs.prepare.outputs.tag_exists == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply nightly package metadata
+        shell: bash
+        env:
+          NIGHTLY_VERSION: ${{ needs.prepare.outputs.nightly_version }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const version = process.env.NIGHTLY_VERSION;
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          pkg.name = 'mercury-nightly';
+          pkg.productName = 'Mercury Nightly';
+          pkg.version = version;
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+          lock.name = 'mercury-nightly';
+          lock.version = version;
+          if (lock.packages && lock.packages['']) {
+            lock.packages[''].name = 'mercury-nightly';
+            lock.packages[''].version = version;
+          }
+          fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n');
+          NODE
+
+      - name: Build app
+        run: npm run build
+
+      - name: Install rpmbuild
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Package Linux nightly artifacts
+        run: npx electron-builder --config electron-builder.nightly.yml --linux AppImage deb rpm --publish never
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-linux-artifacts
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.rpm
+            dist/latest-linux.yml
+
+  build_windows:
+    name: Build Windows Nightly
+    needs: prepare
+    if: needs.prepare.outputs.tag_exists == 'false'
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply nightly package metadata
+        shell: bash
+        env:
+          NIGHTLY_VERSION: ${{ needs.prepare.outputs.nightly_version }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const version = process.env.NIGHTLY_VERSION;
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          pkg.name = 'mercury-nightly';
+          pkg.productName = 'Mercury Nightly';
+          pkg.version = version;
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+          lock.name = 'mercury-nightly';
+          lock.version = version;
+          if (lock.packages && lock.packages['']) {
+            lock.packages[''].name = 'mercury-nightly';
+            lock.packages[''].version = version;
+          }
+          fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n');
+          NODE
+
+      - name: Build app
+        run: npm run build
+
+      - name: Package Windows nightly artifacts
+        run: npx electron-builder --config electron-builder.nightly.yml --win nsis --x64 --publish never
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-windows-artifacts
+          path: |
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/latest.yml
+
+  publish:
+    name: Publish Nightly Prerelease
+    needs: [prepare, build_mac, build_linux, build_windows]
+    if: needs.prepare.outputs.is_dry_run == 'false' && needs.prepare.outputs.tag_exists == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Create nightly tag
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ needs.prepare.outputs.tag }}
+          git push origin ${{ needs.prepare.outputs.tag }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish GitHub nightly prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: Mercury Nightly ${{ needs.prepare.outputs.nightly_version }}
+          prerelease: true
+          make_latest: false
+          generate_release_notes: true
+          body: |
+            Automated nightly build from `${{ github.sha }}`.
+
+            - App name: Mercury Nightly
+            - App ID: `com.fredluz.mercury.nightly`
+            - Package name: `mercury-nightly`
+            - Version: `${{ needs.prepare.outputs.nightly_version }}`
+
+            Nightly builds are prereleases and install side-by-side with stable Mercury.
+          files: |
+            artifacts/**/*.dmg
+            artifacts/**/*.zip
+            artifacts/**/*.AppImage
+            artifacts/**/*.deb
+            artifacts/**/*.rpm
+            artifacts/**/*.exe
+            artifacts/**/*.blockmap
+            artifacts/**/latest.yml
+            artifacts/**/latest-linux.yml
+            artifacts/**/latest-mac.yml

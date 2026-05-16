@@ -15,3 +15,5 @@ npm run brand:check
 ```
 
 The generator derives the packaged Electron icons and renderer/docs PNG copies from the canonical source image, and it fails if the source hash or dimensions change.
+
+Nightly builds use the same canonical Mercury logo with RGB colors inverted at generation time. The derived Nightly outputs are `build/nightly-icon.{png,ico,icns}`, `resources/nightly-icon.png`, `src/renderer/src/assets/nightly-icon.png`, and `docs/assets/mercury-nightly-logo.png`.

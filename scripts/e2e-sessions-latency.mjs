@@ -16,6 +16,7 @@ const electronPath = require("electron");
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const outputDir = path.join(repoRoot, "prompt-exports", "sessions-latency-runs");
 const DEFAULT_QUERY = "latencyneedle";
+const UI_SEARCH_DEBOUNCE_MS = 300;
 
 const args = new Map(
   process.argv.slice(2).map((arg) => {
@@ -103,6 +104,7 @@ function sqlString(value) {
 }
 
 function seedDb(hermesHome) {
+  const seedStart = performance.now();
   writeBaseConfig(hermesHome);
   const dbPath = path.join(hermesHome, "state.db");
   const now = Math.floor(Date.now() / 1000);
@@ -165,16 +167,29 @@ function seedDb(hermesHome) {
       `${JSON.stringify({ sessions, lastSync: now }, null, 2)}\n`,
     );
   }
+
+  return {
+    seedMs: performance.now() - seedStart,
+    dbSizeBytes: fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0,
+    sessions: options.sessions,
+    messagesPerSession: options.messagesPerSession,
+    largeMessages: options.largeMessages,
+    fts: true,
+    cache: options.cache,
+  };
 }
 
 function createHome() {
   if (options.caseName === "current-config") {
-    return process.env.HERMES_HOME?.trim() || path.join(os.homedir(), ".hermes");
+    return {
+      hermesHome: process.env.HERMES_HOME?.trim() || path.join(os.homedir(), ".hermes"),
+      seed: null,
+    };
   }
   const hermesHome = fs.mkdtempSync(path.join(os.tmpdir(), "mercury-sessions-latency-"));
   fs.chmodSync(hermesHome, 0o700);
-  seedDb(hermesHome);
-  return hermesHome;
+  const seed = seedDb(hermesHome);
+  return { hermesHome, seed };
 }
 
 function shouldCleanupHome() {
@@ -218,7 +233,8 @@ async function waitForSessionsContent(page) {
 }
 
 async function measureMount(runId, index) {
-  const hermesHome = createHome();
+  const home = createHome();
+  const { hermesHome, seed } = home;
   const diagFile = path.join(outputDir, `${runId}-mount-${index}.ndjson`);
   let app;
   try {
@@ -232,9 +248,9 @@ async function measureMount(runId, index) {
     await waitForSessionsContent(page);
     const ms = performance.now() - start;
     await waitForDiagCount(diagFile, "sync-session-cache", 1);
-    return { ok: true, ms, diagFile, hermesHome };
+    return { ok: true, ms, diagFile, hermesHome, seed };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error), diagFile, hermesHome };
+    return { ok: false, error: error instanceof Error ? error.message : String(error), diagFile, hermesHome, seed };
   } finally {
     if (app) await app.close();
     if (shouldCleanupHome()) safeRm(hermesHome);
@@ -242,7 +258,8 @@ async function measureMount(runId, index) {
 }
 
 async function measureSearches(runId) {
-  const hermesHome = createHome();
+  const home = createHome();
+  const { hermesHome, seed } = home;
   const diagFile = path.join(outputDir, `${runId}-search.ndjson`);
   const samples = [];
   let app;
@@ -266,7 +283,7 @@ async function measureSearches(runId) {
         { timeout: 45_000 },
       );
       await page.waitForFunction(() => !document.querySelector(".sessions-loading"), null, { timeout: 45_000 });
-      await page.waitForTimeout(50);
+      await page.waitForTimeout(UI_SEARCH_DEBOUNCE_MS + 50);
 
       const query = options.query;
       const beforeSearchRecords = readNdjson(diagFile).filter(
@@ -286,10 +303,10 @@ async function measureSearches(runId) {
         samples.push({ ok: true, ms: performance.now() - start });
       }
     }
-    return { samples, diagFile, hermesHome };
+    return { samples, diagFile, hermesHome, seed };
   } catch (error) {
     samples.push({ ok: false, error: error instanceof Error ? error.message : String(error) });
-    return { samples, diagFile, hermesHome };
+    return { samples, diagFile, hermesHome, seed };
   } finally {
     if (app) await app.close();
     if (shouldCleanupHome()) safeRm(hermesHome);
@@ -379,6 +396,7 @@ async function run() {
     },
     queryLabel: queryLabel(),
     visibleSpinnerPath: "active search after Sessions mount/content is visible",
+    debounceMs: UI_SEARCH_DEBOUNCE_MS,
     dataset: {
       sessions: options.caseName === "synthetic-local" ? options.sessions : "unknown-current-config",
       messagesPerSession:
@@ -388,6 +406,7 @@ async function run() {
       fts: options.caseName === "synthetic-local" ? true : "unknown",
       largeMessages: options.caseName === "synthetic-local" ? options.largeMessages : "unknown",
       cache: options.caseName === "synthetic-local" ? options.cache : "current",
+      seed: options.caseName === "synthetic-local" ? search.seed : null,
     },
     mount: mount.map(publicSample),
     search: {

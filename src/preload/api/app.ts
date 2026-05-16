@@ -1,4 +1,5 @@
 import { ipcRenderer } from "electron";
+import type { PerfTelemetryConfig, RendererPerfEvent } from "../../shared/perf";
 
 export const appApi = {
   // Updates
@@ -7,6 +8,12 @@ export const appApi = {
   downloadUpdate: (): Promise<boolean> => ipcRenderer.invoke("download-update"),
   installUpdate: (): Promise<void> => ipcRenderer.invoke("install-update"),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke("get-app-version"),
+
+  // Local performance telemetry (opt-in)
+  getPerfTelemetryConfig: (): Promise<PerfTelemetryConfig> =>
+    ipcRenderer.invoke("get-perf-telemetry-config"),
+  recordPerfEvent: (event: RendererPerfEvent): Promise<boolean> =>
+    ipcRenderer.invoke("record-perf-event", event),
 
   onUpdateAvailable: (
     callback: (info: { version: string; releaseNotes: string }) => void,
@@ -31,6 +38,22 @@ export const appApi = {
     const handler = (): void => callback();
     ipcRenderer.on("update-downloaded", handler);
     return () => ipcRenderer.removeListener("update-downloaded", handler);
+  },
+
+  onUpdateNotAvailable: (
+    callback: (info: { version: string }) => void,
+  ): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, info: unknown): void =>
+      callback(info as { version: string });
+    ipcRenderer.on("update-not-available", handler);
+    return () => ipcRenderer.removeListener("update-not-available", handler);
+  },
+
+  onUpdateError: (callback: (message: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, message: unknown): void =>
+      callback(String(message || ""));
+    ipcRenderer.on("update-error", handler);
+    return () => ipcRenderer.removeListener("update-error", handler);
   },
 
   // Menu events (from native menu bar)

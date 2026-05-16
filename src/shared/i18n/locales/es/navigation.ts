@@ -1,7 +1,6 @@
 export default {
   chat: "Chat",
   sessions: "Sesiones",
-  traces: "Trace Lab",
   agents: "Perfiles",
   models: "Modelos",
   providers: "Proveedores",

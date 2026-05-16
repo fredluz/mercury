@@ -5,6 +5,7 @@ import type {
   SkillMarkdownImportRequest,
   SkillMarkdownImportResult,
 } from "../shared/skills";
+import type { PerfTelemetryConfig, RendererPerfEvent } from "../shared/perf";
 import type {
   LocalChatTraceRequest,
   SkillTrainingRun,
@@ -406,6 +407,11 @@ interface HermesAPI {
   downloadUpdate: () => Promise<boolean>;
   installUpdate: () => Promise<void>;
   getAppVersion: () => Promise<string>;
+
+  // Local performance telemetry (opt-in)
+  getPerfTelemetryConfig: () => Promise<PerfTelemetryConfig>;
+  recordPerfEvent: (event: RendererPerfEvent) => Promise<boolean>;
+
   onUpdateAvailable: (
     callback: (info: { version: string; releaseNotes: string }) => void,
   ) => () => void;
@@ -413,6 +419,10 @@ interface HermesAPI {
     callback: (info: { percent: number }) => void,
   ) => () => void;
   onUpdateDownloaded: (callback: () => void) => () => void;
+  onUpdateNotAvailable: (
+    callback: (info: { version: string }) => void,
+  ) => () => void;
+  onUpdateError: (callback: (message: string) => void) => () => void;
 
   // Menu events
   onMenuNewChat: (callback: () => void) => () => void;

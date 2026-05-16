@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { randomUUID } from "crypto";
 import { HERMES_HOME } from "./installer";
+import { isPerfTelemetryEnabled, withPerfSpanSync } from "./perf/telemetry";
 import type {
   LocalChatTraceRequest,
   SkillTrainingRun,
@@ -43,14 +44,35 @@ function readStore(): TraceStoreData {
 }
 
 function writeStore(data: TraceStoreData): void {
-  mkdirSync(dirname(STORE_PATH), { recursive: true });
-  const capped = {
-    version: 1 as const,
-    runs: data.runs
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, MAX_RUNS),
-  };
-  writeFileSync(STORE_PATH, JSON.stringify(capped, null, 2), "utf-8");
+  const telemetryMeta: Record<string, unknown> | undefined =
+    isPerfTelemetryEnabled("trace-store") ? {} : undefined;
+  withPerfSpanSync(
+    "trace-store",
+    "writeStore",
+    telemetryMeta,
+    () => {
+      const capped = {
+        version: 1 as const,
+        runs: data.runs
+          .sort((a, b) => b.updatedAt - a.updatedAt)
+          .slice(0, MAX_RUNS),
+      };
+      const serialized = JSON.stringify(capped, null, 2);
+      if (telemetryMeta) {
+        Object.assign(telemetryMeta, {
+          runCount: capped.runs.length,
+          eventCount: countEvents(capped.runs),
+          serializedBytes: Buffer.byteLength(serialized, "utf8"),
+        });
+      }
+      mkdirSync(dirname(STORE_PATH), { recursive: true });
+      writeFileSync(STORE_PATH, serialized, "utf-8");
+    },
+  );
+}
+
+function countEvents(runs: TraceRun[]): number {
+  return runs.reduce((total, run) => total + run.events.length, 0);
 }
 
 function compactText(value: string, max = 180): string {
@@ -131,25 +153,32 @@ function appendEvent(
 }
 
 export function createTraceRun(message: string, profile?: string): TraceRun {
-  const now = Date.now();
-  const run: TraceRun = {
-    id: randomUUID(),
-    title: compactText(message, 72) || "Hermes run",
-    profile: profile || "default",
-    status: "running",
-    startedAt: now,
-    updatedAt: now,
-    messagePreview: compactText(message),
-    events: [],
-  };
-  const data = readStore();
-  data.runs.unshift(run);
-  appendEvent(data, run.id, "run.started", "Run started", run.messagePreview, {
-    profile: run.profile,
-  });
-  appendEvent(data, run.id, "message.user", "User message", run.messagePreview);
-  writeStore(data);
-  return run;
+  return withPerfSpanSync(
+    "trace-store",
+    "createTraceRun",
+    { messageLength: message.length, hasProfile: Boolean(profile?.trim()) },
+    () => {
+      const now = Date.now();
+      const run: TraceRun = {
+        id: randomUUID(),
+        title: compactText(message, 72) || "Hermes run",
+        profile: profile || "default",
+        status: "running",
+        startedAt: now,
+        updatedAt: now,
+        messagePreview: compactText(message),
+        events: [],
+      };
+      const data = readStore();
+      data.runs.unshift(run);
+      appendEvent(data, run.id, "run.started", "Run started", run.messagePreview, {
+        profile: run.profile,
+      });
+      appendEvent(data, run.id, "message.user", "User message", run.messagePreview);
+      writeStore(data);
+      return run;
+    },
+  );
 }
 
 export function recordTraceEvent(
@@ -159,10 +188,22 @@ export function recordTraceEvent(
   detail?: string,
   metadata?: Record<string, unknown>,
 ): TraceEvent | null {
-  const data = readStore();
-  const event = appendEvent(data, runId, type, title, detail, metadata);
-  writeStore(data);
-  return event;
+  return withPerfSpanSync(
+    "trace-store",
+    "recordTraceEvent",
+    {
+      type,
+      titleLength: title.length,
+      detailLength: detail?.length || 0,
+      hasMetadata: Boolean(metadata),
+    },
+    () => {
+      const data = readStore();
+      const event = appendEvent(data, runId, type, title, detail, metadata);
+      writeStore(data);
+      return event;
+    },
+  );
 }
 
 export function createLocalChatTrace(
@@ -195,25 +236,36 @@ export function createLocalChatTrace(
 }
 
 export function recordTraceUsage(runId: string, usage: TraceUsage): void {
-  const data = readStore();
-  const run = data.runs.find((candidate) => candidate.id === runId);
-  if (!run) return;
-  run.usage = {
-    promptTokens: (run.usage?.promptTokens || 0) + usage.promptTokens,
-    completionTokens:
-      (run.usage?.completionTokens || 0) + usage.completionTokens,
-    totalTokens: (run.usage?.totalTokens || 0) + usage.totalTokens,
-    cost:
-      usage.cost != null
-        ? (run.usage?.cost || 0) + usage.cost
-        : run.usage?.cost,
-    rateLimitRemaining: usage.rateLimitRemaining,
-    rateLimitReset: usage.rateLimitReset,
-  };
-  appendEvent(data, runId, "usage.recorded", "Usage recorded", undefined, {
-    ...usage,
-  });
-  writeStore(data);
+  withPerfSpanSync(
+    "trace-store",
+    "recordTraceUsage",
+    {
+      promptTokens: usage.promptTokens,
+      completionTokens: usage.completionTokens,
+      totalTokens: usage.totalTokens,
+    },
+    () => {
+      const data = readStore();
+      const run = data.runs.find((candidate) => candidate.id === runId);
+      if (!run) return;
+      run.usage = {
+        promptTokens: (run.usage?.promptTokens || 0) + usage.promptTokens,
+        completionTokens:
+          (run.usage?.completionTokens || 0) + usage.completionTokens,
+        totalTokens: (run.usage?.totalTokens || 0) + usage.totalTokens,
+        cost:
+          usage.cost != null
+            ? (run.usage?.cost || 0) + usage.cost
+            : run.usage?.cost,
+        rateLimitRemaining: usage.rateLimitRemaining,
+        rateLimitReset: usage.rateLimitReset,
+      };
+      appendEvent(data, runId, "usage.recorded", "Usage recorded", undefined, {
+        ...usage,
+      });
+      writeStore(data);
+    },
+  );
 }
 
 export function finishTraceRun(
@@ -222,26 +274,35 @@ export function finishTraceRun(
   sessionId?: string,
   detail?: string,
 ): void {
-  const data = readStore();
-  const run = data.runs.find((candidate) => candidate.id === runId);
-  if (!run) return;
-  if (run.status !== "running") return;
-  run.status = status;
-  if (sessionId) run.sessionId = sessionId;
-  const eventType =
-    status === "completed"
-      ? "run.completed"
-      : status === "aborted"
-        ? "run.aborted"
-        : "run.failed";
-  appendEvent(data, runId, eventType, eventTitle(eventType), detail, {
-    sessionId,
-  });
-  writeStore(data);
+  withPerfSpanSync(
+    "trace-store",
+    "finishTraceRun",
+    { status, hasSessionId: Boolean(sessionId), detailLength: detail?.length || 0 },
+    () => {
+      const data = readStore();
+      const run = data.runs.find((candidate) => candidate.id === runId);
+      if (!run) return;
+      if (run.status !== "running") return;
+      run.status = status;
+      if (sessionId) run.sessionId = sessionId;
+      const eventType =
+        status === "completed"
+          ? "run.completed"
+          : status === "aborted"
+            ? "run.aborted"
+            : "run.failed";
+      appendEvent(data, runId, eventType, eventTitle(eventType), detail, {
+        sessionId,
+      });
+      writeStore(data);
+    },
+  );
 }
 
 export function listTraceRuns(): TraceRun[] {
-  return readStore().runs.sort((a, b) => b.updatedAt - a.updatedAt);
+  return withPerfSpanSync("trace-store", "listTraceRuns", undefined, () =>
+    readStore().runs.sort((a, b) => b.updatedAt - a.updatedAt),
+  );
 }
 
 export function getTraceRun(runId: string): TraceRun | null {

@@ -7,6 +7,7 @@ import { readEnv } from "../config";
 import { ensureApiServerConfig, isApiServerReady, isRemoteMode } from "./connection";
 import { sendMessageViaApi } from "./chat-api";
 import { sendMessageViaCli } from "./chat-cli";
+import { isSyntheticChatStreamEnabled, sendSyntheticChatStream } from "./synthetic-chat";
 import type { ChatCallbacks, ChatHandle } from "./types";
 
 let apiServerAvailable: boolean | null = null; // cached after first check
@@ -18,6 +19,10 @@ export async function sendMessage(
   resumeSessionId?: string,
   history?: Array<{ role: string; content: string }>,
 ): Promise<ChatHandle> {
+  if (isSyntheticChatStreamEnabled()) {
+    return sendSyntheticChatStream(message, cb, profile, resumeSessionId, history);
+  }
+
   ensureInitialized();
 
   // Remote mode: always use API, no CLI fallback

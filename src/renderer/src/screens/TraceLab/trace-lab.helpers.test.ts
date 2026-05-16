@@ -3,6 +3,7 @@ import type { TraceEvent, TraceRun, TraceUsage } from "../../../../shared/traces
 import {
   buildConversationTimeline,
   buildTraceConversations,
+  filterTraceConversationsForSessionTarget,
   traceConversationMatchesFilter,
   traceConversationMatchesSearch,
 } from "./trace-lab.helpers";
@@ -79,7 +80,7 @@ describe("Trace Lab conversation helpers", () => {
 
     expect(conversations).toHaveLength(1);
     expect(conversations[0]).toMatchObject({
-      key: "session:session-a",
+      key: "session:default:session-a",
       sessionId: "session-a",
       title: "Initial ask",
       runCount: 2,
@@ -91,9 +92,10 @@ describe("Trace Lab conversation helpers", () => {
   });
 
   it("uses session.resumed metadata to group resumed runs without run.sessionId", () => {
-    const completed = run({ id: "completed", sessionId: "session-b" });
+    const completed = run({ id: "completed", sessionId: "session-b", profile: "work" });
     const failedResume = run({
       id: "failed-resume",
+      profile: "work",
       status: "failed",
       events: [
         event("failed-resume", "resume", "session.resumed", baseTime + 30, {
@@ -109,6 +111,22 @@ describe("Trace Lab conversation helpers", () => {
     expect(conversations[0].runCount).toBe(2);
     expect(conversations[0].status).toBe("failed");
     expect(conversations[0].hasNeedsAttention).toBe(true);
+  });
+
+  it("keeps same session ids in different profiles isolated", () => {
+    const conversations = buildTraceConversations([
+      run({ id: "default-run", sessionId: "session-shared", profile: "default" }),
+      run({ id: "work-run", sessionId: "session-shared", profile: "work" }),
+    ]);
+
+    expect(conversations.map((conversation) => conversation.key).sort()).toEqual([
+      "session:default:session-shared",
+      "session:work:session-shared",
+    ]);
+    expect(conversations.map((conversation) => conversation.primaryProfile).sort()).toEqual([
+      "default",
+      "work",
+    ]);
   });
 
   it("keeps no-session runs isolated", () => {
@@ -141,6 +159,40 @@ describe("Trace Lab conversation helpers", () => {
     expect(traceConversationMatchesSearch(conversation, "")).toBe(true);
     expect(traceConversationMatchesFilter(conversation, "skills")).toBe(true);
     expect(traceConversationMatchesFilter(conversation, "completed")).toBe(true);
+  });
+
+  it("filters conversations for session targets using direct ids, resume metadata, and profile", () => {
+    const conversations = buildTraceConversations([
+      run({ id: "direct-default", sessionId: "session-filter", profile: "default" }),
+      run({ id: "direct-work", sessionId: "session-filter", profile: "work" }),
+      run({
+        id: "resume-work",
+        profile: "work",
+        events: [
+          event("resume-work", "resume", "session.resumed", baseTime + 30, {
+            metadata: { sessionId: "session-resumed" },
+          }),
+        ],
+      }),
+    ]);
+
+    expect(
+      filterTraceConversationsForSessionTarget(conversations, {
+        sessionId: "session-filter",
+        profile: "work",
+      }).map((conversation) => conversation.key),
+    ).toEqual(["session:work:session-filter"]);
+    expect(
+      filterTraceConversationsForSessionTarget(conversations, {
+        sessionId: "session-filter",
+      }).map((conversation) => conversation.key).sort(),
+    ).toEqual(["session:default:session-filter", "session:work:session-filter"]);
+    expect(
+      filterTraceConversationsForSessionTarget(conversations, {
+        sessionId: "session-resumed",
+        profile: "work",
+      }).map((conversation) => conversation.key),
+    ).toEqual(["session:work:session-resumed"]);
   });
 
   it("builds a merged chronological timeline with parent run context", () => {

@@ -1,6 +1,6 @@
 {
   "name": "mercury",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "Mercury — desktop front end for Hermes Agent",
   "main": "./out/main/index.js",
   "author": "fathah",

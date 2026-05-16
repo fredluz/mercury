@@ -4,7 +4,8 @@ import Sessions from "./Sessions";
 
 vi.mock("../../components/useI18n", () => ({
   useI18n: () => ({
-    t: (key: string) => key,
+    t: (key: string, options?: Record<string, unknown>) =>
+      options?.title ? `${key}:${String(options.title)}` : key,
   }),
 }));
 
@@ -62,19 +63,25 @@ describe("Sessions resume profile flow", () => {
     render(
       <Sessions
         onResumeSession={onResumeSession}
+        onOpenSessionTrace={vi.fn()}
         onNewChat={vi.fn()}
         currentSessionId="session-shared"
         currentSessionProfile="work"
       />,
     );
 
-    const workRow = await screen.findByRole("button", { name: /Work session/i });
-    const defaultRow = screen.getByRole("button", { name: /Default session/i });
+    await screen.findByText("Work session");
+    const workRow = screen
+      .getAllByRole("button", { name: /Work session/i })
+      .find((button) => button.classList.contains("sessions-card-primary"));
+    const defaultRow = screen
+      .getAllByRole("button", { name: /Default session/i })
+      .find((button) => button.classList.contains("sessions-card-primary"));
 
-    expect(workRow).toHaveClass("sessions-card--active");
-    expect(defaultRow).not.toHaveClass("sessions-card--active");
+    expect(workRow?.closest(".sessions-card")).toHaveClass("sessions-card--active");
+    expect(defaultRow?.closest(".sessions-card")).not.toHaveClass("sessions-card--active");
 
-    fireEvent.click(workRow);
+    fireEvent.click(workRow!);
     expect(onResumeSession).toHaveBeenCalledWith("session-shared", "Work session", "work");
   });
 
@@ -83,6 +90,7 @@ describe("Sessions resume profile flow", () => {
     render(
       <Sessions
         onResumeSession={onResumeSession}
+        onOpenSessionTrace={vi.fn()}
         onNewChat={vi.fn()}
         currentSessionId={null}
       />,
@@ -93,9 +101,76 @@ describe("Sessions resume profile flow", () => {
     });
     await waitFor(() => expect(window.hermesAPI.searchSessions).toHaveBeenCalledWith("text"));
 
-    const searchRow = await screen.findByRole("button", { name: /Search hit/i });
-    fireEvent.click(searchRow);
+    await screen.findByText("Search hit");
+    const searchRow = screen
+      .getAllByRole("button", { name: /Search hit/i })
+      .find((button) => button.classList.contains("sessions-card-primary"));
+    fireEvent.click(searchRow!);
 
     expect(onResumeSession).toHaveBeenCalledWith("search-hit", "Search hit", "research");
+  });
+
+  it("opens traces for a cached row without resuming it", async () => {
+    const onResumeSession = vi.fn();
+    const onOpenSessionTrace = vi.fn();
+    render(
+      <Sessions
+        onResumeSession={onResumeSession}
+        onOpenSessionTrace={onOpenSessionTrace}
+        onNewChat={vi.fn()}
+        currentSessionId={null}
+      />,
+    );
+
+    await screen.findByText("Work session");
+    fireEvent.click(
+      screen.getByRole("button", { name: "sessions.viewTracesAria:Work session" }),
+    );
+
+    expect(onOpenSessionTrace).toHaveBeenCalledWith("session-shared", "Work session", "work");
+    expect(onResumeSession).not.toHaveBeenCalled();
+  });
+
+  it("opens traces for a search result without resuming it", async () => {
+    const onResumeSession = vi.fn();
+    const onOpenSessionTrace = vi.fn();
+    render(
+      <Sessions
+        onResumeSession={onResumeSession}
+        onOpenSessionTrace={onOpenSessionTrace}
+        onNewChat={vi.fn()}
+        currentSessionId={null}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("sessions.searchPlaceholder"), {
+      target: { value: "text" },
+    });
+    await waitFor(() => expect(window.hermesAPI.searchSessions).toHaveBeenCalledWith("text"));
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "sessions.viewTracesAria:Search hit" }),
+    );
+
+    expect(onOpenSessionTrace).toHaveBeenCalledWith("search-hit", "Search hit", "research");
+    expect(onResumeSession).not.toHaveBeenCalled();
+  });
+
+  it("opens all trace activity from the header", async () => {
+    const onOpenTraceActivity = vi.fn();
+    render(
+      <Sessions
+        onResumeSession={vi.fn()}
+        onOpenSessionTrace={vi.fn()}
+        onOpenTraceActivity={onOpenTraceActivity}
+        onNewChat={vi.fn()}
+        currentSessionId={null}
+      />,
+    );
+
+    await screen.findByText("Default session");
+    fireEvent.click(screen.getByRole("button", { name: "sessions.traceActivity" }));
+
+    expect(onOpenTraceActivity).toHaveBeenCalledTimes(1);
   });
 });

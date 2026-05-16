@@ -162,6 +162,13 @@ describe("New APIs from v0.8/v0.9 features", () => {
     expect(preloadMethods).toContain("generateChatTitle");
     expect(typeMethods).toContain("generateChatTitle");
   });
+
+  it("has local opt-in perf telemetry APIs", () => {
+    expect(preloadMethods).toContain("getPerfTelemetryConfig");
+    expect(preloadMethods).toContain("recordPerfEvent");
+    expect(typeMethods).toContain("getPerfTelemetryConfig");
+    expect(typeMethods).toContain("recordPerfEvent");
+  });
 });
 
 // ─── Legacy APIs still present ──────────────────────────

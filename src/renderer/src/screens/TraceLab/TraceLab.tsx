@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertCircle,
+  ArrowLeft,
   BookOpenCheck,
   BrainCircuit,
   CheckCircle2,
@@ -12,6 +13,7 @@ import {
   Search,
 } from "lucide-react";
 import type { SkillTrainingRun, TraceRun } from "../../../../shared/traces";
+import { useI18n } from "../../components/useI18n";
 
 import {
   EmptyState,
@@ -21,16 +23,40 @@ import {
   SkillTraceSummary,
   TraceEventRow,
 } from "./components/TraceLabComponents";
-import { RUN_FILTERS, type RunFilter, type SelectedEventRef, type TraceConversation } from "./trace-lab.types";
+import {
+  RUN_FILTERS,
+  type RunFilter,
+  type SelectedEventRef,
+  type TraceConversation,
+  type TraceSessionTarget,
+} from "./trace-lab.types";
 import {
   buildConversationTimeline,
   buildTraceConversations,
+  filterTraceConversationsForSessionTarget,
   formatTime,
   traceConversationMatchesFilter,
   traceConversationMatchesSearch,
 } from "./trace-lab.helpers";
 
-function TraceLab(): React.JSX.Element {
+interface TraceLabProps {
+  mode?: "all" | "session";
+  sessionTarget?: TraceSessionTarget | null;
+  reloadToken?: number;
+  onBackToSessions?: () => void;
+}
+
+function shortSessionId(value: string): string {
+  return value.length <= 10 ? value : `${value.slice(0, 6)}…${value.slice(-4)}`;
+}
+
+function TraceLab({
+  mode = "all",
+  sessionTarget = null,
+  reloadToken = 0,
+  onBackToSessions,
+}: TraceLabProps): React.JSX.Element {
+  const { t } = useI18n();
   const [runs, setRuns] = useState<TraceRun[]>([]);
   const [selectedConversationKey, setSelectedConversationKey] = useState<string | null>(null);
   const [selectedEventRef, setSelectedEventRef] = useState<SelectedEventRef | null>(null);
@@ -56,32 +82,36 @@ function TraceLab(): React.JSX.Element {
       void load();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [reloadToken]);
 
   const conversations = useMemo(() => buildTraceConversations(runs), [runs]);
+  const isSessionMode = mode === "session" && Boolean(sessionTarget);
+
+  const sessionConversations = useMemo(() => {
+    if (!isSessionMode || !sessionTarget) return [];
+    return filterTraceConversationsForSessionTarget(conversations, sessionTarget);
+  }, [conversations, isSessionMode, sessionTarget]);
 
   const filteredConversations = useMemo(() => {
+    if (isSessionMode) return sessionConversations;
     return conversations.filter(
       (conversation) =>
         traceConversationMatchesFilter(conversation, runFilter) &&
         traceConversationMatchesSearch(conversation, runQuery),
     );
-  }, [conversations, runFilter, runQuery]);
+  }, [conversations, isSessionMode, runFilter, runQuery, sessionConversations]);
+
+  const metricConversations = isSessionMode ? sessionConversations : conversations;
 
   const selectedConversation = useMemo(() => {
-    const selected = conversations.find(
+    const selected = filteredConversations.find(
       (conversation) => conversation.key === selectedConversationKey,
     );
-    if (
-      selected &&
-      filteredConversations.some((conversation) => conversation.key === selected.key)
-    ) {
-      return selected;
-    }
+    if (selected) return selected;
     if (filteredConversations[0]) return filteredConversations[0];
-    if (runQuery.trim() || runFilter !== "all") return null;
-    return conversations[0] || null;
-  }, [conversations, filteredConversations, runFilter, runQuery, selectedConversationKey]);
+    if (!isSessionMode && !runQuery.trim() && runFilter === "all") return conversations[0] || null;
+    return null;
+  }, [conversations, filteredConversations, isSessionMode, runFilter, runQuery, selectedConversationKey]);
 
   const timeline = useMemo(
     () => (selectedConversation ? buildConversationTimeline(selectedConversation) : []),
@@ -106,6 +136,38 @@ function TraceLab(): React.JSX.Element {
       (skillRun) => skillRun.linkedRunId && selectedRunIds.has(skillRun.linkedRunId),
     );
   }, [selectedConversation, skillRuns]);
+
+  const metricSkillRunCount = useMemo(() => {
+    if (!isSessionMode) return skillRuns.length;
+    const scopedRunIds = new Set(
+      metricConversations.flatMap((conversation) => conversation.runs.map((run) => run.id)),
+    );
+    return skillRuns.filter(
+      (skillRun) => skillRun.linkedRunId && scopedRunIds.has(skillRun.linkedRunId),
+    ).length;
+  }, [isSessionMode, metricConversations, skillRuns]);
+
+  useEffect(() => {
+    if (!isSessionMode) return;
+    const nextConversation = sessionConversations[0] || null;
+    setSelectedConversationKey(nextConversation?.key ?? null);
+    const firstTimelineItem = nextConversation
+      ? buildConversationTimeline(nextConversation)[0]
+      : null;
+    setSelectedEventRef(
+      firstTimelineItem
+        ? { runId: firstTimelineItem.run.id, eventId: firstTimelineItem.event.id }
+        : null,
+    );
+    if (nextConversation?.runCount && nextConversation.runCount > 1) {
+      setExpandedConversationKeys((current) => new Set(current).add(nextConversation.key));
+    }
+  }, [isSessionMode, sessionConversations]);
+
+  const headerTitle = isSessionMode
+    ? sessionTarget?.title?.trim() || selectedConversation?.title ||
+      (sessionTarget ? `Session ${shortSessionId(sessionTarget.sessionId)}` : "Session Trace")
+    : "Trace Lab";
 
   function selectConversation(conversation: TraceConversation): void {
     setSelectedConversationKey(conversation.key);
@@ -150,20 +212,29 @@ function TraceLab(): React.JSX.Element {
   }
 
   return (
-    <div className="trace-lab">
+    <div className={`trace-lab ${isSessionMode ? "trace-lab--session" : ""}`}>
       <header className="trace-lab-header">
         <div>
-          <p className="trace-eyebrow">Agent Intelligence</p>
-          <h2>Trace Lab</h2>
+          <p className="trace-eyebrow">
+            {isSessionMode ? "Session Trace" : "Agent Intelligence"}
+          </p>
+          <h2>{headerTitle}</h2>
           <p className="trace-lab-subtitle">
-            Review full conversations first, then expand the runs and structured
-            events that explain how Hermes answered.
+            {isSessionMode
+              ? "Review the timeline, details, and inspector for this session without a duplicate conversation list."
+              : "Review full conversations first, then expand the runs and structured events that explain how Hermes answered."}
           </p>
         </div>
         <div className="trace-header-actions">
+          {onBackToSessions ? (
+            <button className="btn btn-secondary" onClick={onBackToSessions}>
+              <ArrowLeft size={15} />
+              {t("sessions.backToSessions")}
+            </button>
+          ) : null}
           <span className="trace-mode-badge">
             <MessagesSquare size={14} />
-            Conversations
+            {isSessionMode ? "Session" : "Conversations"}
           </span>
           <span className="trace-mode-badge">
             <BookOpenCheck size={14} />
@@ -177,21 +248,22 @@ function TraceLab(): React.JSX.Element {
       </header>
 
       <section className="trace-metrics" aria-label="Trace metrics">
-        <Metric icon={Activity} label="Conversations" value={conversations.length} />
+        <Metric icon={Activity} label="Conversations" value={metricConversations.length} />
         <Metric
           icon={CheckCircle2}
           label="Completed"
-          value={conversations.filter((conversation) => conversation.status === "completed").length}
+          value={metricConversations.filter((conversation) => conversation.status === "completed").length}
         />
         <Metric
           icon={AlertCircle}
           label="Needs attention"
-          value={conversations.filter((conversation) => conversation.hasNeedsAttention).length}
+          value={metricConversations.filter((conversation) => conversation.hasNeedsAttention).length}
         />
-        <Metric icon={BrainCircuit} label="Skill reviews" value={skillRuns.length} />
+        <Metric icon={BrainCircuit} label="Skill reviews" value={metricSkillRunCount} />
       </section>
 
-      <section className="trace-workbench">
+      <section className={`trace-workbench ${isSessionMode ? "trace-workbench--session" : ""}`}>
+        {!isSessionMode ? (
         <aside className="trace-run-list" aria-label="Trace conversations">
           <div className="trace-panel-heading">
             <div>
@@ -295,6 +367,7 @@ function TraceLab(): React.JSX.Element {
             )}
           </div>
         </aside>
+        ) : null}
 
         <article className="trace-detail" aria-label="Selected trace conversation">
           {selectedConversation ? (
@@ -373,7 +446,10 @@ function TraceLab(): React.JSX.Element {
               />
             </>
           ) : (
-            <EmptyState title="No conversation selected" />
+            <EmptyState
+              title={isSessionMode ? t("sessions.noSessionTraces") : "No conversation selected"}
+              body={isSessionMode ? t("sessions.noSessionTracesHint") : undefined}
+            />
           )}
         </article>
 

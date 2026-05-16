@@ -3,6 +3,7 @@ import { homedir } from "os";
 import { join } from "path";
 import net from "net";
 import http from "http";
+import { recordPerfEvent, withPerfSpan } from "./perf/telemetry";
 
 export interface SshConfig {
   host: string;
@@ -118,46 +119,104 @@ function buildSshArgs(config: SshConfig, localPort: number): string[] {
   ];
 }
 
+function sshTunnelMeta(config: SshConfig, localPort?: number): Record<string, unknown> {
+  return {
+    hostConfigured: Boolean(config.host?.trim()),
+    usernameConfigured: Boolean(config.username?.trim()),
+    hasKeyPath: Boolean(config.keyPath?.trim()),
+    sshPort: config.port || 22,
+    remotePort: config.remotePort,
+    requestedLocalPort: config.localPort,
+    localPort,
+  };
+}
+
 export async function startSshTunnel(config: SshConfig): Promise<void> {
-  stopSshTunnel();
-
-  const localPort = await findFreePort(config.localPort || 18642);
-  activeConfig = { ...config, localPort };
-  tunnelRunning = false;
-
-  tunnelProcess = spawn("ssh", buildSshArgs(config, localPort), {
-    stdio: "ignore",
-    detached: false,
-  });
-
-  tunnelProcess.on("exit", () => {
-    tunnelRunning = false;
-    tunnelProcess = null;
-    activeConfig = null;
-  });
-
-  tunnelProcess.on("error", () => {
-    tunnelRunning = false;
-    tunnelProcess = null;
-    activeConfig = null;
-  });
-
-  try {
-    await waitForPort(localPort, 12000);
-    tunnelRunning = true;
-    await waitForHealth(localPort, 20000);
-  } catch (err) {
+  await withPerfSpan("ssh", "ssh.tunnel.start", sshTunnelMeta(config), async () => {
     stopSshTunnel();
-    throw err;
-  }
+
+    const localPort = await withPerfSpan(
+      "ssh",
+      "ssh.tunnel.find_free_port",
+      sshTunnelMeta(config),
+      () => findFreePort(config.localPort || 18642),
+    );
+    activeConfig = { ...config, localPort };
+    tunnelRunning = false;
+
+    tunnelProcess = await withPerfSpan(
+      "ssh",
+      "ssh.tunnel.spawn",
+      sshTunnelMeta(config, localPort),
+      async () => spawn("ssh", buildSshArgs(config, localPort), {
+        stdio: "ignore",
+        detached: false,
+      }),
+    );
+
+    tunnelProcess.on("exit", () => {
+      tunnelRunning = false;
+      tunnelProcess = null;
+      activeConfig = null;
+      recordPerfEvent({
+        scope: "ssh",
+        name: "ssh.tunnel.process_exit",
+        phase: "mark",
+        meta: sshTunnelMeta(config, localPort),
+      });
+    });
+
+    tunnelProcess.on("error", () => {
+      tunnelRunning = false;
+      tunnelProcess = null;
+      activeConfig = null;
+      recordPerfEvent({
+        scope: "ssh",
+        name: "ssh.tunnel.process_error",
+        phase: "mark",
+        ok: false,
+        meta: sshTunnelMeta(config, localPort),
+      });
+    });
+
+    try {
+      await withPerfSpan(
+        "ssh",
+        "ssh.tunnel.wait_for_port",
+        sshTunnelMeta(config, localPort),
+        () => waitForPort(localPort, 12000),
+      );
+      tunnelRunning = true;
+      await withPerfSpan(
+        "ssh",
+        "ssh.tunnel.wait_for_health",
+        sshTunnelMeta(config, localPort),
+        () => waitForHealth(localPort, 20000),
+      );
+    } catch (err) {
+      stopSshTunnel();
+      throw err;
+    }
+  });
 }
 
 export function stopSshTunnel(): void {
+  const hadProcess = Boolean(tunnelProcess && !tunnelProcess.killed);
+  const meta = activeConfig ? sshTunnelMeta(activeConfig, activeConfig.localPort) : { hadProcess };
   if (tunnelProcess && !tunnelProcess.killed) {
     tunnelProcess.kill("SIGTERM");
   }
   tunnelRunning = false;
   activeConfig = null;
+  recordPerfEvent({
+    scope: "ssh",
+    name: "ssh.tunnel.stop",
+    phase: "mark",
+    meta: {
+      ...meta,
+      hadProcess,
+    },
+  });
 }
 
 export async function ensureSshTunnel(config: SshConfig): Promise<void> {

@@ -7,6 +7,7 @@ import {
 import type { TraceEvent } from "../../../../../shared/traces";
 import { PROVIDERS } from "../../../constants";
 import { useI18n } from "../../../components/useI18n";
+import { markRendererPerf } from "../../../perf";
 import { SLASH_COMMANDS } from "../chat.constants";
 import { isChatActivityEvent } from "../chatActivity";
 import { executeLocalCommand, isLocalSlashCommand } from "../chatCommands";
@@ -90,6 +91,16 @@ export function useChatController({
   const currentContextInfoRef = useRef(currentContextInfo);
   const currentModelRef = useRef(currentModel);
   const currentProviderRef = useRef(currentProvider);
+  const currentChatPerfRef = useRef<{
+    runSeq: number;
+    kind: string;
+    messageLength: number;
+    historyCount: number;
+    startedAtMs: number;
+    hasResumeSession: boolean;
+  } | null>(null);
+  const chunkCallbackCountRef = useRef(0);
+  const firstChunkMarkedRunSeqRef = useRef<number | null>(null);
 
   isLoadingRef.current = isLoading;
   messagesRef.current = messages;
@@ -122,6 +133,9 @@ export function useChatController({
     if (activeRunSeq != null) cancelledSendRunSeqsRef.current.add(activeRunSeq);
     activeSendRunSeqRef.current = null;
     finalizedSendRunSeqRef.current = null;
+    currentChatPerfRef.current = null;
+    chunkCallbackCountRef.current = 0;
+    firstChunkMarkedRunSeqRef.current = null;
     setIsLoading(false);
   }, [conversationVersion, profile]);
 
@@ -199,6 +213,9 @@ export function useChatController({
     activeSendRunSeqRef.current = runSeq;
     finalizedSendRunSeqRef.current = null;
     cancelledSendRunSeqsRef.current.delete(runSeq);
+    currentChatPerfRef.current = null;
+    chunkCallbackCountRef.current = 0;
+    firstChunkMarkedRunSeqRef.current = null;
     setIsLoading(true);
     return runSeq;
   }, []);
@@ -238,6 +255,35 @@ export function useChatController({
   const isSendRunCurrentOrFinalized = useCallback((runSeq: number): boolean => {
     if (cancelledSendRunSeqsRef.current.has(runSeq)) return false;
     return activeSendRunSeqRef.current === runSeq || finalizedSendRunSeqRef.current === runSeq;
+  }, []);
+
+  const markChatPerfRunStart = useCallback(
+    (kind: string, runSeq: number, messageLength: number, historyCount: number, hasResumeSession: boolean): void => {
+      const startedAtMs = typeof performance !== "undefined" ? performance.now() : Date.now();
+      currentChatPerfRef.current = {
+        runSeq,
+        kind,
+        messageLength,
+        historyCount,
+        startedAtMs,
+        hasResumeSession,
+      };
+      chunkCallbackCountRef.current = 0;
+      firstChunkMarkedRunSeqRef.current = null;
+      markRendererPerf("chat-render", "chat.send.intent", {
+        runSeq,
+        kind,
+        messageLength,
+        historyCount,
+        hasResumeSession,
+      });
+    },
+    [],
+  );
+
+  const getChatPerfElapsedMs = useCallback((startedAtMs: number): number => {
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    return now - startedAtMs;
   }, []);
 
   const appendFallbackSendError = useCallback(
@@ -348,6 +394,26 @@ export function useChatController({
 
   useEffect(() => {
     const cleanupChunk = window.hermesAPI.onChatChunk((chunk) => {
+      const perfRun = currentChatPerfRef.current;
+      if (perfRun) {
+        chunkCallbackCountRef.current += 1;
+        const chunkCount = chunkCallbackCountRef.current;
+        const meta = {
+          runSeq: perfRun.runSeq,
+          kind: perfRun.kind,
+          messageLength: perfRun.messageLength,
+          historyCount: perfRun.historyCount,
+          chunkLength: chunk.length,
+          chunkCount,
+          elapsedMs: getChatPerfElapsedMs(perfRun.startedAtMs),
+        };
+        if (firstChunkMarkedRunSeqRef.current !== perfRun.runSeq && chunk.trim()) {
+          firstChunkMarkedRunSeqRef.current = perfRun.runSeq;
+          markRendererPerf("chat-render", "chat.chunk.first_callback", meta);
+        } else if (chunkCount === 1 || chunkCount % 20 === 0) {
+          markRendererPerf("chat-render", "chat.chunk.callback_sample", meta);
+        }
+      }
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last && last.role === "agent") return [...prev.slice(0, -1), { ...last, content: last.content + chunk }];
@@ -357,10 +423,34 @@ export function useChatController({
     });
     const cleanupTraceEvent = window.hermesAPI.onChatTraceEvent(appendActivityEvent);
     const cleanupDone = window.hermesAPI.onChatDone((sessionId) => {
+      const perfRun = currentChatPerfRef.current;
+      if (perfRun) {
+        markRendererPerf("chat-render", "chat.done.callback", {
+          runSeq: perfRun.runSeq,
+          kind: perfRun.kind,
+          messageLength: perfRun.messageLength,
+          historyCount: perfRun.historyCount,
+          chunkCount: chunkCallbackCountRef.current,
+          elapsedMs: getChatPerfElapsedMs(perfRun.startedAtMs),
+          sessionIdPresent: Boolean(sessionId),
+        });
+      }
       if (sessionId) setHermesSessionId(sessionId);
       finalizeActiveChatRun("completed");
     });
     const cleanupError = window.hermesAPI.onChatError((error) => {
+      const perfRun = currentChatPerfRef.current;
+      if (perfRun) {
+        markRendererPerf("chat-render", "chat.error.callback", {
+          runSeq: perfRun.runSeq,
+          kind: perfRun.kind,
+          messageLength: perfRun.messageLength,
+          historyCount: perfRun.historyCount,
+          chunkCount: chunkCallbackCountRef.current,
+          elapsedMs: getChatPerfElapsedMs(perfRun.startedAtMs),
+          errorLength: error.length,
+        });
+      }
       setMessages((prev) => [...prev, { id: `error-${Date.now()}`, role: "agent", content: `Error: ${error}` }]);
       finalizeActiveChatRun("failed");
     });
@@ -387,7 +477,7 @@ export function useChatController({
       cleanupError();
       cleanupUsage();
     };
-  }, [appendActivityEvent, finalizeActiveChatRun, setMessages]);
+  }, [appendActivityEvent, finalizeActiveChatRun, getChatPerfElapsedMs, setMessages]);
 
   useEffect(() => scrollToBottom(), [messages, activityGroups, scrollToBottom]);
 
@@ -499,6 +589,9 @@ export function useChatController({
     activeActivityGroupIdRef.current = null;
     activeSendRunSeqRef.current = null;
     finalizedSendRunSeqRef.current = null;
+    currentChatPerfRef.current = null;
+    chunkCallbackCountRef.current = 0;
+    firstChunkMarkedRunSeqRef.current = null;
     sessionIdRef.current = null;
     onSessionReset?.();
   }
@@ -526,6 +619,7 @@ export function useChatController({
     const historyMessages = messages.map((m) => ({ role: m.role, content: m.content }));
     const runSeq = beginChatRun();
     const resumeSessionId = getResumeSessionId();
+    markChatPerfRunStart("send", runSeq, text.length, historyMessages.length, Boolean(resumeSessionId));
     setMessages((prev) => [...prev, userMessage]);
     beginActivityGroup(userMessage.id);
     onSessionStarted?.();
@@ -536,6 +630,17 @@ export function useChatController({
         resumeSessionId,
         historyMessages,
       );
+      const perfRun = currentChatPerfRef.current;
+      markRendererPerf("chat-render", "chat.send.ipc.resolved", {
+        runSeq,
+        kind: "send",
+        messageLength: text.length,
+        historyCount: historyMessages.length,
+        chunkCount: perfRun?.runSeq === runSeq ? chunkCallbackCountRef.current : undefined,
+        elapsedMs: perfRun?.runSeq === runSeq ? getChatPerfElapsedMs(perfRun.startedAtMs) : undefined,
+        responseLength: result.response.length,
+        sessionIdPresent: Boolean(result.sessionId || resumeSessionId),
+      });
       const resolvedSessionId = result.sessionId || resumeSessionId;
       const shouldApplyResult = isSendRunCurrentOrFinalized(runSeq);
       if (shouldApplyResult && resolvedSessionId) {
@@ -559,6 +664,16 @@ export function useChatController({
       finalizeChatRun(runSeq, "completed");
       if (shouldApplyResult) await requestGeneratedTitleOnce(resolvedSessionId, titleMessages, requestSeq);
     } catch (error) {
+      const perfRun = currentChatPerfRef.current;
+      markRendererPerf("chat-render", "chat.send.ipc.rejected", {
+        runSeq,
+        kind: "send",
+        messageLength: text.length,
+        historyCount: historyMessages.length,
+        chunkCount: perfRun?.runSeq === runSeq ? chunkCallbackCountRef.current : undefined,
+        elapsedMs: perfRun?.runSeq === runSeq ? getChatPerfElapsedMs(perfRun.startedAtMs) : undefined,
+        errorType: error instanceof Error ? error.name : typeof error,
+      });
       // Error is usually handled by onChatError IPC listener; only show fallback when no terminal IPC arrived.
       if (finalizeChatRun(runSeq, "failed")) appendFallbackSendError(error);
     }
@@ -570,19 +685,42 @@ export function useChatController({
     setInput("");
     if (inputRef.current) inputRef.current.style.height = "auto";
     const userMessage: ChatMessage = { id: `user-btw-${Date.now()}`, role: "user", content: `💭 ${text}` };
+    const historyMessages = messages.map((m) => ({ role: m.role, content: m.content }));
     const runSeq = beginChatRun();
     const resumeSessionId = getResumeSessionId();
+    markChatPerfRunStart("quick-ask", runSeq, text.length, historyMessages.length, Boolean(resumeSessionId));
     setMessages((prev) => [...prev, userMessage]);
     beginActivityGroup(userMessage.id);
     try {
-      await window.hermesAPI.sendMessage(
+      const result = await window.hermesAPI.sendMessage(
         `/btw ${text}`,
         profile,
         resumeSessionId,
-        messages.map((m) => ({ role: m.role, content: m.content })),
+        historyMessages,
       );
+      const perfRun = currentChatPerfRef.current;
+      markRendererPerf("chat-render", "chat.send.ipc.resolved", {
+        runSeq,
+        kind: "quick-ask",
+        messageLength: text.length,
+        historyCount: historyMessages.length,
+        chunkCount: perfRun?.runSeq === runSeq ? chunkCallbackCountRef.current : undefined,
+        elapsedMs: perfRun?.runSeq === runSeq ? getChatPerfElapsedMs(perfRun.startedAtMs) : undefined,
+        responseLength: result.response.length,
+        sessionIdPresent: Boolean(result.sessionId || resumeSessionId),
+      });
       finalizeChatRun(runSeq, "completed");
     } catch (error) {
+      const perfRun = currentChatPerfRef.current;
+      markRendererPerf("chat-render", "chat.send.ipc.rejected", {
+        runSeq,
+        kind: "quick-ask",
+        messageLength: text.length,
+        historyCount: historyMessages.length,
+        chunkCount: perfRun?.runSeq === runSeq ? chunkCallbackCountRef.current : undefined,
+        elapsedMs: perfRun?.runSeq === runSeq ? getChatPerfElapsedMs(perfRun.startedAtMs) : undefined,
+        errorType: error instanceof Error ? error.name : typeof error,
+      });
       // Error is usually handled by onChatError IPC listener; only show fallback when no terminal IPC arrived.
       if (finalizeChatRun(runSeq, "failed")) appendFallbackSendError(error);
     }
@@ -650,6 +788,17 @@ export function useChatController({
   }
 
   function handleAbort(): void {
+    const perfRun = currentChatPerfRef.current;
+    if (perfRun) {
+      markRendererPerf("chat-render", "chat.abort.intent", {
+        runSeq: perfRun.runSeq,
+        kind: perfRun.kind,
+        messageLength: perfRun.messageLength,
+        historyCount: perfRun.historyCount,
+        chunkCount: chunkCallbackCountRef.current,
+        elapsedMs: getChatPerfElapsedMs(perfRun.startedAtMs),
+      });
+    }
     window.hermesAPI.abortChat();
     cancelActiveChatRun("aborted");
     setTimeout(() => inputRef.current?.focus(), 50);
