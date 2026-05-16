@@ -1,0 +1,129 @@
+{
+  "runId": "startup-smoke-2026-05-16T10-16",
+  "kind": "startup-perf",
+  "date": "2026-05-16T10:16:56.333Z",
+  "repoRoot": "/Users/fredluz/Code/mercury",
+  "options": {
+    "samples": 1,
+    "warmups": 0,
+    "timeoutMs": 30000
+  },
+  "summary": {
+    "launchToFirstWindowMs": {
+      "min": 1286.825875,
+      "median": 1286.825875,
+      "p95": 1286.825875,
+      "max": 1286.825875,
+      "mean": 1286.825875,
+      "stddev": 0
+    },
+    "launchToDomContentLoadedMs": {
+      "min": 1330.411583,
+      "median": 1330.411583,
+      "p95": 1330.411583,
+      "max": 1330.411583,
+      "mean": 1330.411583,
+      "stddev": 0
+    },
+    "launchToChatVisibleMs": {
+      "min": 2749.256333,
+      "median": 2749.256333,
+      "p95": 2749.256333,
+      "max": 2749.256333,
+      "mean": 2749.256333,
+      "stddev": 0
+    },
+    "mainReadyToShowMs": {
+      "min": 655.807583,
+      "median": 655.807583,
+      "p95": 655.807583,
+      "max": 655.807583,
+      "mean": 655.807583,
+      "stddev": 0
+    },
+    "rendererEntryToLayoutMountedMs": {
+      "min": 1362.800048828125,
+      "median": 1362.800048828125,
+      "p95": 1362.800048828125,
+      "max": 1362.800048828125,
+      "mean": 1362.800048828125,
+      "stddev": 0
+    },
+    "installCheckMs": {
+      "min": 22,
+      "median": 22,
+      "p95": 22,
+      "max": 22,
+      "mean": 22,
+      "stddev": 0
+    }
+  },
+  "samples": [
+    {
+      "index": 0,
+      "kind": "sample",
+      "status": "PASS",
+      "diagFile": "prompt-exports/perf-runs/startup-smoke-2026-05-16T10-16-sample-0.ndjson",
+      "launchToFirstWindowMs": 1286.825875,
+      "launchToDomContentLoadedMs": 1330.411583,
+      "launchToChatVisibleMs": 2749.256333,
+      "telemetry": {
+        "eventCount": 23,
+        "mainDidFinishLoadMs": 655.213458,
+        "mainReadyToShowMs": 655.807583,
+        "rendererEntryToLayoutMountedMs": 1362.800048828125,
+        "installCheckMs": 22,
+        "memorySnapshots": [
+          {
+            "name": "startup.memory.snapshot",
+            "meta": {
+              "phaseName": "app-ready",
+              "resourceUsage": "{\"userCPUTime\":144289,\"systemCPUTime\":112707,\"maxRSS\":127696,\"fsRead\":0,\"fsWrite\":0,\"voluntaryContextSwitches\":503,\"involuntaryContextSwitches\":2875}",
+              "appMetrics": "{\"processCount\":1,\"byType\":\"{\\\"Browser\\\":1}\",\"memoryWorkingSetSize\":127712}",
+              "rssBytes": 130777088,
+              "heapUsedBytes": 7417752,
+              "heapTotalBytes": 9584640,
+              "externalBytes": 3213749
+            }
+          },
+          {
+            "name": "startup.memory.snapshot",
+            "meta": {
+              "phaseName": "before-window-create",
+              "resourceUsage": "{\"userCPUTime\":146137,\"systemCPUTime\":113100,\"maxRSS\":127936,\"fsRead\":0,\"fsWrite\":0,\"voluntaryContextSwitches\":503,\"involuntaryContextSwitches\":2881}",
+              "appMetrics": "{\"processCount\":1,\"byType\":\"{\\\"Browser\\\":1}\",\"memoryWorkingSetSize\":127952}",
+              "rssBytes": 131022848,
+              "heapUsedBytes": 7607476,
+              "heapTotalBytes": 9584640,
+              "externalBytes": 3213789
+            }
+          },
+          {
+            "name": "startup.memory.snapshot",
+            "meta": {
+              "phaseName": "did-finish-load",
+              "resourceUsage": "{\"userCPUTime\":223659,\"systemCPUTime\":164572,\"maxRSS\":167920,\"fsRead\":0,\"fsWrite\":0,\"voluntaryContextSwitches\":756,\"involuntaryContextSwitches\":4720}",
+              "appMetrics": "{\"processCount\":4,\"byType\":\"{\\\"Browser\\\":1,\\\"GPU\\\":1,\\\"Utility\\\":1,\\\"Tab\\\":1}\",\"memoryWorkingSetSize\":388640}",
+              "rssBytes": 170786816,
+              "heapUsedBytes": 6938876,
+              "heapTotalBytes": 10371072,
+              "externalBytes": 2812304
+            }
+          },
+          {
+            "name": "startup.memory.snapshot",
+            "meta": {
+              "phaseName": "ready-to-show",
+              "resourceUsage": "{\"userCPUTime\":223974,\"systemCPUTime\":164914,\"maxRSS\":167920,\"fsRead\":0,\"fsWrite\":0,\"voluntaryContextSwitches\":756,\"involuntaryContextSwitches\":4726}",
+              "appMetrics": "{\"processCount\":4,\"byType\":\"{\\\"Browser\\\":1,\\\"GPU\\\":1,\\\"Utility\\\":1,\\\"Tab\\\":1}\",\"memoryWorkingSetSize\":388656}",
+              "rssBytes": 170786816,
+              "heapUsedBytes": 6961812,
+              "heapTotalBytes": 10371072,
+              "externalBytes": 2812304
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
