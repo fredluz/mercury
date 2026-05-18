@@ -13,7 +13,9 @@ describe("reliable profile runtime contract sentinels", () => {
   it("defines a shared diagnostic surface and structured main-process runtime contract", () => {
     const sharedRuntime = src("src/shared/runtime.ts");
     const mainTypes = src("src/main/hermes/types.ts");
-    const runtimeManager = src("src/main/hermes/runtime.ts");
+    const runtimeBarrel = src("src/main/hermes/runtime.ts");
+    const runtimeManager = src("src/main/hermes/runtime/manager.ts");
+    const runtimeIdentity = src("src/main/hermes/runtime/identity.ts");
 
     for (const field of [
       "selectedProfile",
@@ -46,9 +48,14 @@ describe("reliable profile runtime contract sentinels", () => {
     expect(mainTypes).toContain('"runtime-unsupported-remote-profile"');
     expect(mainTypes).toContain("export class ProfileRuntimeError extends Error");
 
+    expect(runtimeBarrel).toContain("ProfileRuntimeManager");
+    expect(runtimeBarrel).toContain("ProfileRuntimeManagerDeps");
+    expect(runtimeBarrel).toContain("profileRuntimeManager");
+    expect(runtimeBarrel).toContain("buildHermesProfileCommandArgs");
+    expect(runtimeBarrel).toContain("defaultLocalApiPortForProfile");
     expect(runtimeManager).toContain("export class ProfileRuntimeManager");
     expect(runtimeManager).toContain("private readonly states = new Map<string, RuntimeState>()");
-    expect(runtimeManager).toContain("createUnverifiedExternalIdentity");
+    expect(runtimeIdentity).toContain("createUnverifiedExternalIdentity");
     expect(runtimeManager).toContain("runtime-unsupported-remote-profile");
     expect(runtimeManager).toContain("markRuntimeStale");
     expect(runtimeManager).toContain("markAllRuntimeStale");
@@ -144,7 +151,10 @@ describe("reliable profile runtime contract sentinels", () => {
     const sshConfig = src("src/main/ssh/config.ts");
     const sshSkills = src("src/main/ssh/skills.ts");
     const sshTunnel = src("src/main/ssh-tunnel.ts");
-    const runtimeManager = src("src/main/hermes/runtime.ts");
+    const runtimeBarrel = src("src/main/hermes/runtime.ts");
+    const runtimeManager = src("src/main/hermes/runtime/manager.ts");
+    const runtimeIdentity = src("src/main/hermes/runtime/identity.ts");
+    const runtimeSsh = src("src/main/hermes/runtime/ssh-runtime.ts");
     const ipcGateway = src("src/main/ipc/gateway.ts");
     const ipcConfig = src("src/main/ipc/config.ts");
 
@@ -173,8 +183,9 @@ describe("reliable profile runtime contract sentinels", () => {
 
     expect(runtimeManager).toContain('if (mode === "remote")');
     expect(runtimeManager).toContain('"runtime-unsupported-remote-profile"');
-    expect(runtimeManager).toContain('const transport = request.mode === "ssh" ? "ssh-api" : "remote-api"');
-    expect(runtimeManager).toContain("SSH tunnel is not verified for profile");
+    expect(runtimeBarrel).toContain("profileRuntimeManager");
+    expect(runtimeIdentity).toContain('const transport = request.mode === "ssh" ? "ssh-api" : "remote-api"');
+    expect(runtimeSsh).toContain("SSH tunnel is not verified for profile");
     expect(ipcGateway).toContain('if (conn.mode === "remote") return false;');
     expect(ipcConfig).toContain("setSshRemoteApiKey(key, profile)");
   });
