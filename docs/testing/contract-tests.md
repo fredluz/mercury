@@ -16,10 +16,12 @@ This document maps Mercury's current contract tests and deterministic contract c
 - Session cache sync: `tests/session-cache-sync.test.ts`
 - Profile discovery: `tests/profiles.test.ts`
 - Profile-aware local sessions: `tests/sessions-profile-db.test.ts`
+- Reliable profile runtime contract: `tests/reliable-profile-runtime-contract.test.ts`
 - SSH remote config validation: `tests/ssh-remote.test.ts`
 - Performance benchmark entrypoints: `scripts/e2e-startup-perf.mjs`, `scripts/perf-build-snapshot.mjs`, `scripts/e2e-chat-render-latency.mjs`, `scripts/e2e-sessions-latency.mjs`, `scripts/e2e-ssh-remote-latency.mjs`, plus opt-in bench tests.
 - Docs freshness guard: `scripts/check-docs.mjs`, with evaluator coverage in `tests/docs-guard.test.ts`, via `npm run check:docs`
-- Related docs: [Architecture overview](../architecture/overview.md), [IPC and preload contract](../contracts/ipc-preload.md), [Trace schema](../contracts/trace-schema.md), [Performance benchmarks](performance-benchmarks.md), and subsystem docs under `docs/subsystems/`.
+- CLI contract and parity: `tests/cli-parser.test.ts`, `tests/cli-output-contract.test.ts`, `tests/cli-entrypoint.test.ts`, `tests/cli-read-only-commands.test.ts`, `tests/cli-mutating-commands.test.ts`, `tests/cli-chat-commands.test.ts`, `tests/cli-parity.test.ts`, via `npm run test:cli`
+- Related docs: [Architecture overview](../architecture/overview.md), [IPC and preload contract](../contracts/ipc-preload.md), [CLI contract](../contracts/cli.md), [Trace schema](../contracts/trace-schema.md), [Performance benchmarks](performance-benchmarks.md), and subsystem docs under `docs/subsystems/`.
 
 ## When to run contract tests
 
@@ -36,11 +38,13 @@ Run contract tests when a change touches any of these areas:
 - Manual Markdown skill import behavior.
 - Session cache sync, generated session titles, session cache persistence, local session DB reads, or session search inputs.
 - Persistent files/profile behavior that affects renderer-visible data.
-- SSH config writes or remote connection-mode validation.
+- Runtime diagnostics, `ProfileRuntimeManager`, profile runtime handles, profile-aware gateway/chat/title/cron execution, or fail-closed local/SSH/remote profile runtime behavior.
+- SSH config writes, SSH profile command routing, SSH tunnel identity, or remote connection-mode validation.
 - Package perf scripts, benchmark harnesses, or docs that describe performance artifacts.
 - Docs guard rules or the mapped evergreen docs they require.
+- CLI command dispatch, output envelopes, streaming events, chat automation, or CLI parity coverage against the preload surface.
 
-For docs-only changes, manually verify links and file references. Run `npm run check:docs` when the change set includes mapped high-risk code/test/script paths, or when updating the guard itself. Full test runs are optional unless the docs change alongside source behavior.
+For docs-only changes, manually verify links and file references. Run `npm run check:docs` when the change set includes mapped high-risk code/test/script paths, or when updating the guard itself. Run `npm run test:cli` when touching `src/cli/**`, `docs/contracts/cli.md`, or CLI-specific tests. Full test runs are optional unless the docs change alongside source behavior.
 
 ## Test responsibilities
 
@@ -87,6 +91,32 @@ Run this test when changing:
 - `src/preload/index.ts`
 - `src/preload/index.d.ts`
 - Renderer code that starts using a new `window.hermesAPI` method
+
+### CLI contract tests
+
+Protect the CLI entrypoint, parser, output envelopes, command adapters, chat automation, and documented parity with major `window.hermesAPI` domains. The suite is intentionally run through `npm run test:cli` so CLI behavior can be validated without a full Electron test pass.
+
+Current responsibilities by file:
+
+- `tests/cli-parser.test.ts` protects global flags, command token parsing, profile/output defaults, environment defaults such as `MERCURY_PROFILE` and `MERCURY_OUTPUT`, literal `--` handling, help/version paths, and usage errors.
+- `tests/cli-output-contract.test.ts` protects JSON success/error envelopes, text rendering expectations, and NDJSON line formatting for stream/progress events.
+- `tests/cli-errors.test.ts` protects normalized CLI error codes and exit-code mapping, including usage, unsupported, runtime verification, install, connection, not-found, validation, generic, and interrupted cases.
+- `tests/cli-entrypoint.test.ts` protects `runCli(...)` help/version behavior, domain dispatch, and reserved/unsupported domain failures.
+- `tests/cli-read-only-commands.test.ts` protects read-only service routing for profiles/agents, sessions, memory, soul, tools, skills, models, credentials, cron, traces, runtime diagnostics, logs, MCP, memory providers, dump, connection, gateway, install, and Hermes status commands.
+- `tests/cli-mutating-commands.test.ts` protects mutation routing and side effects for profiles/agents, session cache/title, env/config/model config, connection/SSH settings, gateway, memory/user profile/SOUL/tools, skills, models, credentials, cron, backup/import, runtime revalidation, install/update, Claw migration, and SSH tunnel commands.
+- `tests/cli-chat-commands.test.ts` protects `mercury chat send` and `mercury chat title`: positional/`--message`/stdin input, history and messages files, profile/session forwarding, text streaming, `--json` final-only output, `--ndjson` `start`/`chunk`/`trace`/`tool`/`usage`/`done`/`error` events, service error propagation, and SIGINT abort exit `130` with mocked chat services.
+- `tests/cli-parity.test.ts` protects major preload-domain reservation/documentation in [CLI contract](../contracts/cli.md), chat automation sentinel phrases, and the required NDJSON event names.
+
+Run `npm run test:cli` when changing:
+
+- `src/cli/**`
+- `src/main/services/*` behavior consumed by CLI commands
+- `src/main/ipc/*` or `src/preload/index.d.ts` in a way that changes a CLI parity decision
+- `docs/contracts/cli.md`
+- Adjacent docs that describe CLI architecture, subsystem behavior, command examples, output envelopes, or test responsibilities
+- CLI docs guard rules or tests
+
+`npm run check:docs` complements the CLI test suite: the `cli-contract` docs guard rule maps `src/cli/**` and `tests/cli-*.test.ts` changes to `docs/contracts/cli.md` and `docs/testing/contract-tests.md`. If the comprehensive CLI reference ever moves outside `docs/contracts/cli.md`, update `scripts/check-docs.mjs` and `tests/docs-guard.test.ts` in the same change.
 
 ### `tests/perf-telemetry.test.ts`
 
@@ -279,6 +309,37 @@ Run this test when changing:
 - Session list/search/message IPC handlers in `src/main/ipc/sessions.ts`
 - Storage/profile docs that describe profile-aware session data
 
+### `tests/reliable-profile-runtime-contract.test.ts`
+
+Protects the reliable profile runtime contract across runtime diagnostics, profile isolation, verified runtime handles, gateway lifecycle, chat/title/cron execution, and fail-closed SSH/remote behavior. This is a sentinel-style contract test: it checks that high-risk source paths still contain the expected runtime integration points and that direct API chat execution refuses unverified runtime handles.
+
+Current assertions:
+
+- The shared runtime diagnostic surface includes selected/requested/actual profile identity, verification source, API/port/process paths, auth fingerprint/source, verification timestamp, stale reason, mismatch reason, and unsupported reason fields.
+- Main-process runtime types expose `ProfileRuntimeRequest`, `RuntimeIdentity`, `ProfileRuntimeHandle`, `ProfileRuntimeError`, and the profile-runtime error codes for mismatch, unverified runtime, and unsupported remote profile behavior.
+- `ProfileRuntimeManager` keeps per-profile runtime state, can create unverified external identities, marks one or all runtimes stale, exposes diagnostics, and models unsupported pure remote profile behavior.
+- Gateway lifecycle stays profile-aware from renderer calls through preload IPC into main local/SSH handlers, including profile-aware gateway status/start/stop/restart and remote-mode fail-closed behavior.
+- Chat startup, gateway chat sending, title generation, and cron execution route through verified `ProfileRuntimeHandle` instances rather than ad-hoc API URL/auth lookup.
+- API chat transport requires a verified runtime handle and uses the handle's API base URL and auth headers.
+- SSH runtime, config, skills, and tunnel helpers remain profile-bound; pure remote HTTP mode rejects profile-specific runtime verification instead of silently using the wrong profile.
+- Runtime diagnostics and stale-state warnings surface through IPC, preload, Layout, Gateway, Chat, Settings, and the runtime diagnostic notice component.
+- Storage-isolation documentation remains explicitly separated from runtime-isolation documentation.
+
+Run this test when changing:
+
+- `src/shared/runtime.ts`
+- `src/main/hermes/types.ts`
+- `src/main/hermes/runtime.ts`
+- `src/main/hermes/gateway.ts`
+- `src/main/hermes/chat-api.ts`
+- `src/main/hermes/title.ts`
+- `src/main/cronjobs.ts`
+- `src/main/ipc/chat.ts`, `src/main/ipc/gateway.ts`, `src/main/ipc/config.ts`, `src/main/ipc/system.ts`, or `src/main/ipc/knowledge.ts`
+- `src/main/ssh/runtime.ts`, `src/main/ssh/config.ts`, `src/main/ssh/skills.ts`, or `src/main/ssh-tunnel.ts`
+- `src/preload/api/navigation.ts`, `src/preload/api/app.ts`, or `src/preload/index.d.ts`
+- Renderer runtime diagnostic surfaces in Layout, Chat, Gateway, Settings, or `src/renderer/src/components/RuntimeDiagnosticNotice.tsx`
+- Documentation that describes profile runtime isolation, runtime diagnostics, or reliable profile runtime behavior
+
 ### `tests/ssh-remote.test.ts`
 
 Protects SSH remote config-write validation before shelling out to the remote host.
@@ -355,13 +416,20 @@ Run targeted contract tests during focused changes:
 ```bash
 npm run test -- tests/perf-telemetry.test.ts tests/ipc-handlers.test.ts tests/preload-api-surface.test.ts
 npm run test -- tests/chat-ipc-lifecycle.test.ts tests/chat-metadata.test.ts tests/hermes-title.test.ts tests/hermes-trace-events.test.ts
-npm run test -- tests/trace-store.test.ts tests/skills-import.test.ts tests/session-cache-sync.test.ts tests/profiles.test.ts tests/sessions-profile-db.test.ts tests/ssh-remote.test.ts
+npm run test -- tests/trace-store.test.ts tests/skills-import.test.ts tests/session-cache-sync.test.ts tests/profiles.test.ts tests/sessions-profile-db.test.ts
+npm run test -- tests/reliable-profile-runtime-contract.test.ts tests/ssh-remote.test.ts
 ```
 
-Run the docs guard when mapped high-risk code/test/script paths change:
+Run the docs guard when mapped high-risk code/test/script paths change, and for CLI documentation sweeps that should prove the guarded `docs/contracts/cli.md` anchor remains sufficient:
 
 ```bash
 npm run check:docs
+```
+
+Run the CLI suite when the CLI contract/reference, adjacent CLI docs, CLI dispatchers, or shared services consumed by the CLI change:
+
+```bash
+npm run test:cli
 ```
 
 Run the real-app hardening harness when a change touches Trace Lab coverage across the app path and credentials are available:

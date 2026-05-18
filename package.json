@@ -3,6 +3,9 @@
   "version": "0.3.7",
   "description": "Mercury — desktop front end for Hermes Agent",
   "main": "./out/main/index.js",
+  "bin": {
+    "mercury": "./out/cli/index.js"
+  },
   "author": "fathah",
   "homepage": "https://github.com/fredluz/mercury",
   "scripts": {
@@ -13,7 +16,9 @@
     "test": "vitest run",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
-    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "typecheck:cli": "tsc --noEmit -p tsconfig.cli.json",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web && npm run typecheck:cli",
+    "test:cli": "vitest run tests/cli-*.test.ts",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "dev:fresh": "HERMES_HOME=$(mktemp -d -t hermes-fresh) electron-vite dev",
@@ -25,7 +30,8 @@
     "perf:sessions:e2e": "npm run build && node scripts/e2e-sessions-latency.mjs --sessions=1000 --messages-per-session=8 --mount-samples=3 --search-samples=5",
     "perf:trace-store": "MERCURY_TRACE_STORE_BENCH=1 vitest run tests/trace-store-stress.bench.test.ts",
     "perf:ssh-remote": "npm run build && node scripts/e2e-ssh-remote-latency.mjs --case=current-config",
-    "build": "npm run typecheck && electron-vite build",
+    "build:cli": "tsc -p tsconfig.cli.json && chmod +x out/cli/index.js",
+    "build": "npm run typecheck && npm run build:cli && electron-vite build",
     "build:main": "npm run build && electron-builder --publish never",
     "build:main:mac": "npm run build && electron-builder --mac dmg zip --publish never",
     "build:main:linux": "npm run build && electron-builder --linux AppImage deb rpm --publish never",

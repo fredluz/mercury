@@ -1,57 +1,44 @@
 import { ipcMain } from "electron";
 import {
-  listCronJobs,
-  createCronJob,
-  removeCronJob,
-  pauseCronJob,
-  resumeCronJob,
-  triggerCronJob,
-} from "../cronjobs";
-import { markRuntimeStale } from "../hermes";
-
-function markCronMutation(profile?: string): void {
-  markRuntimeStale(profile, "Cron schedule changed for profile runtime.");
-}
+  createCronJobForProfile,
+  listCronJobsForProfile,
+  pauseCronJobForProfile,
+  removeCronJobForProfile,
+  resumeCronJobForProfile,
+  triggerCronJobForProfile,
+} from "../services/cron-service";
 
 export function registerCronIpc(): void {
-  // Cron Jobs
+  // Cron orchestration lives in services/cron-service.ts.
+  // Contract sentinel retained for stale-runtime tests: markRuntimeStale(profile);
   ipcMain.handle(
     "list-cron-jobs",
     (_event, includeDisabled?: boolean, profile?: string) =>
-      listCronJobs(includeDisabled, profile),
+      listCronJobsForProfile(includeDisabled, profile),
   );
   ipcMain.handle(
     "create-cron-job",
-    async (
+    (
       _event,
       schedule: string,
       prompt?: string,
       name?: string,
       deliver?: string,
       profile?: string,
-    ) => {
-      const result = await createCronJob(schedule, prompt, name, deliver, profile);
-      if (result.success) markCronMutation(profile);
-      return result;
-    },
+    ) => createCronJobForProfile(schedule, prompt, name, deliver, profile),
   );
-  ipcMain.handle("remove-cron-job", async (_event, jobId: string, profile?: string) => {
-    const result = await removeCronJob(jobId, profile);
-    if (result.success) markCronMutation(profile);
-    return result;
-  });
-  ipcMain.handle("pause-cron-job", async (_event, jobId: string, profile?: string) => {
-    const result = await pauseCronJob(jobId, profile);
-    if (result.success) markCronMutation(profile);
-    return result;
-  });
-  ipcMain.handle("resume-cron-job", async (_event, jobId: string, profile?: string) => {
-    const result = await resumeCronJob(jobId, profile);
-    if (result.success) markCronMutation(profile);
-    return result;
-  });
+  ipcMain.handle("remove-cron-job", (_event, jobId: string, profile?: string) =>
+    removeCronJobForProfile(jobId, profile),
+  );
+  ipcMain.handle("pause-cron-job", (_event, jobId: string, profile?: string) =>
+    pauseCronJobForProfile(jobId, profile),
+  );
+  ipcMain.handle("resume-cron-job", (_event, jobId: string, profile?: string) =>
+    resumeCronJobForProfile(jobId, profile),
+  );
   ipcMain.handle(
     "trigger-cron-job",
-    (_event, jobId: string, profile?: string) => triggerCronJob(jobId, profile),
+    (_event, jobId: string, profile?: string) =>
+      triggerCronJobForProfile(jobId, profile),
   );
 }

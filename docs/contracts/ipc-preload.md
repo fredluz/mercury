@@ -11,10 +11,12 @@ This document describes Mercury's current renderer-to-main contract. It is an ev
 - IPC composition: `src/main/ipc/index.ts`
 - Chat IPC handlers and event senders: `src/main/ipc/chat.ts`
 - IPC modules: `src/main/ipc/*.ts`
+- Shared services reused by IPC and CLI: `src/main/services/*`
 - Main updater/menu handlers: `src/main/index.ts`
 - Performance telemetry helpers: `src/main/perf/telemetry.ts`, `src/renderer/src/perf.ts`, `src/shared/perf.ts`
 - Renderer entrypoints that consume the contract: `src/renderer/src/App.tsx`, `src/renderer/src/screens/Layout/Layout.tsx`, `src/renderer/src/screens/Chat/hooks/useChatController.ts`
 - Contract tests: `tests/ipc-handlers.test.ts`, `tests/preload-api-surface.test.ts`, `tests/chat-ipc-lifecycle.test.ts`
+- CLI contract: `docs/contracts/cli.md`, `src/cli/*`, `tests/cli-parity.test.ts`, `tests/cli-chat-commands.test.ts`
 
 ## Contract shape
 
@@ -37,10 +39,10 @@ Current fragments in `src/preload/api/index.ts` are:
 | `installApi` | `src/preload/api/install.ts` | install checks, installer progress, Hermes version/doctor/update, OpenClaw migration, locale |
 | `configApi` | `src/preload/api/config.ts` | env/config/model config, connection mode, remote/SSH tests, SSH tunnel controls |
 | `chatApi` | `src/preload/api/chat.ts` | send/abort chat, generated chat titles, local trace recording, chat stream listeners, and live activity trace events |
-| `navigationApi` | `src/preload/api/navigation.ts` | traces, gateway/platform toggles, sessions, profiles |
-| `knowledgeApi` | `src/preload/api/knowledge.ts` | memory, user profile, soul, tools, skills, Markdown skill import |
+| `navigationApi` | `src/preload/api/navigation.ts` | traces, gateway lifecycle/restart, platform toggles, sessions, profiles |
+| `knowledgeApi` | `src/preload/api/knowledge.ts` | memory, user profile, soul, tools, skills, skill content/metadata, Markdown skill import |
 | `modelsApi` | `src/preload/api/models.ts` | session cache/search, credential pool, models, Claw3D |
-| `appApi` | `src/preload/api/app.ts` | updates, menu events, cron jobs, shell, backup/import, dump/log/system helpers, local perf telemetry |
+| `appApi` | `src/preload/api/app.ts` | runtime diagnostics, updates, menu events, cron jobs, shell, backup/import, dump/log/system helpers, local perf telemetry |
 
 ## IPC composition and handler ownership
 
@@ -52,13 +54,13 @@ Current fragments in `src/preload/api/index.ts` are:
 | `src/main/ipc/config.ts` | profile-aware env/config/model settings, locale, connection mode, remote/SSH tests, SSH tunnel controls |
 | `src/main/ipc/chat.ts` | `send-message`, `generate-chat-title`, `abort-chat`, chat stream events, active-chat abort handling, title persistence, trace run writes, and live chat activity events |
 | `src/main/ipc/trace.ts` | trace run reads, skill-training run reads, and local chat trace writes |
-| `src/main/ipc/gateway.ts` | gateway lifecycle and platform toggles |
+| `src/main/ipc/gateway.ts` | gateway lifecycle, restart, and platform toggles |
 | `src/main/ipc/sessions.ts` | sessions, profiles, session cache sync, session search |
-| `src/main/ipc/knowledge.ts` | memory, user profile, soul, tools, skills, skill Markdown import |
+| `src/main/ipc/knowledge.ts` | memory, user profile, soul, tools, skills, skill content/metadata, skill Markdown import |
 | `src/main/ipc/models.ts` | credential pool and model CRUD |
 | `src/main/ipc/claw3d.ts` | Claw3D status/setup/config/start/stop/logs and setup progress events |
 | `src/main/ipc/cron.ts` | cron job listing and lifecycle actions |
-| `src/main/ipc/system.ts` | external URLs, backup/import, debug dump, MCP servers, memory providers, logs, local perf telemetry |
+| `src/main/ipc/system.ts` | external URLs, runtime diagnostics, backup/import, debug dump, MCP servers, memory providers, logs, local perf telemetry |
 
 `src/main/index.ts` also registers updater/version invoke handlers in `setupUpdater()` and sends native menu/update events to the renderer.
 
@@ -74,13 +76,13 @@ Examples by domain:
 - Config/connection: `get-env`, `set-env`, `get-config`, `set-config`, `get-hermes-home`, `get-model-config`, `set-model-config`, `is-remote-mode`, `is-remote-only-mode`, `get-connection-config`, `set-connection-config`, `set-ssh-config`, `test-remote-connection`, `test-ssh-connection`, `is-ssh-tunnel-active`, `start-ssh-tunnel`, `stop-ssh-tunnel`.
 - Chat: `send-message`, `generate-chat-title`, `abort-chat`.
 - Trace Lab: `list-trace-runs`, `get-trace-run`, `list-skill-training-runs`, `record-local-chat-trace`.
-- Gateway/platform: `start-gateway`, `stop-gateway`, `gateway-status`, `get-platform-enabled`, `set-platform-enabled`.
+- Gateway/platform: `start-gateway`, `stop-gateway`, `gateway-status`, `restart-gateway`, `get-platform-enabled`, `set-platform-enabled`.
 - Sessions/profiles/cache/search: `list-sessions`, `get-session-messages`, `list-profiles`, `create-profile`, `delete-profile`, `set-active-profile`, `list-cached-sessions`, `sync-session-cache`, `update-session-title`, `search-sessions`.
   These API names remain profile-based for compatibility and Hermes storage/runtime identity; renderer product copy presents them to users as Agents.
-- Knowledge/skills: `read-memory`, `add-memory-entry`, `update-memory-entry`, `remove-memory-entry`, `write-user-profile`, `read-soul`, `write-soul`, `reset-soul`, `get-toolsets`, `set-toolset-enabled`, `list-installed-skills`, `list-bundled-skills`, `get-skill-content`, `install-skill`, `uninstall-skill`, `import-skill-markdown`.
+- Knowledge/skills: `read-memory`, `add-memory-entry`, `update-memory-entry`, `remove-memory-entry`, `write-user-profile`, `read-soul`, `write-soul`, `reset-soul`, `get-toolsets`, `set-toolset-enabled`, `list-installed-skills`, `list-bundled-skills`, `get-skill-content`, `get-skill-metadata`, `install-skill`, `uninstall-skill`, `import-skill-markdown`.
 - Models/credentials: `get-credential-pool`, `set-credential-pool`, `list-models`, `add-model`, `remove-model`, `update-model`.
 - Claw3D: `claw3d-status`, `claw3d-setup`, `claw3d-get-port`, `claw3d-set-port`, `claw3d-get-ws-url`, `claw3d-set-ws-url`, `claw3d-start-all`, `claw3d-stop-all`, `claw3d-get-logs`, `claw3d-start-dev`, `claw3d-stop-dev`, `claw3d-start-adapter`, `claw3d-stop-adapter`.
-- Cron/system/perf: `list-cron-jobs`, `create-cron-job`, `remove-cron-job`, `pause-cron-job`, `resume-cron-job`, `trigger-cron-job`, `open-external`, `run-hermes-backup`, `run-hermes-import`, `run-hermes-dump`, `discover-memory-providers`, `list-mcp-servers`, `read-logs`, `get-perf-telemetry-config`, `record-perf-event`.
+- Cron/runtime/system/perf: `list-cron-jobs`, `create-cron-job`, `remove-cron-job`, `pause-cron-job`, `resume-cron-job`, `trigger-cron-job`, `get-runtime-diagnostic`, `open-external`, `run-hermes-backup`, `run-hermes-import`, `run-hermes-dump`, `discover-memory-providers`, `list-mcp-servers`, `read-logs`, `get-perf-telemetry-config`, `record-perf-event`.
 
 ### Chat preload API
 
@@ -141,7 +143,7 @@ Current event channels exposed through preload listeners include:
 
 - Chat streaming: `chat-chunk`, `chat-done`, `chat-tool-progress`, `chat-trace-event`, `chat-usage`, `chat-error`.
 - Installer/update/migration progress: `install-progress`.
-- Auto-update state: `update-available`, `update-download-progress`, `update-downloaded`.
+- Auto-update state: `update-available`, `update-download-progress`, `update-downloaded`, `update-not-available`, `update-error`.
 - Native menu actions: `menu-new-chat`, `menu-search-sessions`.
 - Claw3D setup progress: `claw3d-setup-progress`.
 
@@ -149,7 +151,7 @@ Current event channels exposed through preload listeners include:
 
 `chat-tool-progress` remains exposed for older renderer/UI compatibility and compact progress labels. New structured transports should emit trace callbacks (`onTraceEvent`) so the renderer receives `chat-trace-event`; the main process suppresses duplicate legacy `tool.progress` records when a structured tool/delegation event immediately precedes a legacy progress label.
 
-`src/main/index.ts` also sends `update-error` from updater error handling. At the time of this document, no preload listener is exposed for that channel in `src/preload/api/app.ts` or `src/preload/index.d.ts`; do not assume renderer code handles it unless the contract is expanded.
+`src/preload/api/app.ts` and `src/preload/index.d.ts` expose cleanup-returning listeners for all current updater events: `onUpdateAvailable`, `onUpdateDownloadProgress`, `onUpdateDownloaded`, `onUpdateNotAvailable`, and `onUpdateError`. Renderer code can handle `update-not-available` with `{ version }` and `update-error` with the normalized error message string.
 
 ## Local, remote, and SSH notes
 
@@ -165,6 +167,20 @@ Connection-mode behavior is distributed across IPC handlers and main services:
 
 Future subsystem detail belongs in the planned connection-mode and storage/profile docs linked from `docs/index.md`.
 
+## CLI parity notes
+
+The Electron IPC/preload surface remains the renderer contract. The CLI is a separate Node adapter documented in [CLI Contract](cli.md), not a consumer of `window.hermesAPI`. It should reuse `src/main/services/*` with IPC modules rather than importing preload, shelling through the renderer, or duplicating handler logic. Adapter-specific code belongs at the edges: IPC/preload owns renderer-safe invokes/listeners, while `src/cli/*` owns argument parsing, output formatting, normalized exit codes, and terminal signal handling.
+
+Chat is the model for parity: `mercury chat send` and `mercury chat title` call `src/main/services/chat-service.ts`, so they share runtime verification, trace/session side effects, generated-title persistence, and local/SSH/pure-remote behavior with `send-message` and `generate-chat-title`. Their streaming surface is intentionally different: renderer code receives IPC events such as `chat-chunk` and `chat-trace-event`, while CLI automation receives NDJSON `start`, `chunk`, `trace`, `tool`, `usage`, `done`, and `error` records.
+
+When a renderer-visible capability is added, renamed, or removed, make one of these explicit CLI parity decisions in `docs/contracts/cli.md`:
+
+- expose it through an implemented `mercury` command in the same change;
+- reserve/defer it with a documented gap and rationale;
+- mark it Electron-only because it depends on renderer, menu, shell, updater, or other UI process behavior.
+
+Update `tests/cli-parity.test.ts` when the decision changes a major command domain, command reservation, or required documentation sentinel.
+
 ## Change rules
 
 When adding, renaming, or removing a renderer-visible capability, update all affected layers together:
@@ -174,8 +190,9 @@ When adding, renaming, or removing a renderer-visible capability, update all aff
 3. **Main handler** — add/update the matching `ipcMain.handle(...)` in the correct `src/main/ipc/*.ts` module, or in `src/main/index.ts` for updater/version channels currently owned there.
 4. **IPC composition** — if a new IPC module is added, export its `register*Ipc` function and call it from `src/main/ipc/index.ts`.
 5. **Event listeners** — for `ipcRenderer.on(...)` APIs, expose a cleanup-returning preload method and document the main sender (`event.sender.send(...)` or `mainWindow.webContents.send(...)`).
-6. **Tests** — update and run the parity tests described in [Contract tests](../testing/contract-tests.md).
-7. **Docs** — update this document and any relevant architecture/subsystem docs in the same change.
+6. **CLI parity decision** — decide whether the capability is implemented in the CLI, reserved/deferred, or Electron-only, and update [CLI Contract](cli.md) when the decision is user-visible.
+7. **Tests** — update and run the parity tests described in [Contract tests](../testing/contract-tests.md). If the change affects a major command domain, update/run the CLI parity guardrail and `npm run test:cli` too.
+8. **Docs** — update this document, [CLI Contract](cli.md), and any relevant architecture/subsystem docs in the same change.
 
 Do not add renderer code that imports main-process modules directly. Renderer access should go through `window.hermesAPI`.
 

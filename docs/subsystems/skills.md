@@ -8,6 +8,8 @@ This document describes Mercury's current skill listing, grouped Skills UI, cont
 - Local skill listing/install helpers: `src/main/skills.ts`
 - Markdown import implementation: `src/main/skills/importer.ts`
 - Knowledge IPC routing: `src/main/ipc/knowledge.ts`
+- Shared knowledge service used by IPC and CLI: `src/main/services/knowledge-service.ts`
+- CLI skill commands: `src/cli/read-only-commands.ts`, `src/cli/mutating-commands.ts`, [CLI contract](../contracts/cli.md)
 - Preload API: `src/preload/api/knowledge.ts`, `src/preload/index.d.ts`
 - SSH skill implementation: `src/main/ssh/skills.ts`
 - SSH transport helpers: `src/main/ssh/transport.ts`
@@ -26,6 +28,22 @@ Skills are exposed through `window.hermesAPI` methods implemented in `src/preloa
 - `importSkillMarkdown(request, profile?)`
 
 The renderer-facing TypeScript declarations live in `src/preload/index.d.ts` and use request/result types from `src/shared/skills.ts` for Markdown import and metadata.
+
+## CLI skill commands
+
+The CLI exposes the same skill capabilities for automation through `src/main/services/knowledge-service.ts`; it is not layered through preload. Current skill commands are:
+
+| Command | Behavior |
+| --- | --- |
+| `mercury skills installed [--profile <name>]` | Lists installed skills for the selected profile/Agent. |
+| `mercury skills bundled` | Lists bundled or registry-discovered skills using the same local/SSH behavior as IPC. |
+| `mercury skills content <path>` | Reads `SKILL.md` content for an installed/local or `REMOTE:` skill path. |
+| `mercury skills metadata <path>` | Reads skill metadata plus scripts/references availability where supported. |
+| `mercury skills install <identifier> [--profile <name>]` | Installs a skill into the selected profile. |
+| `mercury skills uninstall <name> [--profile <name>]` | Uninstalls a skill from the selected profile. |
+| `mercury skills import --file <path> [--name ...] [--category ...] [--description ...] [--overwrite] [--profile <name>]` | Imports Markdown through the shared `SkillMarkdownImportRequest`/`SkillMarkdownImportResult` contract. |
+
+Local, SSH, and pure remote HTTP behavior matches the IPC mode rules below. Manual Markdown import returns the same success/failure codes as the renderer path; gateway restart warnings are part of the service result (for example `warning: "gateway-restart-required"`) and may appear inside CLI JSON `data` rather than as a top-level CLI envelope warning.
 
 ## Renderer UI semantics
 
@@ -255,12 +273,13 @@ Other skill handlers in `knowledge.ts` only branch for SSH and otherwise fall th
 - Preserves Markdown body while normalizing existing frontmatter.
 - Does not treat inline dashes inside frontmatter values as a closing delimiter.
 
-IPC/preload surface tests also protect skill API availability:
+IPC/preload and CLI surface tests also protect skill API availability:
 
 - `tests/skills-import.test.ts` checks Markdown import and local `getSkillMetadata()` scripts/references discovery.
 - `tests/ipc-handlers.test.ts` checks `get-skill-metadata` and `import-skill-markdown` have both main handlers and preload invokes.
 - `tests/preload-api-surface.test.ts` checks `getSkillMetadata` and `importSkillMarkdown` exist in both preload implementation and `HermesAPI` types.
 - `src/renderer/src/screens/Skills/Skills.test.tsx` covers grouping/collapse, individual and category enable/disable actions, detail metadata, Agents using a skill, and manual Markdown import.
+- `tests/cli-read-only-commands.test.ts` and `tests/cli-mutating-commands.test.ts` cover CLI skill command routing through shared services.
 
 ## Verification guidance
 
@@ -269,6 +288,7 @@ For skill changes, run:
 ```bash
 npm run test -- src/renderer/src/screens/Skills/Skills.test.tsx
 npm run test -- tests/skills-import.test.ts tests/ipc-handlers.test.ts tests/preload-api-surface.test.ts
+npm run test:cli
 npm run typecheck
 ```
 

@@ -1,0 +1,17 @@
+{
+  "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
+  "include": ["src/cli/**/*"],
+  "compilerOptions": {
+    "composite": false,
+    "rootDir": "src",
+    "outDir": "out",
+    "noEmit": false,
+    "declaration": false,
+    "sourceMap": false,
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "target": "ES2022",
+    "types": ["node"],
+    "skipLibCheck": true
+  }
+}

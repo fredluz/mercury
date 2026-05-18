@@ -106,4 +106,28 @@ describe("evaluateDocsGuard", () => {
       ]),
     );
   });
+
+  it("requires CLI contract documentation for CLI command changes", () => {
+    const codeOnly = evaluateDocsGuard(["src/cli/chat-commands.ts"]);
+    const withDocs = evaluateDocsGuard([
+      "src/cli/chat-commands.ts",
+      "docs/contracts/cli.md",
+    ]);
+
+    expect(codeOnly.ok).toBe(false);
+    expect(codeOnly.failures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ruleId: "cli-contract" }),
+      ]),
+    );
+    expect(withDocs.ok).toBe(true);
+    expect(withDocs.triggered).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ruleId: "cli-contract",
+          matchingDocFiles: ["docs/contracts/cli.md"],
+        }),
+      ]),
+    );
+  });
 });

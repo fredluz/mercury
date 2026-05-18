@@ -115,6 +115,13 @@ export const DOCS_GUARD_RULES = [
     ],
   },
   {
+    id: "cli-contract",
+    description:
+      "CLI command, output, and parity changes should keep the CLI contract current.",
+    codePatterns: ["src/cli/**", "tests/cli-*.test.ts"],
+    docPatterns: ["docs/contracts/cli.md", "docs/testing/contract-tests.md"],
+  },
+  {
     id: "contract-tests",
     description:
       "Contract-like test changes should keep the contract-test map current.",

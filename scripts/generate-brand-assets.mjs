@@ -43,7 +43,7 @@ const outputs = checkMode
     }
   : committedOutputs
 
-const sourceSha256 = 'd697e607e176f16aca1e752009d0b7faaa600735cc802f219e7a62e87156cc33'
+const sourceSha256 = '69c4508c2a1578369e2eadb1ee9a02b674580f9cadec99645708c306781f2b8e'
 const sourceWidth = 1254
 const sourceHeight = 1254
 

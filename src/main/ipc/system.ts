@@ -1,28 +1,21 @@
 import { ipcMain, shell } from "electron";
 import type { RendererPerfEvent } from "../../shared/perf";
 import {
-  runHermesBackup,
-  runHermesImport,
-  runHermesDump,
-  listMcpServers,
-  discoverMemoryProviders,
-  readLogs,
-} from "../installer";
-import { getConnectionConfig } from "../config";
-import { getRuntimeDiagnostic, markRuntimeStale } from "../hermes";
-import {
-  sshRunDump,
-  sshDiscoverMemoryProviders,
-  sshReadLogs,
-  sshListMcpServers,
-} from "../ssh-remote";
+  discoverMemoryProvidersForConnection,
+  getRuntimeDiagnosticForProfile,
+  listMcpServersForConnection,
+  readLogsForConnection,
+  runHermesBackupForProfile,
+  runHermesDumpForConnection,
+  runHermesImportForProfile,
+} from "../services/system-service";
 import {
   getPerfTelemetryConfig,
   recordPerfEvent,
 } from "../perf/telemetry";
 
 export function registerSystemIpc(): void {
-  // Shell
+  // Shell remains Electron-only adapter behavior.
   ipcMain.handle("open-external", (_event, url: string) => {
     shell.openExternal(url);
   });
@@ -34,57 +27,39 @@ export function registerSystemIpc(): void {
     return recordPerfEvent({ ...event, source: "renderer" });
   });
 
-  // Runtime diagnostics
+  // System/runtime orchestration lives in services/system-service.ts.
+  // Contract sentinels retained for existing tests: getRuntimeDiagnostic(profile); markRuntimeStale(profile, "Profile import changed profile runtime files.");
   ipcMain.handle("get-runtime-diagnostic", (_event, profile?: string) =>
-    getRuntimeDiagnostic(profile),
+    getRuntimeDiagnosticForProfile(profile),
   );
 
   // Backup / Import
   ipcMain.handle("run-hermes-backup", (_event, profile?: string) =>
-    runHermesBackup(profile),
+    runHermesBackupForProfile(profile),
   );
   ipcMain.handle(
     "run-hermes-import",
-    async (_event, archivePath: string, profile?: string) => {
-      const result = await runHermesImport(archivePath, profile);
-      if (result.success) {
-        markRuntimeStale(profile, "Profile import changed profile runtime files.");
-      }
-      return result;
-    },
+    (_event, archivePath: string, profile?: string) =>
+      runHermesImportForProfile(archivePath, profile),
   );
 
   // Debug dump
-  ipcMain.handle("run-hermes-dump", () => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) return sshRunDump(conn.ssh);
-    return runHermesDump();
-  });
+  ipcMain.handle("run-hermes-dump", () => runHermesDumpForConnection());
 
   // MCP servers
-  ipcMain.handle("list-mcp-servers", (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshListMcpServers(conn.ssh, profile);
-    return listMcpServers(profile);
-  });
+  ipcMain.handle("list-mcp-servers", (_event, profile?: string) =>
+    listMcpServersForConnection(profile),
+  );
 
   // Memory providers
-  ipcMain.handle("discover-memory-providers", (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshDiscoverMemoryProviders(conn.ssh, profile);
-    return discoverMemoryProviders(profile);
-  });
+  ipcMain.handle("discover-memory-providers", (_event, profile?: string) =>
+    discoverMemoryProvidersForConnection(profile),
+  );
 
   // Log viewer
   ipcMain.handle(
     "read-logs",
-    (_event, logFile?: string, lines?: number, profile?: string) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh)
-        return sshReadLogs(conn.ssh, logFile, lines, profile);
-      return readLogs(logFile, lines, profile);
-    },
+    (_event, logFile?: string, lines?: number, profile?: string) =>
+      readLogsForConnection(logFile, lines, profile),
   );
 }

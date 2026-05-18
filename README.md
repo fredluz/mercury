@@ -27,7 +27,7 @@
 
 Mercury is a native desktop front end for installing, configuring, tracing, and operating [Hermes Agent](https://github.com/NousResearch/hermes-agent) — a self-improving AI assistant with tool use, multi-platform messaging, and a closed learning loop.
 
-Instead of managing the CLI by hand, the app walks through install, provider setup, and day-to-day usage in one place. It uses the official Hermes install script, stores Hermes in `~/.hermes`, and gives you a GUI for chat, sessions, profiles, memory, skills, tools, scheduling, messaging gateways, and more.
+Instead of managing the CLI by hand, the app walks through install, provider setup, and day-to-day usage in one place. It uses the official Hermes install script, stores Hermes in `~/.hermes`, and gives you a GUI for chat, sessions, the Agents screen, memory, skills, tools, scheduling, messaging gateways, and more.
 
 ## Fork & Attribution
 
@@ -43,7 +43,7 @@ Mercury is not just a renamed upstream build. This fork is focused on making Her
 - **Codex app server path** — Codex app server is the recommended provider path, including Codex OAuth-backed app-server capabilities used by the runtime.
 - **Chat as an operating surface** — richer chat activity, model/profile actions, generated titles, profile-aware session metadata, local slash-command traces, token/cost visibility, and clearer tool progress.
 - **Trace Lab** — conversation-level trace inspection with event timelines for user messages, assistant output, tool calls, delegation, approvals, transport errors, artifacts, image generation, and skill-evolution signals.
-- **Sessions and profiles** — searchable session history, profile labels on sessions, profile switching, per-profile models/tools/skills/memory/persona, and diagnostics for session search latency.
+- **Agents and profile isolation** — the Agents screen manages profile-backed Hermes workspaces, with profile labels on sessions, per-profile models/tools/skills/memory/persona, and diagnostics for session search latency.
 - **Verification harnesses** — contract tests plus real Electron e2e sweeps for Trace Lab, sessions, and Codex-backed image/artifact flows.
 
 ## Install
@@ -92,13 +92,13 @@ sudo dnf install ./mercury-<version>.rpm
 
 - **Guided first-run install** for Hermes Agent with progress tracking and dependency resolution
 - **Codex app server provider path** — recommended for Mercury, including Codex OAuth-backed app-server capabilities and real-token agent workflows
-- **Local or remote backend** — run Hermes locally on `127.0.0.1:8642`, connect to a remote Hermes API server, or use the Codex app server path from setup
+- **Local, SSH, and remote-aware connection paths** — run Hermes locally on `127.0.0.1:8642`, use verified SSH-backed profiles, or store/test a pure remote Hermes API URL while profile-bound execution remains fail-closed until remote profile identity can be verified
 - **Streaming chat workspace** with SSE streaming, tool progress indicators, markdown rendering, syntax highlighting, activity groups, profile-aware model actions, and generated titles
 - **Token usage tracking** — live prompt/completion token counts and cost display in the chat footer, plus a `/usage` slash command
 - **Slash commands** — `/new`, `/clear`, `/fast`, `/web`, `/image`, `/browse`, `/code`, `/shell`, `/usage`, `/help`, `/tools`, `/skills`, `/model`, `/memory`, `/persona`, `/version`, `/compact`, `/compress`, `/undo`, `/retry`, `/debug`, `/status`, and more
 - **Trace Lab** — inspect complete conversations as trace units, expand individual runs, review event timelines, and audit messages, tools, delegation, approvals, artifacts, images, errors, and skill-evolution signals
 - **Session management** — SQLite FTS5 search, date-grouped history, resume/search across conversations, profile labels, and latency-oriented diagnostics
-- **Profile switching** — create, delete, and switch between separate Hermes environments with isolated config, models, tools, skills, memory, and persona
+- **Agents screen** — create, delete, and switch between profile-backed Hermes workspaces with isolated config, models, tools, skills, memory, and persona
 - **14 toolsets** — web, browser, terminal, file, code execution, vision, image generation, TTS, skills, memory, session search, clarify, delegation, MoA, and task planning
 - **Memory system** — view/edit memory entries, user profile memory, capacity tracking, and discoverable memory providers (Honcho, Hindsight, Mem0, RetainDB, Supermemory, ByteRover)
 - **Persona editor** — edit and reset your agent's SOUL.md personality
@@ -109,6 +109,27 @@ sudo dnf install ./mercury-<version>.rpm
 - **Log viewer** — view gateway and agent logs directly from the Settings screen
 - **Auto-updater and packaging** — Electron updater support plus macOS, Windows, AppImage, Debian, and Fedora/RPM build targets
 - **Test and e2e coverage** — Vitest contract coverage plus Electron sweeps for Trace Lab, sessions, and app-server workflows
+
+## Mercury CLI
+
+Mercury also ships a Node CLI named `mercury` for agents, scripts, CI jobs, and power users that need Mercury without launching Electron. The CLI uses the same shared main-process services as the desktop IPC path, so profile-aware sessions, memory, skills, runtime diagnostics, chat automation, gateway/install operations, and trace side effects stay aligned with the app.
+
+Build it from source with:
+
+```bash
+npm run build:cli
+```
+
+Common automation examples:
+
+```bash
+mercury --json sessions list --limit 20
+mercury --ndjson chat send "Summarize recent work"
+mercury --profile work memory read --json
+mercury runtime diagnostic --json
+```
+
+Use `--json` for stable success/error envelopes and `--ndjson` for streaming chat/progress events. See the full [CLI contract and command reference](docs/contracts/cli.md) for global flags, output shapes, exit codes, connection-mode behavior, and parity with `window.hermesAPI`.
 
 ## Preview
 
@@ -123,14 +144,14 @@ sudo dnf install ./mercury-<version>.rpm
 
 On first launch, the app:
 
-1. Asks whether you want to run Hermes **locally** or connect to a **remote** Hermes API server.
+1. Asks whether you want to run Hermes **locally** or configure a **remote** connection.
 2. **Local mode:** checks whether Hermes is already installed in `~/.hermes`; if not, runs the official Hermes installer with dependency resolution (Git, uv, Python 3.11+).
-3. **Remote mode:** prompts for the remote API URL and API key, validates the connection, and skips local install.
+3. **Remote mode:** prompts for the remote API URL and API key, validates basic reachability, and skips local install. Pure remote HTTP does not currently provide verified profile-bound execution, so chat/title/cron runtime paths fail closed until remote profile identity can be verified.
 4. Prompts for an API provider or local model endpoint.
 5. Saves provider config and API keys through Hermes config files.
 6. Launches the main workspace once setup is complete.
 
-In local mode, chat requests go through `http://127.0.0.1:8642` with SSE streaming. In remote mode, the app talks to your configured remote URL with the same streaming protocol. The desktop app parses the stream in real time, rendering tool progress, markdown content, and token usage as it arrives.
+In local mode, chat requests go through a verified profile runtime on `http://127.0.0.1:8642` or a profile-specific port, with SSE streaming. In SSH mode, Mercury verifies the profile-bound remote runtime through the tunnel before streaming. Pure remote HTTP can validate a configured endpoint, but profile-bound execution is intentionally unsupported until Mercury can prove the remote API is serving the requested profile. The desktop app parses supported streams in real time, rendering tool progress, markdown content, and token usage as it arrives.
 
 ## Screens
 
@@ -138,11 +159,11 @@ In local mode, chat requests go through `http://127.0.0.1:8642` with SSE streami
 | ------------- | ------------------------------------------------------------------------------------- |
 | **Chat**      | Streaming conversation UI with slash commands, tool progress, and token tracking      |
 | **Sessions**  | Browse, search, and resume past conversations                                         |
-| **Profiles**  | Create, delete, and switch between Hermes profiles                                    |
+| **Agents**    | Create, delete, and switch between profile-backed Hermes agents                       |
 | **Skills**    | Browse, install, and manage bundled and installed skills                              |
 | **Models**    | Manage saved model configurations per provider                                        |
 | **Memory**    | View/edit memory entries, user profile, and configure memory providers                |
-| **Soul**      | Edit the active profile's persona (SOUL.md)                                           |
+| **Persona**   | Edit the active profile's persona (SOUL.md)                                           |
 | **Tools**     | Enable or disable individual toolsets                                                 |
 | **Schedules** | Create and manage cron jobs with delivery targets                                     |
 | **Gateway**   | Configure and control messaging platform integrations                                 |

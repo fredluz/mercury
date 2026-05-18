@@ -10,8 +10,11 @@ This document traces the current chat path from renderer input to preload, main 
 - Header metadata UI: `src/renderer/src/screens/Chat/components/ChatHeader.tsx`
 - Preload chat API: `src/preload/api/chat.ts`, `src/preload/index.d.ts`
 - Main chat IPC: `src/main/ipc/chat.ts`
+- Shared chat service used by IPC and CLI: `src/main/services/chat-service.ts`
+- CLI chat adapter: `src/cli/chat-commands.ts`, `src/cli/output.ts`, `src/cli/errors.ts`, [CLI contract](../contracts/cli.md)
 - Chat title generation: `src/main/hermes/title.ts`, `src/shared/chat-metadata.ts`
 - Hermes dispatch: `src/main/hermes/gateway.ts`
+- Profile runtime manager/identity contract: `src/main/hermes/runtime.ts`, `src/main/hermes/types.ts`, `src/shared/runtime.ts`
 - API transport: `src/main/hermes/chat-api.ts`
 - CLI transport: `src/main/hermes/chat-cli.ts`
 - Stream/CLI trace normalization: `src/main/hermes/trace-events.ts`
@@ -19,7 +22,7 @@ This document traces the current chat path from renderer input to preload, main 
 - Connection helpers: `src/main/hermes/connection.ts`
 - Trace persistence: `src/main/trace-store.ts`
 - Trace schema: `src/shared/traces.ts`, [Trace schema contract](../contracts/trace-schema.md)
-- Contract tests: `tests/ipc-handlers.test.ts`, `tests/preload-api-surface.test.ts`, `tests/chat-ipc-lifecycle.test.ts`, `tests/chat-metadata.test.ts`, `tests/hermes-title.test.ts`, `tests/hermes-trace-events.test.ts`, `tests/trace-store.test.ts`
+- Contract tests: `tests/ipc-handlers.test.ts`, `tests/preload-api-surface.test.ts`, `tests/chat-ipc-lifecycle.test.ts`, `tests/reliable-profile-runtime-contract.test.ts`, `tests/chat-metadata.test.ts`, `tests/hermes-title.test.ts`, `tests/hermes-trace-events.test.ts`, `tests/trace-store.test.ts`
 
 ## Renderer flow
 
@@ -144,19 +147,37 @@ Fast mode is profile-aware UI state backed by `agent.service_tier`:
 
 Each event listener returns a cleanup function that removes the listener.
 
+## CLI chat automation
+
+`mercury chat send` and `mercury chat title` are adapter peers to `send-message` and `generate-chat-title`. They do not use IPC or preload; `src/cli/chat-commands.ts` parses terminal inputs and calls `src/main/services/chat-service.ts`, which owns the same backend preparation, runtime verification, title generation, trace persistence, and session cache side effects used by IPC.
+
+Input and output behavior is CLI-specific:
+
+- `chat send` accepts message text from `--message`, positional arguments, stdin, and optional history files, then forwards normalized history to the shared chat service.
+- Text mode streams assistant chunks directly to stdout.
+- `--json` suppresses intermediate chunks and prints one final success/error envelope suitable for scripts that only need terminal data.
+- `--ndjson` prints one JSON object per line for streaming automation. Callback mapping is stable: `onChunk` -> `"chunk"`, `onLiveTraceEvent` -> `"trace"`, `onToolProgress` -> `"tool"`, `onUsage` -> `"usage"`, completion -> `"done"`, and failures -> `"error"`. The stream also starts with `"start"`.
+- `SIGINT` aborts the active chat run through the shared abort path, finalizes the trace as aborted when possible, and exits with code `130`.
+
+Trace/session effects are the same as the IPC path: each send creates a trace run, records user/history/session-resume evidence, persists structured tool/delegation/artifact/approval/transport events, accumulates usage, finishes completed/failed/aborted runs, and associates returned session ids with the requested profile in the desktop session cache. Generated titles from `chat title --session` update the same profile-aware session title storage as renderer title generation.
+
+Pure remote HTTP profile execution still fails closed before dispatch. Local mode can use verified API runtime or Hermes CLI fallback; SSH mode uses the verified `ssh-api` runtime after tunnel/gateway/API-key preparation. See [Connection modes](connection-modes.md) and the [CLI contract](../contracts/cli.md) for mode-specific errors and output envelopes.
+
 ## Main `send-message` flow
 
 `src/main/ipc/chat.ts` handles `send-message` as follows:
 
-1. If not remote mode and the local gateway is not running, call `startGateway(profile)`.
-2. Call `ensureSshTunnelIfNeeded()`.
-3. If connection mode is SSH, check remote gateway status and tunnel health. If either is not healthy, start the remote gateway, start the tunnel, read the remote API key, and cache it with `setSshRemoteApiKey(...)`.
-4. If another chat is active, abort it and finish the previous trace run as `aborted` with detail `Superseded by a new Hermes message.`
-5. Create a new trace run with `createTraceRun(message, profile)`.
-6. Record session resume and history metadata when supplied.
-7. Call `sendMessage(...)` from `src/main/hermes/gateway.ts` with callbacks for chunks, done, error, trace events, tool progress, and usage.
-8. Store the returned chat handle and trace run metadata as `activeChatRun`.
-9. Return a promise that resolves with `{ response, sessionId }` on completion/abort or rejects on error.
+1. Calls `prepareChatBackend(profile, "chat", resumeSessionId)` unless synthetic stream mode is enabled.
+2. `prepareChatBackend(...)` normalizes the profile through `profileRuntimeManager.normalizeProfile(profile)`.
+3. In local mode, if the selected profile's gateway is not running, it calls `startGateway(normalizedProfile)`, then resolves a verified `ProfileRuntimeHandle` with `profileRuntimeManager.resolveRuntime({ profile: normalizedProfile, purpose: "chat", sessionId })`.
+4. In SSH mode, it ensures the tunnel, checks remote gateway status and tunnel health for the normalized profile, starts the remote gateway/tunnel when either is unhealthy, reads the remote API key, caches it with `setSshRemoteApiKey(key, normalizedProfile)`, then resolves the runtime handle.
+5. In pure remote HTTP mode, runtime resolution currently fails closed with `runtime-unsupported-remote-profile` because profile identity is unverified for execution.
+6. If another chat is active, abort it and finish the previous trace run as `aborted` with detail `Superseded by a new Hermes message.`
+7. Create a new trace run with `createTraceRun(message, profile)`.
+8. Record session resume and history metadata when supplied.
+9. Call `sendMessage(...)` from `src/main/hermes/gateway.ts`, passing the prepared runtime handle plus callbacks for chunks, done, error, trace events, tool progress, and usage.
+10. Store the returned chat handle and trace run metadata as `activeChatRun`.
+11. Return a promise that resolves with `{ response, sessionId }` on completion/abort or rejects on error.
 
 The main handler tracks only one active chat at a time through `activeChatRun`.
 
@@ -227,24 +248,28 @@ Compatibility paths still exist:
 
 ## Hermes dispatch choice
 
-`src/main/hermes/gateway.ts` exposes `sendMessage(...)` and chooses the transport:
+`src/main/hermes/gateway.ts` exposes `sendMessage(...)` and dispatches from a verified `ProfileRuntimeHandle`:
 
-- Calls `ensureInitialized()` on every send.
-- If `isRemoteMode()` is true, always uses `sendMessageViaApi(...)`; there is no CLI fallback in remote or SSH mode.
-- In local mode, checks API readiness with `isApiServerReady()` when availability is unknown or false.
-- If local API is available, uses `sendMessageViaApi(...)`.
-- Otherwise, falls back to `sendMessageViaCli(...)`.
+- Synthetic chat stream mode bypasses real runtime preparation.
+- The selected profile is normalized through `profileRuntimeManager.normalizeProfile(profile)`.
+- Local initialization is profile-aware and only enables API server config/health polling when not in remote/SSH mode.
+- The gateway uses a caller-supplied `preparedRuntime` when `send-message` has already resolved one; otherwise it calls `profileRuntimeManager.resolveRuntime({ profile: normalizedProfile, purpose: "chat", sessionId })` itself.
+- It rejects runtime handles whose `runtime.request.profile` does not match the normalized requested profile.
+- `runtime.transport === "api"` or `"ssh-api"` routes to `sendMessageViaApi(...)` with the handle.
+- `runtime.transport === "cli"` routes to `sendMessageViaCli(...)`.
+- Pure remote HTTP currently does not produce an executable chat handle; `ProfileRuntimeManager.resolveRuntime(...)` throws `ProfileRuntimeError` with code `runtime-unsupported-remote-profile` until remote profile identity can be declared or verified.
 
-`ensureInitialized()` enables local API server config and starts health polling only when not remote mode.
+The transport names used by executable chat paths are `api`, `ssh-api`, and `cli`. `remote-api` exists in the runtime identity type for unverified external diagnostics, but current profile-bound chat execution fails closed before using it.
 
 ## API transport behavior
 
 `sendMessageViaApi(...)` in `src/main/hermes/chat-api.ts`:
 
+- Requires a verified `ProfileRuntimeHandle`; it throws `Verified API runtime handle is required for chat API execution` when the handle or `runtime.apiBaseUrl` is missing.
 - Reads model config for the selected profile.
 - Builds an OpenAI-style `messages` array from history plus the current user message, mapping renderer `agent` roles to `assistant`.
-- Posts to `<getApiUrl()>/v1/chat/completions` with `stream: true`.
-- Adds auth headers from `getRemoteAuthHeader()` for remote/SSH as applicable.
+- Posts to `${runtime.apiBaseUrl}/v1/chat/completions` with `stream: true`.
+- Adds `runtime.authHeaders` to both the streaming request and non-streaming error probe. Local API handles usually source auth from profile `.env`; SSH API handles source auth from the cached remote API key.
 - Reads `x-hermes-session-id` from response headers when present.
 - Parses SSE blocks containing `data:` lines and optional custom `event:` lines.
 - Normalizes custom Hermes events into structured trace callbacks for tool/delegation/approval/artifact activity.
@@ -254,6 +279,8 @@ Compatibility paths still exist:
 - On `[DONE]`, finishes when content or stream activity exists, otherwise surfaces a captured error or probes a non-streaming request for a clearer error.
 - Times out requests after 120 seconds with an SSH/gateway-oriented timeout message.
 - Returns a `ChatHandle` whose `abort()` aborts the request through `AbortController`.
+
+The API transport no longer calls `getApiUrl()` or `getRemoteAuthHeader()` directly during chat execution. URL and auth are resolved earlier by `ProfileRuntimeManager.resolveRuntime(...)` and passed as `runtime.apiBaseUrl` and `runtime.authHeaders`.
 
 ## CLI transport behavior
 
@@ -314,4 +341,4 @@ npm run test -- tests/ipc-handlers.test.ts tests/preload-api-surface.test.ts tes
 npm run typecheck
 ```
 
-If the change touches local/remote/SSH routing, also review [Connection modes](connection-modes.md). For docs-only edits, manually verify file paths, links, IPC names, preload API names, and renderer state names against the source anchors above.
+If the change touches local/remote/SSH routing, also review [Connection modes](connection-modes.md). If the change touches CLI chat parsing/output or shared chat service behavior consumed by `mercury chat send` / `mercury chat title`, also run `npm run test:cli`. For docs-only edits, manually verify file paths, links, IPC names, preload API names, CLI event names, and renderer state names against the source anchors above.

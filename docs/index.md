@@ -8,12 +8,13 @@ Use evergreen docs first when you need to understand or change Mercury. These pa
 
 ### Architecture
 
-- [Architecture overview](architecture/overview.md) — Electron main/preload/renderer/shared boundaries, app startup/shutdown, subsystem ownership, and brand asset generation flow.
+- [Architecture overview](architecture/overview.md) — Electron main/preload/renderer, Node CLI adapter, shared service boundaries, app startup/shutdown, subsystem ownership, and brand asset generation flow.
 - [Brand source](../brand/README.md) — canonical Mercury logo source and `npm run brand:generate` / `npm run brand:check` instructions for generated app and docs icons.
 
 ### Contracts
 
 - [IPC and preload contract](contracts/ipc-preload.md) — `window.hermesAPI`, preload fragments, IPC handlers, event channels, and change rules.
+- [CLI contract and command reference](contracts/cli.md) — Node `mercury` entrypoint, command taxonomy, global flags, JSON/NDJSON output envelopes, exit codes, connection-mode behavior, and parity with `window.hermesAPI`.
 - [Trace schema](contracts/trace-schema.md) — trace events, run lifecycle, trace storage, and skill-training derivation.
 
 ### Subsystems
@@ -26,7 +27,7 @@ Use evergreen docs first when you need to understand or change Mercury. These pa
 
 ### Testing
 
-- [Contract tests](testing/contract-tests.md) — IPC/preload parity, preload API surface, trace-store, skill import, and session-cache sync tests.
+- [Contract tests](testing/contract-tests.md) — IPC/preload parity, CLI contract/parity, preload API surface, trace-store, skill import, session-cache sync, and docs guard tests.
 - [Performance benchmarks](testing/performance-benchmarks.md) — local opt-in perf scripts, telemetry flags, artifact paths, and measured-evidence rules.
 
 ## Historical evidence
@@ -59,6 +60,6 @@ Historical evidence can explain why decisions were made or what was observed dur
 ## How future agents should use these docs
 
 1. Start with the [Architecture overview](architecture/overview.md).
-2. Read the relevant contract or subsystem docs before changing IPC/preload, shared schemas, storage, connection modes, user-visible workflows, or contract tests.
+2. Read the relevant contract or subsystem docs before changing IPC/preload, CLI commands, shared services, shared schemas, storage, connection modes, user-visible workflows, or contract tests.
 3. Use historical evidence only for dated context and prior findings.
 4. Verify behavior against source and run the checks listed by the relevant docs before submitting changes.

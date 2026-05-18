@@ -13,9 +13,11 @@ This document describes Mercury's current profile scoping, persistent files, ses
 - Soul: `src/main/soul.ts`
 - Models: `src/main/models.ts`, `src/main/default-models.ts`, `src/shared/chat-metadata.ts`
 - IPC routing: `src/main/ipc/config.ts`, `src/main/ipc/sessions.ts`, `src/main/ipc/knowledge.ts`, `src/main/ipc/models.ts`, `src/main/ipc/system.ts`
+- Shared CLI/IPC services: `src/main/services/config-service.ts`, `src/main/services/sessions-service.ts`, `src/main/services/knowledge-service.ts`, `src/main/services/models-service.ts`, `src/main/services/system-service.ts`, `src/main/services/chat-service.ts`
 - Runtime identity and diagnostics: `src/main/hermes/runtime.ts`, `src/main/hermes/types.ts`, `src/shared/runtime.ts`
 - SSH implementations: `src/main/ssh/config.ts`, `src/main/ssh/sessions-profiles.ts`, `src/main/ssh/memory-soul.ts`, `src/main/ssh/runtime.ts`, `src/main/ssh/transport.ts`, `src/main/ssh-tunnel.ts`
 - Contract tests: `tests/profiles.test.ts`, `tests/chat-metadata.test.ts`, `tests/session-cache-sync.test.ts`, `tests/hermes-runtime.test.ts`, `tests/cron-runtime.test.ts`, `tests/ssh-remote.test.ts`, `tests/reliable-profile-runtime-contract.test.ts`
+- CLI contract and parity tests: `docs/contracts/cli.md`, `tests/cli-chat-commands.test.ts`, `tests/cli-parity.test.ts`
 
 ## Profile scoping
 
@@ -65,6 +67,26 @@ Current local persistent files used by the documented subsystems include:
 | `<profileHome>/gateway.log`, `<profileHome>/logs/*.log` | installer/runtime log helpers, SSH runtime log helper | Profile-specific log viewer inputs where available; SSH log reads target the selected remote profile. |
 
 Remote SSH equivalents generally use `~/.hermes/...` and `~/.hermes/profiles/<profile>/...` paths.
+
+## CLI storage parity
+
+The CLI does not introduce a separate storage root or schema. Commands run against the same `HERMES_HOME`, `desktop.json`, profile homes, session cache, memory/SOUL files, models, credentials, cron state, and trace store documented here. Profile selection follows the CLI contract: explicit `--profile` / `-p` wins, then `MERCURY_PROFILE`, then the default profile used by shared services.
+
+`profiles` and `agents` are CLI aliases for the same profile-backed workspace identity. `mercury profiles list|create|delete|use` and `mercury agents list|create|delete|use` operate on `src/main/profiles.ts` data, including `<HERMES_HOME>/active_profile`, so the desktop Agents screen and CLI see the same workspace set.
+
+CLI mutations use the same profile-scoped files and service side effects as IPC/preload:
+
+- `memory add|update|remove`, `memory read`, and `user-profile write` use the selected profile's `memories/` files and SQLite session counts.
+- `soul write|reset|read` uses the selected profile's `SOUL.md`.
+- `tools set` updates the selected profile's tool configuration.
+- `skills install|uninstall|import|installed|content|metadata` uses the same local/SSH skill roots and Markdown import contract described in [Skills subsystem](skills.md).
+- `sessions cache sync`, `sessions cache list`, `sessions list|messages|search`, and `sessions title set` preserve profile metadata in the desktop session cache and profile DBs.
+- `cron create|remove|pause|resume|run` uses the same cron state/runtime isolation rules as the desktop schedules surface.
+- `env set`, `config set`, `model-config set`, `connection set`, and `connection ssh set` write the same `.env`, `config.yaml`, and `desktop.json` files used by the renderer settings path.
+
+`mercury chat send` records trace/session side effects through `src/main/services/chat-service.ts`: trace runs/events/usage are persisted to `<HERMES_HOME>/desktop-traces.json`, completed session ids are associated with the requested profile in the desktop session cache, and `chat title --session` updates the same profile-aware session title storage used by the renderer. Config/import mutations that affect a running runtime mark runtime state stale or return restart warnings where the shared service does so; the CLI reports those effects in command output rather than showing renderer banners.
+
+In SSH mode, CLI storage-facing commands route through the same SSH helpers as IPC when a service exposes an SSH branch. Models and credentials remain local for mutating operations where the IPC path is local-only. In pure remote HTTP mode, profile-bound execution remains fail-closed unless explicitly supported, and filesystem-backed mutations should not be described as remote storage writes.
 
 ## Connection config and desktop settings
 

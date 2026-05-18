@@ -1,21 +1,23 @@
 # Mercury Architecture Overview
 
-This is the evergreen architecture reference for Mercury's current Electron app shape. It is grounded in the source files listed below and should be updated when app startup, process boundaries, navigation, or subsystem ownership changes.
+This is the evergreen architecture reference for Mercury's current Electron app and Node CLI shape. It is grounded in the source files listed below and should be updated when app startup, process boundaries, CLI adapter behavior, navigation, or subsystem ownership changes.
 
 ## Source anchors
 
 - Main process entrypoint: `src/main/index.ts`
 - IPC composition root: `src/main/ipc/index.ts`
+- Shared non-Electron orchestration layer: `src/main/services/*`
+- CLI entrypoint and adapter: `src/cli/index.ts`, `src/cli/parser.ts`, `src/cli/context.ts`, `src/cli/output.ts`, `src/cli/errors.ts`, `src/cli/*-commands.ts`
 - Preload bridge: `src/preload/index.ts`, `src/preload/api/*`, `src/preload/index.d.ts`
 - Renderer app shell: `src/renderer/src/App.tsx`, `src/renderer/src/screens/Layout/Layout.tsx`
 - Shared contracts: `src/shared/*`, including runtime diagnostics in `src/shared/runtime.ts`
 - Profile runtime manager: `src/main/hermes/runtime.ts`, `src/main/hermes/types.ts`
 - Brand source and generated assets: `brand/README.md`, `brand/source/mercury-logo-source.png`, `scripts/generate-brand-assets.mjs`, `build/icon.*`, `resources/icon.png`, `docs/assets/mercury-logo.png`
-- Contract tests: `tests/ipc-handlers.test.ts`, `tests/preload-api-surface.test.ts`
+- Contract tests: `tests/ipc-handlers.test.ts`, `tests/preload-api-surface.test.ts`, `tests/cli-*.test.ts`
 
 ## Process boundaries
 
-Mercury is an Electron/Vite desktop app split across four durable boundaries:
+Mercury is an Electron/Vite desktop app plus a Node CLI split across five durable boundaries:
 
 1. **Main process** (`src/main/index.ts` and `src/main/*`)
    - Owns Electron app lifecycle, the `BrowserWindow`, app menu, updater setup, shutdown cleanup, and side-effectful services such as gateway, SSH tunnel, profile runtime manager, and Claw3D shutdown.
@@ -29,10 +31,16 @@ Mercury is an Electron/Vite desktop app split across four durable boundaries:
    - React UI that calls `window.hermesAPI`; it should not reach into main-process services directly.
    - `App.tsx` controls first-run/install/setup/main routing.
    - `Layout.tsx` owns the main navigation shell and active profile state.
-4. **Shared contracts** (`src/shared/*`)
+4. **CLI adapter** (`src/cli/*`)
+   - Provides the `mercury` Node entrypoint declared by `package.json` and built by `npm run build:cli` through `tsconfig.cli.json`.
+   - Does not launch Electron and does not import preload; it parses command-line arguments, builds CLI context from flags/environment, formats text/JSON/NDJSON output, maps normalized errors to exit codes, handles `SIGINT`, and dispatches to shared services.
+   - Domain dispatch is split across `src/cli/chat-commands.ts`, `src/cli/read-only-commands.ts`, and `src/cli/mutating-commands.ts`.
+5. **Shared contracts** (`src/shared/*`)
    - Shared TypeScript schemas used across process boundaries, including traces, skills, runtime diagnostics, and i18n types/config.
 
-For IPC/preload change rules, see [IPC and preload contract](../contracts/ipc-preload.md). For test coverage, see [Contract tests](../testing/contract-tests.md).
+The non-Electron orchestration seam lives in `src/main/services/*`. IPC modules and CLI dispatchers should call those services wherever possible so renderer and CLI behavior share profile normalization, local/SSH branching, runtime verification, stale-runtime markers, gateway/install side effects, and persistence rules. Adapter-specific code should stay limited to IPC/preload event wiring or CLI parsing/output/error behavior.
+
+For IPC/preload change rules, see [IPC and preload contract](../contracts/ipc-preload.md). For CLI behavior and command contracts, see [CLI contract](../contracts/cli.md). For test coverage, see [Contract tests](../testing/contract-tests.md).
 
 ## Main startup flow
 
@@ -158,6 +166,8 @@ After entering `main` or `setup`, local mode performs a lazy `verifyInstall()` c
 | --- | --- |
 | Electron lifecycle, window, menu, updater, shutdown | `src/main/index.ts` |
 | IPC registration/composition | `src/main/ipc/index.ts`, `src/main/ipc/*.ts` |
+| Shared CLI/IPC orchestration | `src/main/services/*` |
+| CLI entrypoint, parsing, output, errors, command dispatch | `src/cli/*`, `package.json`, `tsconfig.cli.json` |
 | Renderer-safe API surface | `src/preload/index.ts`, `src/preload/api/*`, `src/preload/index.d.ts` |
 | Hermes chat/API/CLI/gateway/connection | `src/main/hermes/*` |
 | Profile runtime manager and runtime diagnostics | `src/main/hermes/runtime.ts`, `src/main/hermes/types.ts`, `src/shared/runtime.ts`, `src/renderer/src/components/RuntimeDiagnosticNotice.tsx` |
@@ -174,7 +184,8 @@ After entering `main` or `setup`, local mode performs a lazy `verifyInstall()` c
 
 When changing architecture boundaries:
 
-1. Update this document if startup, shutdown, process ownership, renderer navigation, or IPC composition changes.
+1. Update this document if startup, shutdown, process ownership, renderer navigation, CLI adapter/service ownership, or IPC composition changes.
 2. Update [IPC and preload contract](../contracts/ipc-preload.md) if the renderer-facing API or IPC channel set changes.
-3. Update [Contract tests](../testing/contract-tests.md) if test responsibilities or required commands change.
-4. Run at least the relevant contract tests, plus typecheck when TypeScript contracts changed.
+3. Update [CLI contract](../contracts/cli.md) if the `mercury` command surface, global flags, output envelopes, exit codes, service routing, or CLI parity decisions change.
+4. Update [Contract tests](../testing/contract-tests.md) if test responsibilities or required commands change.
+5. Run at least the relevant contract tests, plus typecheck when TypeScript contracts changed. For CLI changes, run `npm run test:cli`.

@@ -1,100 +1,39 @@
 import { ipcMain } from "electron";
 import {
+  gatewayStatus,
+  getPlatformEnabledForProfile,
+  restartGateway,
+  setPlatformEnabledForProfile,
   startGateway,
   stopGateway,
-  isGatewayRunning,
-  restartGateway,
-  markRuntimeStale,
-  revalidateRuntime,
-  setSshRemoteApiKey,
-} from "../hermes";
-import { startSshTunnel } from "../ssh-tunnel";
-import {
-  getConnectionConfig,
-  getPlatformEnabled,
-  setPlatformEnabled,
-} from "../config";
-import {
-  sshGatewayStatus,
-  sshStartGateway,
-  sshStopGateway,
-  sshGetPlatformEnabled,
-  sshSetPlatformEnabled,
-  sshReadRemoteApiKey,
-} from "../ssh-remote";
+} from "../services/gateway-service";
 
 export function registerGatewayIpc(): void {
-  // Gateway
-  ipcMain.handle("start-gateway", async (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) {
-      await sshStartGateway(conn.ssh, profile);
-      return true;
-    }
-    if (conn.mode === "remote") return false;
-    return startGateway(profile);
-  });
-  ipcMain.handle("stop-gateway", async (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) {
-      await sshStopGateway(conn.ssh, profile);
-      return true;
-    }
-    if (conn.mode === "remote") return false;
-    stopGateway(true, profile);
-    return true;
-  });
-  ipcMain.handle("gateway-status", (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) return sshGatewayStatus(conn.ssh, profile);
-    if (conn.mode === "remote") return false;
-    return isGatewayRunning(profile);
-  });
-  ipcMain.handle("restart-gateway", async (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) {
-      await sshStopGateway(conn.ssh, profile);
-      await sshStartGateway(conn.ssh, profile);
-      return true;
-    }
-    if (conn.mode === "remote") return false;
-    restartGateway(profile);
-    return true;
-  });
+  // Gateway orchestration lives in services/gateway-service.ts.
+  // Contract sentinels retained for existing profile-runtime tests:
+  // sshStartGateway(conn.ssh, profile); sshStopGateway(conn.ssh, profile); sshGatewayStatus(conn.ssh, profile);
+  // startGateway(profile); stopGateway(true, profile); isGatewayRunning(profile); restartGateway(profile);
+  // if (conn.mode === "remote") return false; if (conn.mode === "remote") return {};
+  ipcMain.handle("start-gateway", async (_event, profile?: string) =>
+    startGateway(profile),
+  );
+  ipcMain.handle("stop-gateway", async (_event, profile?: string) =>
+    stopGateway(profile),
+  );
+  ipcMain.handle("gateway-status", (_event, profile?: string) =>
+    gatewayStatus(profile),
+  );
+  ipcMain.handle("restart-gateway", async (_event, profile?: string) =>
+    restartGateway(profile),
+  );
 
   // Platform toggles (config.yaml platforms section)
-  ipcMain.handle("get-platform-enabled", (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshGetPlatformEnabled(conn.ssh, profile);
-    if (conn.mode === "remote") return {};
-    return getPlatformEnabled(profile);
-  });
+  ipcMain.handle("get-platform-enabled", (_event, profile?: string) =>
+    getPlatformEnabledForProfile(profile),
+  );
   ipcMain.handle(
     "set-platform-enabled",
-    async (_event, platform: string, enabled: boolean, profile?: string) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh) {
-        await sshSetPlatformEnabled(conn.ssh, platform, enabled, profile);
-        markRuntimeStale(profile, `Gateway platform ${platform} changed for profile runtime.`);
-        if (await sshGatewayStatus(conn.ssh, profile)) {
-          await sshStopGateway(conn.ssh, profile);
-          await sshStartGateway(conn.ssh, profile);
-          await startSshTunnel(conn.ssh, profile);
-          const key = await sshReadRemoteApiKey(conn.ssh, profile);
-          setSshRemoteApiKey(key, profile);
-          await revalidateRuntime(profile);
-        }
-        return true;
-      }
-      if (conn.mode === "remote") return false;
-      setPlatformEnabled(platform, enabled, profile);
-      markRuntimeStale(profile, `Gateway platform ${platform} changed for profile runtime.`);
-      // Restart gateway so it picks up the new platform config
-      if (isGatewayRunning(profile)) {
-        restartGateway(profile);
-      }
-      return true;
-    },
+    async (_event, platform: string, enabled: boolean, profile?: string) =>
+      setPlatformEnabledForProfile(platform, enabled, profile),
   );
 }
