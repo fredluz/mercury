@@ -25,6 +25,7 @@ interface ChatProps {
   conversationVersion: number;
   profile?: string;
   runtimeDiagnostic?: RuntimeDiagnostic | null;
+  onRuntimeDiagnosticRefresh?: () => void;
   onSessionStarted?: () => void;
   onSessionResolved?: (sessionId: string) => void;
   onSessionTitleChange?: (title: string) => void;
@@ -40,6 +41,7 @@ function Chat({
   conversationVersion,
   profile,
   runtimeDiagnostic,
+  onRuntimeDiagnosticRefresh,
   onSessionStarted,
   onSessionResolved,
   onSessionTitleChange,
@@ -71,7 +73,6 @@ function Chat({
         fastMode={chat.fastMode}
         messages={messages}
         profile={profile}
-        runtimeDiagnostic={runtimeDiagnostic}
         onFastModeChange={chat.setFastMode}
         onNewChat={onNewChat}
         onClear={chat.handleClear}
@@ -83,6 +84,9 @@ function Chat({
           <ChatEmpty
             setPrompt={chat.setInput}
             focusInput={() => chat.inputRef.current?.focus()}
+            runtimeDiagnostic={runtimeDiagnostic}
+            profile={profile}
+            onRuntimeDiagnosticRefresh={onRuntimeDiagnosticRefresh}
             t={t}
           />
         ) : (

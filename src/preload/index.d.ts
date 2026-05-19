@@ -7,7 +7,11 @@ import type {
   SkillMetadata,
 } from "../shared/skills";
 import type { PerfTelemetryConfig, RendererPerfEvent } from "../shared/perf";
-import type { RuntimeDiagnostic } from "../shared/runtime";
+import type {
+  RuntimeDebugAgentRequest,
+  RuntimeDebugAgentResult,
+  RuntimeDiagnostic,
+} from "../shared/runtime";
 import type {
   LocalChatTraceRequest,
   SkillTrainingRun,
@@ -33,6 +37,10 @@ interface InstallProgress {
 interface HermesAPI {
   // Runtime diagnostics
   getRuntimeDiagnostic: (profile?: string) => Promise<RuntimeDiagnostic>;
+  revalidateRuntime: (profile?: string) => Promise<boolean>;
+  launchRuntimeDebugAgent: (
+    request: RuntimeDebugAgentRequest,
+  ) => Promise<RuntimeDebugAgentResult>;
 
   // Installation
   checkInstall: () => Promise<InstallStatus>;

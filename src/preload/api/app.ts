@@ -1,11 +1,21 @@
 import { ipcRenderer } from "electron";
 import type { PerfTelemetryConfig, RendererPerfEvent } from "../../shared/perf";
-import type { RuntimeDiagnostic } from "../../shared/runtime";
+import type {
+  RuntimeDebugAgentRequest,
+  RuntimeDebugAgentResult,
+  RuntimeDiagnostic,
+} from "../../shared/runtime";
 
 export const appApi = {
   // Runtime diagnostics
   getRuntimeDiagnostic: (profile?: string): Promise<RuntimeDiagnostic> =>
     ipcRenderer.invoke("get-runtime-diagnostic", profile),
+  revalidateRuntime: (profile?: string): Promise<boolean> =>
+    ipcRenderer.invoke("revalidate-runtime", profile),
+  launchRuntimeDebugAgent: (
+    request: RuntimeDebugAgentRequest,
+  ): Promise<RuntimeDebugAgentResult> =>
+    ipcRenderer.invoke("launch-runtime-debug-agent", request),
 
   // Updates
   checkForUpdates: (): Promise<string | null> =>
@@ -55,8 +65,10 @@ export const appApi = {
   },
 
   onUpdateError: (callback: (message: string) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, message: unknown): void =>
-      callback(String(message || ""));
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      message: unknown,
+    ): void => callback(String(message || ""));
     ipcRenderer.on("update-error", handler);
     return () => ipcRenderer.removeListener("update-error", handler);
   },

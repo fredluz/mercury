@@ -130,11 +130,18 @@ describe("Preload API Surface", () => {
 // ─── New APIs exist ─────────────────────────────────────
 
 describe("New APIs from v0.8/v0.9 features", () => {
-  it("has runtime diagnostic API", () => {
+  it("has runtime diagnostic APIs", () => {
     expect(preloadMethods).toContain("getRuntimeDiagnostic");
+    expect(preloadMethods).toContain("revalidateRuntime");
+    expect(preloadMethods).toContain("launchRuntimeDebugAgent");
     expect(typeMethods).toContain("getRuntimeDiagnostic");
+    expect(typeMethods).toContain("revalidateRuntime");
+    expect(typeMethods).toContain("launchRuntimeDebugAgent");
     expect(preloadSrc).toContain('ipcRenderer.invoke("get-runtime-diagnostic", profile)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("revalidate-runtime", profile)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("launch-runtime-debug-agent", request)');
     expect(preloadTypes).toContain("RuntimeDiagnostic");
+    expect(preloadTypes).toContain("RuntimeDebugAgentRequest");
   });
 
   it("has backup/import APIs", () => {
@@ -152,7 +159,7 @@ describe("New APIs from v0.8/v0.9 features", () => {
   });
 
   it("has profile-aware remote update API", () => {
-    expect(preloadSrc).toContain('ipcRenderer.invoke("run-hermes-update", profile)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("run-hermes-update", profile, expectedVersion)');
     expect(preloadTypes).toContain("runHermesUpdate: (");
   });
 
@@ -278,9 +285,6 @@ describe("Legacy APIs preserved (backward compat)", () => {
     // Credential pool
     "getCredentialPool",
     "setCredentialPool",
-    // Claw3D
-    "claw3dStatus",
-    "claw3dSetup",
     // Cron
     "listCronJobs",
     "createCronJob",

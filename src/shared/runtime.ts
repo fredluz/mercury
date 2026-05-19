@@ -45,3 +45,19 @@ export interface RuntimeDiagnostic {
   capabilities?: Record<string, boolean>;
   command?: string[];
 }
+
+export type RuntimeDebugAgent = "codex" | "claude" | "pi";
+
+export interface RuntimeDebugAgentRequest {
+  agent: RuntimeDebugAgent;
+  profile?: string;
+}
+
+export interface RuntimeDebugAgentResult {
+  success: boolean;
+  agent: RuntimeDebugAgent;
+  command?: string[];
+  promptPath?: string;
+  scriptPath?: string;
+  error?: string;
+}

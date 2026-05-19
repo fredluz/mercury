@@ -214,6 +214,84 @@
   line-height: 1.6;
 }
 
+.chat-runtime-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  width: min(620px, 100%);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--warning) 38%, var(--border) 62%);
+  background: color-mix(in srgb, var(--warning) 7%, var(--bg-secondary) 93%);
+  box-shadow: 0 10px 28px rgba(5, 5, 5, 0.08);
+}
+
+.chat-runtime-card-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+}
+
+.chat-runtime-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.chat-runtime-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.chat-runtime-card-copy,
+.chat-runtime-card-reason,
+.chat-runtime-card-status {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.chat-runtime-card-reason {
+  color: var(--text-muted);
+}
+
+.chat-runtime-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.chat-runtime-action,
+.chat-runtime-debug-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-runtime-debug-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.chat-runtime-debug-btn {
+  height: 30px;
+  padding-inline: 9px;
+}
+
 .chat-empty-suggestions {
   display: flex;
   flex-wrap: wrap;

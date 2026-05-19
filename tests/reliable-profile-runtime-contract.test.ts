@@ -214,16 +214,19 @@ describe("reliable profile runtime contract sentinels", () => {
 
     expect(layout).toContain("getRuntimeDiagnostic(requestedProfile)");
     expect(layout).toContain("activeProfileRef.current === requestedProfile");
-    expect(layout).toContain("<RuntimeDiagnosticNotice diagnostic={runtimeDiagnostic}");
+    expect(layout).toContain("showGlobalRuntimeDiagnostic");
+    expect(layout).toContain("isIdleLocalUnverifiedRuntime");
     expect(diagnosticNotice).toContain("Runtime warning");
     expect(diagnosticNotice).toContain("Runtime verified");
     expect(diagnosticNotice).toContain("runtimeDiagnosticMessage");
-    const chatHeader = src("src/renderer/src/screens/Chat/components/ChatHeader.tsx");
+    const chatEmpty = src("src/renderer/src/screens/Chat/components/ChatEmpty.tsx");
+    const chatRuntimeCard = src("src/renderer/src/screens/Chat/components/ChatRuntimeReadinessCard.tsx");
     const settingsCore = src("src/renderer/src/screens/Settings/components/SettingsCoreSections.tsx");
 
     expect(gatewayScreen).toContain("RuntimeDiagnosticNotice");
     expect(chatScreen).toContain("runtimeDiagnostic={runtimeDiagnostic}");
-    expect(chatHeader).toContain("RuntimeDiagnosticNotice");
+    expect(chatEmpty).toContain("ChatRuntimeReadinessCard");
+    expect(chatRuntimeCard).toContain("launchRuntimeDebugAgent");
     expect(settingsScreen).toContain("runtimeDiagnostic");
     expect(settingsCore).toContain("RuntimeDiagnosticNotice");
   });

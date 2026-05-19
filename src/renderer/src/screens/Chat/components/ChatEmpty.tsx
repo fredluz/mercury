@@ -1,14 +1,26 @@
 import type React from "react";
 import { Bell, ChartLine, Clock, Code, Mail, Search } from "lucide-react";
+import type { RuntimeDiagnostic } from "../../../../../shared/runtime";
 import MercuryMark from "../../../components/common/MercuryMark";
+import { ChatRuntimeReadinessCard } from "./ChatRuntimeReadinessCard";
 
 interface ChatEmptyProps {
   setPrompt: (value: string) => void;
   focusInput: () => void;
+  runtimeDiagnostic?: RuntimeDiagnostic | null;
+  profile?: string;
+  onRuntimeDiagnosticRefresh?: () => void;
   t: (key: string) => string;
 }
 
-export function ChatEmpty({ setPrompt, focusInput, t }: ChatEmptyProps): React.JSX.Element {
+export function ChatEmpty({
+  setPrompt,
+  focusInput,
+  runtimeDiagnostic,
+  profile,
+  onRuntimeDiagnosticRefresh,
+  t,
+}: ChatEmptyProps): React.JSX.Element {
   const suggestions = [
     { icon: Search, text: "Search the web for today's top tech news", label: "chat.suggestionSearch" },
     { icon: Bell, text: "Set a reminder to check emails every day at 9 AM", label: "chat.suggestionReminder" },
@@ -19,6 +31,12 @@ export function ChatEmpty({ setPrompt, focusInput, t }: ChatEmptyProps): React.J
   ];
   return (
     <div className="chat-empty">
+      <ChatRuntimeReadinessCard
+        diagnostic={runtimeDiagnostic}
+        profile={profile}
+        onRuntimeDiagnosticRefresh={onRuntimeDiagnosticRefresh}
+        t={t}
+      />
       <div className="chat-empty-icon">
         <MercuryMark size={64} decorative />
       </div>

@@ -1,7 +1,5 @@
 import type React from "react";
 import { Plus, Trash2 as Trash, Zap } from "lucide-react";
-import { RuntimeDiagnosticNotice } from "../../../components/RuntimeDiagnosticNotice";
-import type { RuntimeDiagnostic } from "../../../../../shared/runtime";
 import type { ChatContextUsage, ChatMessage } from "../types";
 
 interface ChatHeaderProps {
@@ -12,7 +10,6 @@ interface ChatHeaderProps {
   fastMode: boolean;
   messages: ChatMessage[];
   profile?: string;
-  runtimeDiagnostic?: RuntimeDiagnostic | null;
   onFastModeChange: (value: boolean) => void;
   onNewChat?: () => void;
   onClear: () => void;
@@ -38,7 +35,6 @@ export function ChatHeader({
   fastMode,
   messages,
   profile,
-  runtimeDiagnostic,
   onFastModeChange,
   onNewChat,
   onClear,
@@ -87,7 +83,6 @@ export function ChatHeader({
               {t("chat.contextUsed", { percent: contextPercent })}
             </span>
           )}
-          <RuntimeDiagnosticNotice diagnostic={runtimeDiagnostic} compact />
         </div>
       </div>
       <div className="chat-header-actions">

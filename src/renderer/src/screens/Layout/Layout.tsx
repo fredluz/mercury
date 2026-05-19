@@ -79,6 +79,19 @@ const NAV_ITEMS: { view: NavView; icon: LucideIcon; labelKey: string }[] = [
   { view: "settings", icon: SettingsIcon, labelKey: "navigation.settings" },
 ];
 
+function isIdleLocalUnverifiedRuntime(
+  diagnostic: RuntimeDiagnostic | null,
+): boolean {
+  return Boolean(
+    diagnostic &&
+      diagnostic.status === "unverified" &&
+      diagnostic.mode === "local" &&
+      diagnostic.actualProfile === null &&
+      !diagnostic.startedByMercury &&
+      !diagnostic.stale,
+  );
+}
+
 function Layout(): React.JSX.Element {
   const { t } = useI18n();
   const [view, setView] = useState<View>("chat");
@@ -297,6 +310,12 @@ function Layout(): React.JSX.Element {
     goTo("sessions");
   }, [goTo]);
 
+  const showGlobalRuntimeDiagnostic =
+    runtimeDiagnostic &&
+    !(view === "chat" && isIdleLocalUnverifiedRuntime(runtimeDiagnostic))
+      ? runtimeDiagnostic
+      : null;
+
   const handleResumeSession = useCallback(
     async (sessionId: string, title?: string | null, profile?: string) => {
       const rowProfile = profile?.trim() || undefined;
@@ -360,7 +379,7 @@ function Layout(): React.JSX.Element {
       </aside>
 
       <main className="content">
-        <RuntimeDiagnosticNotice diagnostic={runtimeDiagnostic} />
+        <RuntimeDiagnosticNotice diagnostic={showGlobalRuntimeDiagnostic} />
         <div style={paneStyle("chat")}>
           <Chat
             messages={messages}
@@ -370,6 +389,7 @@ function Layout(): React.JSX.Element {
             conversationVersion={conversationVersion}
             profile={activeProfile}
             runtimeDiagnostic={runtimeDiagnostic}
+            onRuntimeDiagnosticRefresh={refreshRuntimeDiagnostic}
             onSessionResolved={(sessionId) => {
               setCurrentSessionId(sessionId);
               setCurrentSessionProfile(activeProfile);

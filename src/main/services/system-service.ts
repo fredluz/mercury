@@ -7,13 +7,19 @@ import {
   readLogs,
 } from "../installer";
 import { getConnectionConfig } from "../config";
-import { getRuntimeDiagnostic, markRuntimeStale, revalidateRuntime } from "../hermes";
+import {
+  getRuntimeDiagnostic,
+  markRuntimeStale,
+  revalidateRuntime,
+} from "../hermes";
+import type { RuntimeDebugAgentResult } from "../../shared/runtime";
 import {
   sshRunDump,
   sshDiscoverMemoryProviders,
   sshReadLogs,
   sshListMcpServers,
 } from "../ssh-remote";
+import { launchRuntimeDebugAgent } from "./runtime-debug-service";
 
 export function getRuntimeDiagnosticForProfile(profile?: string) {
   return getRuntimeDiagnostic(profile);
@@ -21,6 +27,12 @@ export function getRuntimeDiagnosticForProfile(profile?: string) {
 
 export function revalidateRuntimeForProfile(profile?: string) {
   return revalidateRuntime(profile);
+}
+
+export function launchRuntimeDebugAgentForProfile(
+  request: unknown,
+): RuntimeDebugAgentResult {
+  return launchRuntimeDebugAgent(request);
 }
 
 export function runHermesBackupForProfile(profile?: string) {

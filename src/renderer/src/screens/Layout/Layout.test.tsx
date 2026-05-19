@@ -59,22 +59,25 @@ vi.mock("../TraceLab/TraceLab", () => ({
   ),
 }));
 
-function installHermesApiMock(remoteOnly = false): void {
+function installHermesApiMock(
+  remoteOnly = false,
+  runtimeDiagnostic: Awaited<ReturnType<Window["hermesAPI"]["getRuntimeDiagnostic"]>> = {
+    selectedProfile: "default",
+    requestedProfile: "default",
+    actualProfile: "default",
+    verified: true,
+    verificationSource: "cli-args",
+    mode: "local",
+    transport: "cli",
+    status: "verified",
+    authSource: "none",
+    startedByMercury: false,
+    stale: false,
+  },
+): void {
   (window as unknown as { hermesAPI: Partial<Window["hermesAPI"]> }).hermesAPI = {
     isRemoteOnlyMode: vi.fn().mockResolvedValue(remoteOnly),
-    getRuntimeDiagnostic: vi.fn().mockResolvedValue({
-      selectedProfile: "default",
-      requestedProfile: "default",
-      actualProfile: "default",
-      verified: true,
-      verificationSource: "cli-args",
-      mode: "local",
-      transport: "cli",
-      status: "verified",
-      authSource: "none",
-      startedByMercury: false,
-      stale: false,
-    }),
+    getRuntimeDiagnostic: vi.fn().mockResolvedValue(runtimeDiagnostic),
     onUpdateAvailable: vi.fn(() => vi.fn()),
     onUpdateDownloadProgress: vi.fn(() => vi.fn()),
     onUpdateDownloaded: vi.fn(() => vi.fn()),
@@ -133,5 +136,32 @@ describe("Layout trace routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "navigation.agents" }));
 
     expect(await screen.findByText("Remote Agents")).toBeInTheDocument();
+  });
+
+  it("keeps idle unverified runtime diagnostics out of the global Chat banner", async () => {
+    installHermesApiMock(false, {
+      selectedProfile: "default",
+      requestedProfile: "default",
+      actualProfile: null,
+      verified: false,
+      verificationSource: "unverified",
+      mode: "local",
+      transport: "api",
+      status: "unverified",
+      authSource: "none",
+      startedByMercury: false,
+      stale: false,
+      mismatchReason: "Local runtime identity has not been verified yet.",
+    });
+    render(<Layout />);
+
+    await waitFor(() =>
+      expect(window.hermesAPI.getRuntimeDiagnostic).toHaveBeenCalled(),
+    );
+
+    expect(screen.queryByText("Runtime warning")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Local runtime identity has not been verified yet."),
+    ).not.toBeInTheDocument();
   });
 });

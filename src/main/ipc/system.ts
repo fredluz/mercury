@@ -3,16 +3,15 @@ import type { RendererPerfEvent } from "../../shared/perf";
 import {
   discoverMemoryProvidersForConnection,
   getRuntimeDiagnosticForProfile,
+  launchRuntimeDebugAgentForProfile,
   listMcpServersForConnection,
   readLogsForConnection,
+  revalidateRuntimeForProfile,
   runHermesBackupForProfile,
   runHermesDumpForConnection,
   runHermesImportForProfile,
 } from "../services/system-service";
-import {
-  getPerfTelemetryConfig,
-  recordPerfEvent,
-} from "../perf/telemetry";
+import { getPerfTelemetryConfig, recordPerfEvent } from "../perf/telemetry";
 
 export function registerSystemIpc(): void {
   // Shell remains Electron-only adapter behavior.
@@ -31,6 +30,12 @@ export function registerSystemIpc(): void {
   // Contract sentinels retained for existing tests: getRuntimeDiagnostic(profile); markRuntimeStale(profile, "Profile import changed profile runtime files.");
   ipcMain.handle("get-runtime-diagnostic", (_event, profile?: string) =>
     getRuntimeDiagnosticForProfile(profile),
+  );
+  ipcMain.handle("revalidate-runtime", (_event, profile?: string) =>
+    revalidateRuntimeForProfile(profile),
+  );
+  ipcMain.handle("launch-runtime-debug-agent", (_event, request: unknown) =>
+    launchRuntimeDebugAgentForProfile(request),
   );
 
   // Backup / Import

@@ -140,6 +140,8 @@ describe("IPC Handler ↔ Preload Consistency", () => {
 describe("New IPC handlers from v0.8/v0.9 features", () => {
   const newChannels = [
     "get-runtime-diagnostic",
+    "revalidate-runtime",
+    "launch-runtime-debug-agent",
     "run-hermes-backup",
     "run-hermes-import",
     "read-logs",
