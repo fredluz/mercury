@@ -1,5 +1,6 @@
 import { ipcRenderer } from "electron";
 import type { AppLocale } from "../../shared/i18n/types";
+import type { MigrationInventory, MigrationInventoryOptions, MigrationPromptOptions } from "../../shared/migration";
 
 export const installApi = {
   // Installation
@@ -48,12 +49,27 @@ export const installApi = {
     ipcRenderer.invoke("refresh-hermes-version"),
   runHermesDoctor: (): Promise<string> =>
     ipcRenderer.invoke("run-hermes-doctor"),
+  getHermesApprovedUpdate: (): Promise<{
+    currentVersion: string | null;
+    recommendedVersion: string | null;
+    summary: string | null;
+    notesUrl: string | null;
+    breakingChange: boolean;
+    canUpdate: boolean;
+    reason: string;
+  }> => ipcRenderer.invoke("get-hermes-approved-update"),
   runHermesUpdate: (
     profile?: string,
+    expectedVersion?: string,
   ): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke("run-hermes-update", profile),
+    ipcRenderer.invoke("run-hermes-update", profile, expectedVersion),
 
-  // OpenClaw migration
+  // Migration inventory / OpenClaw migration
+  getMigrationInventory: (
+    options?: MigrationInventoryOptions,
+  ): Promise<MigrationInventory> => ipcRenderer.invoke("migration-inventory", options),
+  getMigrationPrompt: (options?: MigrationPromptOptions): Promise<string> =>
+    ipcRenderer.invoke("migration-prompt", options),
   checkOpenClaw: (): Promise<{ found: boolean; path: string | null }> =>
     ipcRenderer.invoke("check-openclaw"),
   runClawMigrate: (): Promise<{ success: boolean; error?: string }> =>

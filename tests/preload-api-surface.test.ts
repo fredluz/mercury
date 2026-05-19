@@ -151,12 +151,16 @@ describe("New APIs from v0.8/v0.9 features", () => {
     expect(typeMethods).toContain("runHermesImport");
   });
 
-  it("has migration inventory API", () => {
+  it("has migration inventory and prompt APIs", () => {
     expect(preloadMethods).toContain("getMigrationInventory");
     expect(typeMethods).toContain("getMigrationInventory");
+    expect(preloadMethods).toContain("getMigrationPrompt");
+    expect(typeMethods).toContain("getMigrationPrompt");
     expect(preloadSrc).toContain('ipcRenderer.invoke("migration-inventory", options)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("migration-prompt", options)');
     expect(preloadTypes).toContain("MigrationInventory");
     expect(preloadTypes).toContain("MigrationInventoryOptions");
+    expect(preloadTypes).toContain("MigrationPromptOptions");
   });
 
   it("has profile-aware log viewer API", () => {

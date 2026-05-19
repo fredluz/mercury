@@ -9,6 +9,7 @@ import type {
 import type {
   MigrationInventory,
   MigrationInventoryOptions,
+  MigrationPromptOptions,
 } from "../shared/migration";
 import type { PerfTelemetryConfig, RendererPerfEvent } from "../shared/perf";
 import type {
@@ -84,6 +85,7 @@ interface HermesAPI {
   getMigrationInventory: (
     options?: MigrationInventoryOptions,
   ) => Promise<MigrationInventory>;
+  getMigrationPrompt: (options?: MigrationPromptOptions) => Promise<string>;
   checkOpenClaw: () => Promise<{ found: boolean; path: string | null }>;
   runClawMigrate: () => Promise<{ success: boolean; error?: string }>;
 

@@ -4,10 +4,13 @@ import {
   checkInstall,
   checkOpenClaw,
   getHermesVersionForConnection,
+  getMigrationInventory,
+  getMigrationPrompt,
   refreshHermesVersionForConnection,
   runClawMigrateForConnection,
   runHermesDoctorForConnection,
   runHermesUpdateForConnection,
+  getHermesApprovedUpdateForConnection,
   startInstall,
   verifyHermesInstall,
 } from "../services/install-service";
@@ -37,13 +40,28 @@ export function registerInstallIpc({
     refreshHermesVersionForConnection(),
   );
   ipcMain.handle("run-hermes-doctor", () => runHermesDoctorForConnection());
-  ipcMain.handle("run-hermes-update", async (event, profile?: string) =>
-    runHermesUpdateForConnection((progress: InstallProgress) => {
-      event.sender.send("install-progress", progress);
-    }, profile),
+  ipcMain.handle("get-hermes-approved-update", () =>
+    getHermesApprovedUpdateForConnection(),
+  );
+  ipcMain.handle(
+    "run-hermes-update",
+    async (event, profile?: string, expectedVersion?: string) =>
+      runHermesUpdateForConnection(
+        (progress: InstallProgress) => {
+          event.sender.send("install-progress", progress);
+        },
+        profile,
+        expectedVersion,
+      ),
   );
 
-  // OpenClaw migration
+  // Migration inventory / OpenClaw migration
+  ipcMain.handle("migration-inventory", (_event, options?: unknown) =>
+    getMigrationInventory(options),
+  );
+  ipcMain.handle("migration-prompt", (_event, options?: unknown) =>
+    getMigrationPrompt(options),
+  );
   ipcMain.handle("check-openclaw", () => checkOpenClaw());
   ipcMain.handle("run-claw-migrate", async (event) =>
     runClawMigrateForConnection((progress: InstallProgress) => {
