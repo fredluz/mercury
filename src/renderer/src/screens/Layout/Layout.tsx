@@ -9,7 +9,6 @@ import Soul from "../Soul/Soul";
 import Memory from "../Memory/Memory";
 import Tools from "../Tools/Tools";
 import Gateway from "../Gateway/Gateway";
-import Models from "../Models/Models";
 import Providers from "../Providers/Providers";
 import Schedules from "../Schedules/Schedules";
 import RemoteNotice from "../../components/RemoteNotice";
@@ -25,10 +24,8 @@ import {
   Brain,
   Wrench,
   Signal,
-  Layers,
   KeyRound,
   Timer,
-  Download,
   Activity,
 } from "../../assets/icons";
 import type { LucideIcon } from "lucide-react";
@@ -41,7 +38,6 @@ type View =
   | "sessions"
   | "traceDetail"
   | "agents"
-  | "models"
   | "providers"
   | "skills"
   | "soul"
@@ -68,7 +64,6 @@ const NAV_ITEMS: { view: NavView; icon: LucideIcon; labelKey: string }[] = [
   { view: "chat", icon: ChatBubble, labelKey: "navigation.chat" },
   { view: "sessions", icon: Clock, labelKey: "navigation.sessions" },
   { view: "agents", icon: Users, labelKey: "navigation.agents" },
-  { view: "models", icon: Layers, labelKey: "navigation.models" },
   { view: "providers", icon: KeyRound, labelKey: "navigation.providers" },
   { view: "skills", icon: Puzzle, labelKey: "navigation.skills" },
   { view: "soul", icon: Sparkles, labelKey: "navigation.soul" },
@@ -84,11 +79,11 @@ function isIdleLocalUnverifiedRuntime(
 ): boolean {
   return Boolean(
     diagnostic &&
-      diagnostic.status === "unverified" &&
-      diagnostic.mode === "local" &&
-      diagnostic.actualProfile === null &&
-      !diagnostic.startedByMercury &&
-      !diagnostic.stale,
+    diagnostic.status === "unverified" &&
+    diagnostic.mode === "local" &&
+    diagnostic.actualProfile === null &&
+    !diagnostic.startedByMercury &&
+    !diagnostic.stale,
   );
 }
 
@@ -97,12 +92,18 @@ function Layout(): React.JSX.Element {
   const [view, setView] = useState<View>("chat");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [currentSessionTitle, setCurrentSessionTitle] = useState<string | null>(null);
-  const [currentSessionProfile, setCurrentSessionProfile] = useState<string | null>(null);
+  const [currentSessionTitle, setCurrentSessionTitle] = useState<string | null>(
+    null,
+  );
+  const [currentSessionProfile, setCurrentSessionProfile] = useState<
+    string | null
+  >(null);
   const [sessionsRefreshToken, setSessionsRefreshToken] = useState(0);
   const [conversationVersion, setConversationVersion] = useState(0);
   const [activeProfile, setActiveProfile] = useState("default");
-  const [traceLaunch, setTraceLaunch] = useState<TraceLaunchState>({ mode: "all" });
+  const [traceLaunch, setTraceLaunch] = useState<TraceLaunchState>({
+    mode: "all",
+  });
   const [traceLaunchVersion, setTraceLaunchVersion] = useState(0);
   // Tabs lazy-mount on first visit, then stay mounted (display:none toggle).
   // Keeps IPC refetch / DOM rebuild off the tab-switch hot path.
@@ -111,7 +112,8 @@ function Layout(): React.JSX.Element {
   );
   // Remote-only mode — SSH tunnel has full access; only pure HTTP remote mode restricts screens
   const [remoteMode, setRemoteMode] = useState(false);
-  const [runtimeDiagnostic, setRuntimeDiagnostic] = useState<RuntimeDiagnostic | null>(null);
+  const [runtimeDiagnostic, setRuntimeDiagnostic] =
+    useState<RuntimeDiagnostic | null>(null);
   const activeProfileRef = useRef(activeProfile);
 
   const paneStyle = (target: View): React.CSSProperties => ({
@@ -150,10 +152,12 @@ function Layout(): React.JSX.Element {
     window.hermesAPI
       .getRuntimeDiagnostic(requestedProfile)
       .then((diagnostic) => {
-        if (activeProfileRef.current === requestedProfile) setRuntimeDiagnostic(diagnostic);
+        if (activeProfileRef.current === requestedProfile)
+          setRuntimeDiagnostic(diagnostic);
       })
       .catch(() => {
-        if (activeProfileRef.current === requestedProfile) setRuntimeDiagnostic(null);
+        if (activeProfileRef.current === requestedProfile)
+          setRuntimeDiagnostic(null);
       });
   }, [activeProfile]);
 
@@ -237,21 +241,21 @@ function Layout(): React.JSX.Element {
     }
   }
 
-  const updateDisabled = updateState === "checking" || updateState === "downloading";
+  const updateDisabled =
+    updateState === "checking" || updateState === "downloading";
+  const showUpdateButton = updateState !== "idle" && updateState !== "current";
   const updateButtonLabel =
     updateState === "checking"
       ? t("common.checkingForUpdates")
       : updateState === "available"
-      ? t("common.updateMercuryVersion", { version: updateVersion })
-      : updateState === "downloading"
-      ? t("common.downloading", { percent: downloadPercent })
-      : updateState === "ready"
-      ? t("common.restartToUpdate")
-      : updateState === "current"
-      ? t("common.mercuryUpToDate")
-      : updateState === "error"
-      ? t("common.updateCheckFailed")
-      : t("common.updateMercury");
+        ? t("common.updateMercuryVersion", { version: updateVersion })
+        : updateState === "downloading"
+          ? t("common.downloading", { percent: downloadPercent })
+          : updateState === "ready"
+            ? t("common.restartToUpdate")
+            : updateState === "error"
+              ? t("common.updateCheckFailed")
+              : t("common.updateMercury");
 
   const handleNewChat = useCallback(() => {
     // Abort any in-flight chat before clearing
@@ -320,7 +324,10 @@ function Layout(): React.JSX.Element {
     async (sessionId: string, title?: string | null, profile?: string) => {
       const rowProfile = profile?.trim() || undefined;
       const nextProfile = rowProfile || activeProfile;
-      const dbMessages = await window.hermesAPI.getSessionMessages(sessionId, rowProfile);
+      const dbMessages = await window.hermesAPI.getSessionMessages(
+        sessionId,
+        rowProfile,
+      );
       const chatMessages: ChatMessage[] = dbMessages.map((m) => ({
         id: `db-${m.id}`,
         role: m.role === "user" ? "user" : "agent",
@@ -344,16 +351,17 @@ function Layout(): React.JSX.Element {
           <MercuryLockup className="sidebar-brand-lockup" />
         </div>
 
-        <div className="sidebar-update-panel">
-          <button
-            className={`sidebar-update-btn sidebar-update-${updateState}`}
-            onClick={handleUpdate}
-            disabled={updateDisabled}
-          >
-            <Download size={13} />
-            <span>{updateButtonLabel}</span>
-          </button>
-        </div>
+        {showUpdateButton ? (
+          <div className="sidebar-update-panel">
+            <button
+              className={`sidebar-update-btn sidebar-update-${updateState}`}
+              onClick={handleUpdate}
+              disabled={updateDisabled}
+            >
+              <span>{updateButtonLabel}</span>
+            </button>
+          </div>
+        ) : null}
 
         <nav className="sidebar-nav">
           {NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => (
@@ -416,7 +424,10 @@ function Layout(): React.JSX.Element {
                   <div className="sessions-header-top">
                     <h2 className="sessions-title">{t("sessions.title")}</h2>
                     <div className="sessions-header-actions">
-                      <button className="btn btn-secondary" onClick={handleOpenTraceActivity}>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={handleOpenTraceActivity}
+                      >
                         <Activity size={14} />
                         {t("sessions.traceActivity")}
                       </button>
@@ -443,7 +454,9 @@ function Layout(): React.JSX.Element {
           <div style={paneStyle("traceDetail")}>
             <TraceLab
               mode={traceLaunch.mode}
-              sessionTarget={traceLaunch.mode === "session" ? traceLaunch.target : null}
+              sessionTarget={
+                traceLaunch.mode === "session" ? traceLaunch.target : null
+              }
               reloadToken={traceLaunchVersion}
               onBackToSessions={handleBackToSessions}
             />
@@ -461,12 +474,6 @@ function Layout(): React.JSX.Element {
                 onProfileAction={goTo}
               />
             )}
-          </div>
-        )}
-
-        {visitedViews.has("models") && (
-          <div style={paneStyle("models")}>
-            <Models />
           </div>
         )}
 
@@ -534,14 +541,20 @@ function Layout(): React.JSX.Element {
             {remoteMode ? (
               <RemoteNotice feature="Gateway" />
             ) : (
-              <Gateway profile={activeProfile} runtimeDiagnostic={runtimeDiagnostic} />
+              <Gateway
+                profile={activeProfile}
+                runtimeDiagnostic={runtimeDiagnostic}
+              />
             )}
           </div>
         )}
 
         {visitedViews.has("settings") && (
           <div style={paneStyle("settings")}>
-            <Settings profile={activeProfile} runtimeDiagnostic={runtimeDiagnostic} />
+            <Settings
+              profile={activeProfile}
+              runtimeDiagnostic={runtimeDiagnostic}
+            />
           </div>
         )}
       </main>

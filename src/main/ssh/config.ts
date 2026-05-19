@@ -172,6 +172,29 @@ export async function sshSetEnvValue(
   await sshWriteFile(config, envPath, lines.join("\n"));
 }
 
+function parseScalarConfigValue(content: string, key: string): string | null {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = content.match(new RegExp(`^\\s*${escapedKey}:\\s*["']?([^"'\\n#]+)["']?`, "m"));
+  return match ? match[1].trim() : null;
+}
+
+function parseNestedConfigValue(content: string, key: string): string | null {
+  const parts = key.split(".");
+  if (parts.length !== 2) return null;
+  const [section, child] = parts.map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  let inSection = false;
+  for (const line of content.split("\n")) {
+    if (!inSection) {
+      inSection = new RegExp(`^${section}:\\s*(?:#.*)?$`).test(line.trimEnd());
+      continue;
+    }
+    if (/^\S/.test(line) && line.trim() !== "") return null;
+    const match = line.match(new RegExp(`^\\s+${child}:\\s*["']?([^"'\\n#]+)["']?`));
+    if (match) return match[1].trim();
+  }
+  return null;
+}
+
 export async function sshGetConfigValue(
   config: SshConfig,
   key: string,
@@ -179,9 +202,7 @@ export async function sshGetConfigValue(
 ): Promise<string | null> {
   const content = await sshReadFile(config, remoteConfigPath(profile));
   if (!content) return null;
-  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = content.match(new RegExp(`^\\s*${escapedKey}:\\s*["']?([^"'\\n#]+)["']?`, "m"));
-  return match ? match[1].trim() : null;
+  return parseScalarConfigValue(content, key) ?? parseNestedConfigValue(content, key);
 }
 
 export async function sshSetConfigValue(

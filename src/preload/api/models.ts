@@ -1,4 +1,23 @@
 import { ipcRenderer } from "electron";
+import type {
+  ModelCapability,
+  ModelRoleDefaultsResult,
+  ModelRoleId,
+  ModelRoleListResult,
+  ModelRoleResolution,
+  ModelRoleSelection,
+} from "../../shared/model-roles";
+
+type SavedModelApiRecord = {
+  id: string;
+  name: string;
+  provider: string;
+  model: string;
+  baseUrl: string;
+  createdAt: number;
+  contextWindow?: number;
+  capabilities?: ModelCapability[];
+};
 
 export const modelsApi = {
   // Session cache (fast local cache with generated titles)
@@ -66,32 +85,16 @@ export const modelsApi = {
     ipcRenderer.invoke("set-credential-pool", provider, entries),
 
   // Models
-  listModels: (): Promise<
-    Array<{
-      id: string;
-      name: string;
-      provider: string;
-      model: string;
-      baseUrl: string;
-      createdAt: number;
-      contextWindow?: number;
-    }>
-  > => ipcRenderer.invoke("list-models"),
+  listModels: (): Promise<SavedModelApiRecord[]> => ipcRenderer.invoke("list-models"),
 
   addModel: (
     name: string,
     provider: string,
     model: string,
     baseUrl: string,
-  ): Promise<{
-    id: string;
-    name: string;
-    provider: string;
-    model: string;
-    baseUrl: string;
-    createdAt: number;
-    contextWindow?: number;
-  }> => ipcRenderer.invoke("add-model", name, provider, model, baseUrl),
+    capabilities?: ModelCapability[],
+  ): Promise<SavedModelApiRecord> =>
+    ipcRenderer.invoke("add-model", name, provider, model, baseUrl, capabilities),
 
   removeModel: (id: string): Promise<boolean> =>
     ipcRenderer.invoke("remove-model", id),
@@ -104,69 +107,38 @@ export const modelsApi = {
       model: string;
       baseUrl: string;
       contextWindow: number;
+      capabilities: ModelCapability[];
     }>,
   ): Promise<boolean> => ipcRenderer.invoke("update-model", id, fields),
 
-  // Claw3D
-  claw3dStatus: (): Promise<{
-    cloned: boolean;
-    installed: boolean;
-    devServerRunning: boolean;
-    adapterRunning: boolean;
-    port: number;
-    portInUse: boolean;
-    wsUrl: string;
-    running: boolean;
-    error: string;
-  }> => ipcRenderer.invoke("claw3d-status"),
+  listModelRoles: (profile?: string): Promise<ModelRoleListResult> =>
+    ipcRenderer.invoke("list-model-roles", profile),
 
-  claw3dSetup: (): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke("claw3d-setup"),
+  getModelRoleDefaults: (profile?: string): Promise<ModelRoleDefaultsResult> =>
+    ipcRenderer.invoke("get-model-role-defaults", profile),
 
-  onClaw3dSetupProgress: (
-    callback: (progress: {
-      step: number;
-      totalSteps: number;
-      title: string;
-      detail: string;
-      log: string;
-    }) => void,
-  ): (() => void) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      progress: unknown,
-    ): void =>
-      callback(
-        progress as {
-          step: number;
-          totalSteps: number;
-          title: string;
-          detail: string;
-          log: string;
-        },
-      );
-    ipcRenderer.on("claw3d-setup-progress", handler);
-    return () => ipcRenderer.removeListener("claw3d-setup-progress", handler);
-  },
+  setGlobalModelRoleDefault: (
+    role: ModelRoleId,
+    selection: Partial<ModelRoleSelection>,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("set-global-model-role-default", role, selection),
 
-  claw3dGetPort: (): Promise<number> => ipcRenderer.invoke("claw3d-get-port"),
-  claw3dSetPort: (port: number): Promise<boolean> =>
-    ipcRenderer.invoke("claw3d-set-port", port),
-  claw3dGetWsUrl: (): Promise<string> =>
-    ipcRenderer.invoke("claw3d-get-ws-url"),
-  claw3dSetWsUrl: (url: string): Promise<boolean> =>
-    ipcRenderer.invoke("claw3d-set-ws-url", url),
+  setProfileModelRoleOverride: (
+    role: ModelRoleId,
+    selection: Partial<ModelRoleSelection>,
+    profile?: string,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("set-profile-model-role-override", role, selection, profile),
 
-  claw3dStartAll: (): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke("claw3d-start-all"),
-  claw3dStopAll: (): Promise<boolean> => ipcRenderer.invoke("claw3d-stop-all"),
-  claw3dGetLogs: (): Promise<string> => ipcRenderer.invoke("claw3d-get-logs"),
+  clearProfileModelRoleOverride: (
+    role: ModelRoleId,
+    profile?: string,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("clear-profile-model-role-override", role, profile),
 
-  claw3dStartDev: (): Promise<boolean> =>
-    ipcRenderer.invoke("claw3d-start-dev"),
-  claw3dStopDev: (): Promise<boolean> => ipcRenderer.invoke("claw3d-stop-dev"),
-  claw3dStartAdapter: (): Promise<boolean> =>
-    ipcRenderer.invoke("claw3d-start-adapter"),
-  claw3dStopAdapter: (): Promise<boolean> =>
-    ipcRenderer.invoke("claw3d-stop-adapter"),
+  resolveModelForRole: (
+    role: ModelRoleId,
+    profile?: string,
+  ): Promise<ModelRoleResolution> =>
+    ipcRenderer.invoke("resolve-model-for-role", role, profile),
 };

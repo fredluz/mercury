@@ -1,9 +1,9 @@
 import http from "http";
 import https from "https";
-import { getModelConfig } from "../config";
 import { generateTitle } from "../session-cache";
 import { getSessionTitle } from "../sessions";
 import { profileRuntimeManager } from "./runtime";
+import { resolveChatRuntimeModel } from "./chat-model";
 import type { ProfileRuntimeHandle } from "./types";
 import {
   type GenerateChatTitleRequest,
@@ -43,12 +43,12 @@ function runtimeMatchesRequest(
   );
 }
 
-function requestModelTitle(
+async function requestModelTitle(
   request: GenerateChatTitleRequest,
   runtime: ProfileRuntimeHandle,
 ): Promise<string> {
+  const mc = await resolveChatRuntimeModel(request.profile);
   return new Promise((resolve, reject) => {
-    const mc = getModelConfig(request.profile);
     if (!runtime.apiBaseUrl) {
       reject(new Error("Title runtime does not expose an API base URL"));
       return;

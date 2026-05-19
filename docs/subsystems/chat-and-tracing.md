@@ -18,6 +18,7 @@ This document traces the current chat path from renderer input to preload, main 
 - API transport: `src/main/hermes/chat-api.ts`
 - CLI transport: `src/main/hermes/chat-cli.ts`
 - Stream/CLI trace normalization: `src/main/hermes/trace-events.ts`
+- Codex image generation and image artifact behavior: [Codex image generation](codex-image-generation.md)
 - Callback/handle types: `src/main/hermes/types.ts`
 - Connection helpers: `src/main/hermes/connection.ts`
 - Trace persistence: `src/main/trace-store.ts`
@@ -61,6 +62,8 @@ Only activity-like trace events are shown live in chat. Both the main process an
 - `artifact.created`
 - `approval.*`
 - `transport.error`
+
+For Codex-backed image generation, a successful run must include image tool evidence plus `artifact.created`; prose that merely describes an image is not success. See [Codex image generation](codex-image-generation.md) for the `image_gen` toolset, `openai-codex` provider config, artifact path handling, and validation rules.
 
 `src/main/ipc/chat.ts` records matching callback events to the trace store and sends the persisted `TraceEvent` over `chat-trace-event`. `src/renderer/src/screens/Chat/chatActivity.ts` then:
 

@@ -1,11 +1,13 @@
 import http from "http";
 import https from "https";
-import { getModelConfig } from "../config";
 import type { ChatCallbacks, ChatHandle, ProfileRuntimeHandle } from "./types";
+import { resolveChatRuntimeModel } from "./chat-model";
 import {
   normalizeHermesStreamEvent,
   splitLegacyToolProgressContent,
 } from "./trace-events";
+
+type VerifiedApiRuntimeHandle = ProfileRuntimeHandle & { apiBaseUrl: string };
 
 export function sendMessageViaApi(
   message: string,
@@ -14,11 +16,23 @@ export function sendMessageViaApi(
   _resumeSessionId: string | undefined,
   history: Array<{ role: string; content: string }> | undefined,
   runtime: ProfileRuntimeHandle,
-): ChatHandle {
+): Promise<ChatHandle> {
   if (!runtime?.apiBaseUrl) {
     throw new Error("Verified API runtime handle is required for chat API execution");
   }
-  const mc = getModelConfig(profile);
+  const verifiedRuntime = runtime as VerifiedApiRuntimeHandle;
+  return sendMessageViaVerifiedApi(message, cb, profile, _resumeSessionId, history, verifiedRuntime);
+}
+
+async function sendMessageViaVerifiedApi(
+  message: string,
+  cb: ChatCallbacks,
+  profile: string | undefined,
+  _resumeSessionId: string | undefined,
+  history: Array<{ role: string; content: string }> | undefined,
+  runtime: VerifiedApiRuntimeHandle,
+): Promise<ChatHandle> {
+  const mc = await resolveChatRuntimeModel(profile);
   const controller = new AbortController();
 
   // Build full conversation from history + current message (standard OpenAI format)

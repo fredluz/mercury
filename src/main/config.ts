@@ -176,17 +176,41 @@ export function setEnvValue(
   safeWriteFile(envFile, lines.join("\n"));
 }
 
-export function getConfigValue(key: string, profile?: string): string | null {
-  const { configFile } = profilePaths(profile);
-  if (!existsSync(configFile)) return null;
-
-  const content = readFileSync(configFile, "utf-8");
+function parseScalarConfigValue(content: string, key: string): string | null {
   const regex = new RegExp(
     `^\\s*${escapeRegex(key)}:\\s*["']?([^"'\\n#]+)["']?`,
     "m",
   );
   const match = content.match(regex);
   return match ? match[1].trim() : null;
+}
+
+function parseNestedConfigValue(content: string, key: string): string | null {
+  const parts = key.split(".");
+  if (parts.length !== 2) return null;
+  const [section, child] = parts;
+  const lines = content.split("\n");
+  let inSection = false;
+  for (const line of lines) {
+    if (!inSection) {
+      inSection = new RegExp(`^${escapeRegex(section)}:\\s*(?:#.*)?$`).test(line.trimEnd());
+      continue;
+    }
+    if (/^\S/.test(line) && line.trim() !== "") return null;
+    const match = line.match(
+      new RegExp(`^\\s+${escapeRegex(child)}:\\s*["']?([^"'\\n#]+)["']?`),
+    );
+    if (match) return match[1].trim();
+  }
+  return null;
+}
+
+export function getConfigValue(key: string, profile?: string): string | null {
+  const { configFile } = profilePaths(profile);
+  if (!existsSync(configFile)) return null;
+
+  const content = readFileSync(configFile, "utf-8");
+  return parseScalarConfigValue(content, key) ?? parseNestedConfigValue(content, key);
 }
 
 export function setConfigValue(

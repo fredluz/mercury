@@ -19,6 +19,7 @@ interface ModelPickerProps {
     model: string,
     baseUrl: string,
     contextWindow?: number,
+    modelId?: string,
   ) => void;
   handleCustomModelSubmit: () => void;
   t: (key: string) => string;
@@ -59,9 +60,9 @@ export function ModelPicker({
               <div className="chat-model-group-label">{t(group.providerLabel)}</div>
               {group.models.map((m) => (
                 <button
-                  key={`${m.provider}:${m.model}`}
+                  key={m.id ?? `${m.provider}:${m.baseUrl}:${m.model}`}
                   className={`chat-model-option ${currentModel === m.model && currentProvider === m.provider ? "active" : ""}`}
-                  onClick={() => selectModel(m.provider, m.model, m.baseUrl, m.contextWindow)}
+                  onClick={() => selectModel(m.provider, m.model, m.baseUrl, m.contextWindow, m.id)}
                 >
                   <span className="chat-model-option-label">{m.label}</span>
                   <span className="chat-model-option-id">{m.model}</span>

@@ -1,6 +1,192 @@
 /* ========================================================================
    MODELS
    ======================================================================== */
+.models-settings-back {
+  margin: 0 0 10px -6px;
+  color: var(--text-secondary);
+}
+
+.models-role-section,
+.models-library-section {
+  margin-bottom: 18px;
+}
+
+.models-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.models-section-heading h2 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+
+.models-section-heading p {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.45;
+}
+
+.model-roles-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.model-role-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+
+.model-role-row-image {
+  border-color: var(--border-bright);
+}
+
+.model-role-missing {
+  border-color: var(--warning);
+}
+
+.model-role-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.model-role-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.model-role-title-row h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.model-role-description,
+.model-role-help {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin: 0 0 8px;
+}
+
+.model-role-summary,
+.model-role-meta,
+.model-role-state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.model-role-summary strong {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.model-role-summary span,
+.model-role-meta span,
+.model-role-state span {
+  background: var(--bg-tertiary);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.model-role-source-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-text);
+  background: var(--accent-subtle);
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.model-role-source-badge.source-missing-model,
+.model-role-source-badge.warning {
+  color: var(--warning);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.model-role-source-badge.ok {
+  color: var(--success);
+  background: var(--success-bg);
+}
+
+.model-role-warning,
+.model-role-image-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  font-size: 12px;
+  color: var(--warning);
+  background: rgba(245, 158, 11, 0.12);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  margin: 8px 0;
+}
+
+.model-role-image-status {
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+}
+
+.model-role-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: min(360px, 42%);
+}
+
+.model-role-selector-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.model-role-selector {
+  width: 100%;
+  font-size: 12px;
+}
+
+.model-role-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+@media (max-width: 820px) {
+  .model-role-row {
+    flex-direction: column;
+  }
+
+  .model-role-actions {
+    width: 100%;
+  }
+}
+
 .models-header {
   display: flex;
   align-items: flex-start;
@@ -206,6 +392,33 @@
   font-size: 11px;
   color: var(--text-muted);
   margin-bottom: 4px;
+}
+
+.models-card-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.models-card-capabilities span {
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+
+.models-capability-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.models-capability-option.disabled {
+  color: var(--text-muted);
 }
 
 .models-card-footer {

@@ -1,5 +1,6 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { ContextWindowSource } from "../../../../shared/chat-metadata";
+import type { ModelCapability } from "../../../../shared/model-roles";
 import type { TraceEvent } from "../../../../shared/traces";
 
 export interface SlashCommand {
@@ -20,11 +21,13 @@ export interface ModelGroup {
   provider: string;
   providerLabel: string;
   models: {
+    id?: string;
     provider: string;
     model: string;
     label: string;
     baseUrl: string;
     contextWindow?: number;
+    capabilities?: ModelCapability[];
   }[];
 }
 
@@ -99,6 +102,7 @@ export interface ChatController {
     model: string,
     baseUrl: string,
     contextWindow?: number,
+    modelId?: string,
   ) => Promise<void>;
   handleCustomModelSubmit: () => Promise<void>;
   handleSend: () => Promise<void>;

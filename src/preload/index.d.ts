@@ -6,6 +6,10 @@ import type {
   SkillMarkdownImportResult,
   SkillMetadata,
 } from "../shared/skills";
+import type {
+  MigrationInventory,
+  MigrationInventoryOptions,
+} from "../shared/migration";
 import type { PerfTelemetryConfig, RendererPerfEvent } from "../shared/perf";
 import type {
   RuntimeDebugAgentRequest,
@@ -18,6 +22,14 @@ import type {
   TraceEvent,
   TraceRun,
 } from "../shared/traces";
+import type {
+  ModelCapability,
+  ModelRoleDefaultsResult,
+  ModelRoleId,
+  ModelRoleListResult,
+  ModelRoleResolution,
+  ModelRoleSelection,
+} from "../shared/model-roles";
 
 interface InstallStatus {
   installed: boolean;
@@ -54,11 +66,24 @@ interface HermesAPI {
   getHermesVersion: () => Promise<string | null>;
   refreshHermesVersion: () => Promise<string | null>;
   runHermesDoctor: () => Promise<string>;
+  getHermesApprovedUpdate: () => Promise<{
+    currentVersion: string | null;
+    recommendedVersion: string | null;
+    summary: string | null;
+    notesUrl: string | null;
+    breakingChange: boolean;
+    canUpdate: boolean;
+    reason: string;
+  }>;
   runHermesUpdate: (
     profile?: string,
+    expectedVersion?: string,
   ) => Promise<{ success: boolean; error?: string }>;
 
-  // OpenClaw migration
+  // Migration inventory / OpenClaw migration
+  getMigrationInventory: (
+    options?: MigrationInventoryOptions,
+  ) => Promise<MigrationInventory>;
   checkOpenClaw: () => Promise<{ found: boolean; path: string | null }>;
   runClawMigrate: () => Promise<{ success: boolean; error?: string }>;
 
@@ -357,6 +382,7 @@ interface HermesAPI {
       baseUrl: string;
       createdAt: number;
       contextWindow?: number;
+      capabilities?: ModelCapability[];
     }>
   >;
   addModel: (
@@ -364,6 +390,7 @@ interface HermesAPI {
     provider: string,
     model: string,
     baseUrl: string,
+    capabilities?: ModelCapability[],
   ) => Promise<{
     id: string;
     name: string;
@@ -372,6 +399,7 @@ interface HermesAPI {
     baseUrl: string;
     createdAt: number;
     contextWindow?: number;
+    capabilities?: ModelCapability[];
   }>;
   removeModel: (id: string) => Promise<boolean>;
   updateModel: (
@@ -382,42 +410,28 @@ interface HermesAPI {
       model: string;
       baseUrl: string;
       contextWindow: number;
+      capabilities: ModelCapability[];
     }>,
   ) => Promise<boolean>;
-
-  // Claw3D
-  claw3dStatus: () => Promise<{
-    cloned: boolean;
-    installed: boolean;
-    devServerRunning: boolean;
-    adapterRunning: boolean;
-    port: number;
-    portInUse: boolean;
-    wsUrl: string;
-    running: boolean;
-    error: string;
-  }>;
-  claw3dSetup: () => Promise<{ success: boolean; error?: string }>;
-  onClaw3dSetupProgress: (
-    callback: (progress: {
-      step: number;
-      totalSteps: number;
-      title: string;
-      detail: string;
-      log: string;
-    }) => void,
-  ) => () => void;
-  claw3dGetPort: () => Promise<number>;
-  claw3dSetPort: (port: number) => Promise<boolean>;
-  claw3dGetWsUrl: () => Promise<string>;
-  claw3dSetWsUrl: (url: string) => Promise<boolean>;
-  claw3dStartAll: () => Promise<{ success: boolean; error?: string }>;
-  claw3dStopAll: () => Promise<boolean>;
-  claw3dGetLogs: () => Promise<string>;
-  claw3dStartDev: () => Promise<boolean>;
-  claw3dStopDev: () => Promise<boolean>;
-  claw3dStartAdapter: () => Promise<boolean>;
-  claw3dStopAdapter: () => Promise<boolean>;
+  listModelRoles: (profile?: string) => Promise<ModelRoleListResult>;
+  getModelRoleDefaults: (profile?: string) => Promise<ModelRoleDefaultsResult>;
+  setGlobalModelRoleDefault: (
+    role: ModelRoleId,
+    selection: Partial<ModelRoleSelection>,
+  ) => Promise<boolean>;
+  setProfileModelRoleOverride: (
+    role: ModelRoleId,
+    selection: Partial<ModelRoleSelection>,
+    profile?: string,
+  ) => Promise<boolean>;
+  clearProfileModelRoleOverride: (
+    role: ModelRoleId,
+    profile?: string,
+  ) => Promise<boolean>;
+  resolveModelForRole: (
+    role: ModelRoleId,
+    profile?: string,
+  ) => Promise<ModelRoleResolution>;
 
   // Updates
   checkForUpdates: () => Promise<string | null>;

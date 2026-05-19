@@ -1,6 +1,26 @@
 /* ========================================================================
    SETTINGS
    ======================================================================== */
+.settings-entry-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-entry-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.settings-entry-description {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
 .settings-container {
   padding: 24px 32px;
   overflow-y: auto;

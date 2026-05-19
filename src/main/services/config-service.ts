@@ -40,7 +40,16 @@ import {
   sshStopGateway,
   sshStartGateway,
   sshReadRemoteApiKey,
+  sshReadModelRolesFile,
+  sshWriteModelRolesFile,
 } from "../ssh-remote";
+import { inferContextWindow } from "../../shared/chat-metadata";
+import { normalizeModelCapabilities, type ModelRoleSelection } from "../../shared/model-roles";
+import {
+  normalizeModelRolesFile,
+  readProfileModelRoleOverrides,
+  writeProfileModelRoleOverride,
+} from "../model-roles";
 
 export { isRemoteMode, isRemoteOnlyMode, testRemoteConnection, testSshConnection };
 
@@ -132,6 +141,32 @@ export function getModelConfigForProfile(profile?: string) {
   return getModelConfig(profile);
 }
 
+function legacyChatSelection(
+  provider: string,
+  model: string,
+  baseUrl: string,
+): Omit<ModelRoleSelection, "role"> {
+  return {
+    provider,
+    model,
+    baseUrl,
+    contextWindow: inferContextWindow(provider, model).tokens,
+    capabilities: normalizeModelCapabilities(["text"]),
+    updatedAt: Date.now(),
+  };
+}
+
+function modelRoleSelectionChanged(
+  previous: ModelRoleSelection | undefined,
+  next: Omit<ModelRoleSelection, "role">,
+): boolean {
+  return (
+    previous?.provider !== next.provider ||
+    previous?.model !== next.model ||
+    (previous?.baseUrl ?? "") !== (next.baseUrl ?? "")
+  );
+}
+
 export async function setModelConfigForProfile(
   provider: string,
   model: string,
@@ -141,9 +176,14 @@ export async function setModelConfigForProfile(
   const conn = getConnectionConfig();
   if (conn.mode === "ssh" && conn.ssh) {
     const prev = await sshGetModelConfig(conn.ssh, profile);
+    const rolesFile = normalizeModelRolesFile(await sshReadModelRolesFile(conn.ssh, profile));
+    const nextChatSelection = legacyChatSelection(provider, model, baseUrl);
+    const roleChanged = modelRoleSelectionChanged(rolesFile.defaults.chat, nextChatSelection);
     await sshSetModelConfig(conn.ssh, provider, model, baseUrl, profile);
+    rolesFile.defaults.chat = { role: "chat", ...nextChatSelection };
+    await sshWriteModelRolesFile(conn.ssh, rolesFile, profile);
     const changed =
-      prev.provider !== provider || prev.model !== model || prev.baseUrl !== baseUrl;
+      prev.provider !== provider || prev.model !== model || prev.baseUrl !== baseUrl || roleChanged;
     if (changed) {
       markRuntimeStale(profile, "Model configuration changed for profile runtime.");
     }
@@ -153,9 +193,15 @@ export async function setModelConfigForProfile(
     return true;
   }
   const prev = getModelConfig(profile);
+  const nextChatSelection = legacyChatSelection(provider, model, baseUrl);
+  const roleChanged = modelRoleSelectionChanged(
+    readProfileModelRoleOverrides(profile).chat,
+    nextChatSelection,
+  );
   setModelConfig(provider, model, baseUrl, profile);
+  writeProfileModelRoleOverride("chat", nextChatSelection, profile);
   const changed =
-    prev.provider !== provider || prev.model !== model || prev.baseUrl !== baseUrl;
+    prev.provider !== provider || prev.model !== model || prev.baseUrl !== baseUrl || roleChanged;
   if (changed) {
     markRuntimeStale(profile, "Model configuration changed for profile runtime.");
   }

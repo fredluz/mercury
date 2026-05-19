@@ -21,6 +21,7 @@ export default {
   },
   notDetected: "Not detected",
   updatedSuccessfully: "Updated successfully!",
+  updateSuccess: "Updated successfully!",
   updateFailed: "Update failed.",
   version: "v{{version}}",
   proxyPlaceholder: "e.g. socks5://127.0.0.1:1080 or http://proxy:8080",
@@ -52,7 +53,11 @@ export default {
   emptyLog: "(empty)",
   updating: "Updating...",
   updateEngine: "Update Engine",
+  updateToVersion: "Update to v{{version}}",
   latestVersion: "Already up to date",
+  latestApprovedVersion: "Latest approved version installed",
+  breakingChange: "Breaking change",
+  readFullNotes: "Read full notes",
   runningDiagnosis: "Running diagnosis...",
   runDiagnosis: "Run Diagnosis",
   running: "Running...",
@@ -82,4 +87,8 @@ export default {
   serverConfigHint: "You&apos;re connected to a remote Hermes server. Model selection, provider API keys, and credentials are managed on the server&apos;s <code>~/.hermes/.env</code> and <code>config.yaml</code>. Edit them on the host (e.g. <code>docker exec -it hermes vi /opt/data/.env</code>) and restart the container.",
   connectionMode: "Mode",
   switchedToLocal: "Switched to local mode",
+  modelsEntryTitle: "Models",
+  modelsEntryDescription:
+    "Configure role-based model defaults and manage the saved model library.",
+  openModels: "Open Models settings",
 } as const;

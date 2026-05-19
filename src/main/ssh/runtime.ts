@@ -1,6 +1,7 @@
 import type { SshConfig } from "../ssh-tunnel";
 import type { CachedSession } from "../session-cache";
 import type { SavedModel } from "../models";
+import type { ModelRolesFile } from "../../shared/model-roles";
 import type { MemoryProviderInfo } from "../installer";
 import { shellQuote, sshExec, sshReadFile, sshWriteFile, sshPython } from "./transport";
 import { remoteConfigPath, sshGetConfigValue, sshReadEnv } from "./config";
@@ -77,6 +78,10 @@ function remoteHermesHomePath(profile?: string): string {
   return safeProfile
     ? `$HOME/.hermes/profiles/${safeProfile}`
     : "$HOME/.hermes";
+}
+
+export function remoteModelRolesPath(profile?: string): string {
+  return `${remoteHermesHomePath(profile)}/model-roles.json`;
 }
 
 function remoteGatewayPidPath(profile?: string): string {
@@ -465,4 +470,51 @@ export async function sshListModels(config: SshConfig): Promise<SavedModel[]> {
 
 export async function sshSaveModels(config: SshConfig, models: SavedModel[]): Promise<void> {
   await sshWriteFile(config, "$HOME/.hermes/models.json", JSON.stringify(models, null, 2));
+}
+
+export async function sshReadModelRolesFile(
+  config: SshConfig,
+  profile?: string,
+): Promise<ModelRolesFile> {
+  try {
+    const raw = await sshReadFile(config, remoteModelRolesPath(profile));
+    if (raw.trim()) return JSON.parse(raw) as ModelRolesFile;
+  } catch {
+    // missing or malformed remote storage is treated as empty by the service
+  }
+  return { version: 1, defaults: {} };
+}
+
+export async function sshWriteModelRolesFile(
+  config: SshConfig,
+  file: ModelRolesFile,
+  profile?: string,
+): Promise<void> {
+  await sshWriteFile(config, remoteModelRolesPath(profile), JSON.stringify(file, null, 2));
+}
+
+function authJsonHasProvider(raw: string, provider: string): boolean {
+  try {
+    const auth = JSON.parse(raw) as {
+      active_provider?: string;
+      credential_pool?: Record<string, unknown[]>;
+      providers?: Record<string, unknown>;
+    };
+    const pool = auth.credential_pool?.[provider];
+    if (Array.isArray(pool) && pool.length > 0) return true;
+    if (auth.active_provider === provider) return true;
+    return Boolean(auth.providers?.[provider]);
+  } catch {
+    return false;
+  }
+}
+
+export async function sshHasCodexAuthCredential(config: SshConfig): Promise<boolean> {
+  const hermesAuth = await sshReadFile(config, "$HOME/.hermes/auth.json");
+  if (authJsonHasProvider(hermesAuth, "openai-codex")) return true;
+
+  const codexAuth = await sshReadFile(config, "$HOME/.codex/auth.json");
+  if (codexAuth.trim().length > 2) return true;
+
+  return false;
 }

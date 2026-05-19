@@ -24,7 +24,6 @@ vi.mock("../Soul/Soul", () => ({ default: () => <div>Soul mock</div> }));
 vi.mock("../Memory/Memory", () => ({ default: () => <div>Memory mock</div> }));
 vi.mock("../Tools/Tools", () => ({ default: () => <div>Tools mock</div> }));
 vi.mock("../Gateway/Gateway", () => ({ default: () => <div>Gateway mock</div> }));
-vi.mock("../Models/Models", () => ({ default: () => <div>Models mock</div> }));
 vi.mock("../Providers/Providers", () => ({ default: () => <div>Providers mock</div> }));
 vi.mock("../Schedules/Schedules", () => ({ default: () => <div>Schedules mock</div> }));
 
@@ -96,6 +95,16 @@ describe("Layout trace routing", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("removes Models from the primary sidebar while keeping Settings", async () => {
+    render(<Layout />);
+    await waitFor(() =>
+      expect(window.hermesAPI.getRuntimeDiagnostic).toHaveBeenCalled(),
+    );
+
+    expect(screen.queryByRole("button", { name: "navigation.models" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "navigation.settings" })).toBeInTheDocument();
   });
 
   it("removes Trace Lab from sidebar and opens session trace detail with Sessions nav active", async () => {

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildSshHermesProfileCommand, parseMcpServersFromConfig, sshSetConfigValue } from "../src/main/ssh-remote";
+import {
+  buildSshHermesProfileCommand,
+  parseMcpServersFromConfig,
+  remoteModelRolesPath,
+  sshSetConfigValue,
+} from "../src/main/ssh-remote";
 import { buildSshSkillCommand } from "../src/main/ssh/skills";
 import type { SshConfig } from "../src/main/ssh-tunnel";
 import { buildSshTunnelIdentityKey } from "../src/main/ssh-tunnel";
@@ -70,6 +75,20 @@ describe("ssh remote MCP config parsing", () => {
       { name: "fs-tools", type: "stdio", enabled: false, detail: "node" },
       { name: "remote-http", type: "http", enabled: true, detail: "http://127.0.0.1:9000/mcp" },
     ]);
+  });
+});
+
+describe("ssh remote model role storage contracts", () => {
+  it("builds safe remote model role paths for default and named profiles", () => {
+    expect(remoteModelRolesPath()).toBe("$HOME/.hermes/model-roles.json");
+    expect(remoteModelRolesPath("default")).toBe("$HOME/.hermes/model-roles.json");
+    expect(remoteModelRolesPath("alpha")).toBe(
+      "$HOME/.hermes/profiles/alpha/model-roles.json",
+    );
+  });
+
+  it("rejects unsafe profile names before building role storage paths", () => {
+    expect(() => remoteModelRolesPath("../bad")).toThrow("Invalid SSH profile name");
   });
 });
 

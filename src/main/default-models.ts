@@ -10,12 +10,15 @@
  * For direct provider models, use the provider's model ID (e.g. "claude-sonnet-4-20250514")
  */
 
+import type { ModelCapability } from "../shared/model-roles";
+
 export interface DefaultModel {
   name: string;
   provider: string;
   model: string;
   baseUrl: string;
   contextWindow: number;
+  capabilities?: ModelCapability[];
 }
 
 const DEFAULT_MODELS: DefaultModel[] = [

@@ -14,6 +14,7 @@ This document describes Mercury's current skill listing, grouped Skills UI, cont
 - SSH skill implementation: `src/main/ssh/skills.ts`
 - SSH transport helpers: `src/main/ssh/transport.ts`
 - Contract test: `tests/skills-import.test.ts`
+- Codex image generation skill/tool behavior: [Codex image generation](codex-image-generation.md)
 
 ## Renderer-facing API
 

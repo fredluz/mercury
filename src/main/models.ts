@@ -5,6 +5,7 @@ import { HERMES_HOME } from "./installer";
 import { safeWriteFile } from "./utils";
 import DEFAULT_MODELS from "./default-models";
 import { inferContextWindow } from "../shared/chat-metadata";
+import { normalizeModelCapabilities, type ModelCapability } from "../shared/model-roles";
 
 const MODELS_FILE = join(HERMES_HOME, "models.json");
 
@@ -16,9 +17,14 @@ export interface SavedModel {
   baseUrl: string;
   createdAt: number;
   contextWindow?: number;
+  capabilities?: ModelCapability[];
 }
 
-function normalizeModel(model: SavedModel): SavedModel {
+export type SavedModelUpdateFields = Partial<
+  Pick<SavedModel, "name" | "provider" | "model" | "baseUrl" | "contextWindow" | "capabilities">
+>;
+
+export function normalizeSavedModel(model: SavedModel): SavedModel {
   return {
     ...model,
     contextWindow: inferContextWindow(
@@ -26,7 +32,12 @@ function normalizeModel(model: SavedModel): SavedModel {
       model.model,
       model.contextWindow,
     ).tokens,
+    capabilities: normalizeModelCapabilities(model.capabilities),
   };
+}
+
+function normalizeModel(model: SavedModel): SavedModel {
+  return normalizeSavedModel(model);
 }
 
 function readModels(): SavedModel[] {
@@ -53,6 +64,7 @@ function seedDefaults(): SavedModel[] {
     baseUrl: m.baseUrl,
     createdAt: Date.now(),
     contextWindow: m.contextWindow,
+    capabilities: normalizeModelCapabilities(m.capabilities),
   }));
   writeModels(models);
   return models;
@@ -70,6 +82,7 @@ export function addModel(
   provider: string,
   model: string,
   baseUrl: string,
+  capabilities?: ModelCapability[],
 ): SavedModel {
   const models = readModels();
 
@@ -87,6 +100,7 @@ export function addModel(
     baseUrl: baseUrl || "",
     createdAt: Date.now(),
     contextWindow: inferContextWindow(provider, model).tokens,
+    capabilities: normalizeModelCapabilities(capabilities),
   };
   models.push(entry);
   writeModels(models);
@@ -103,7 +117,7 @@ export function removeModel(id: string): boolean {
 
 export function updateModel(
   id: string,
-  fields: Partial<Pick<SavedModel, "name" | "provider" | "model" | "baseUrl" | "contextWindow">>,
+  fields: SavedModelUpdateFields,
 ): boolean {
   const models = readModels();
   const idx = models.findIndex((m) => m.id === id);

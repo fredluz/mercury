@@ -1,9 +1,10 @@
 import { spawn } from "child_process";
 import { homedir } from "os";
 import { HERMES_HOME, HERMES_PYTHON, HERMES_REPO, HERMES_SCRIPT, getEnhancedPath } from "../install/paths";
-import { getModelConfig, readEnv } from "../config";
+import { readEnv } from "../config";
 import { stripAnsi } from "../utils";
 import type { ChatCallbacks, ChatHandle } from "./types";
+import { resolveChatRuntimeModel } from "./chat-model";
 import { buildHermesProfileCommandArgs } from "./runtime";
 import {
   isStandaloneCliActivityLine,
@@ -37,13 +38,13 @@ const URL_KEY_MAP: Array<{ pattern: RegExp; envKey: string }> = [
 
 const NOISE_PATTERNS = [/^[╭╰│╮╯─┌┐└┘┤├┬┴┼]/, /⚕\s*Hermes/];
 
-export function sendMessageViaCli(
+export async function sendMessageViaCli(
   message: string,
   cb: ChatCallbacks,
   profile?: string,
   resumeSessionId?: string,
-): ChatHandle {
-  const mc = getModelConfig(profile);
+): Promise<ChatHandle> {
+  const mc = await resolveChatRuntimeModel(profile);
   const profileEnv = readEnv(profile);
 
   const args = buildHermesProfileCommandArgs(HERMES_SCRIPT, profile, [

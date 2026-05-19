@@ -3,6 +3,7 @@ import { useTheme } from "../../components/ThemeProvider";
 import { useI18n } from "../../components/useI18n";
 import { SettingsCoreSections } from "./components/SettingsCoreSections";
 import { SettingsPreferenceSections } from "./components/SettingsPreferenceSections";
+import Models from "../Models/Models";
 import type { RuntimeDiagnostic } from "../../../../shared/runtime";
 
 // Read cached values from localStorage for instant display
@@ -31,6 +32,7 @@ function Settings({
   runtimeDiagnostic?: RuntimeDiagnostic | null;
 }): React.JSX.Element {
   const { t, locale, setLocale } = useI18n();
+  const [settingsView, setSettingsView] = useState<"main" | "models">("main");
   const [hermesHome, setHermesHome] = useState("");
   const { theme, setTheme } = useTheme();
 
@@ -42,6 +44,15 @@ function Settings({
   const [doctorOutput, setDoctorOutput] = useState<string | null>(null);
   const [doctorRunning, setDoctorRunning] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [approvedUpdate, setApprovedUpdate] = useState<{
+    currentVersion: string | null;
+    recommendedVersion: string | null;
+    summary: string | null;
+    notesUrl: string | null;
+    breakingChange: boolean;
+    canUpdate: boolean;
+    reason: string;
+  } | null>(null);
   const [updateResult, setUpdateResult] = useState<string | null>(null);
   const [updateResultType, setUpdateResultType] = useState<
     "success" | "error" | null
@@ -139,6 +150,9 @@ function Settings({
           /* ignore */
         }
       }
+    });
+    window.hermesAPI.getHermesApprovedUpdate().then((update) => {
+      setApprovedUpdate(update);
     });
 
     if (localStorage.getItem("hermes-openclaw-dismissed") !== "true") {
@@ -311,12 +325,17 @@ function Settings({
   async function handleUpdateHermes(): Promise<void> {
     setUpdating(true);
     setUpdateResult(null);
-    const result = await window.hermesAPI.runHermesUpdate(profile);
+    const result = await window.hermesAPI.runHermesUpdate(
+      profile,
+      approvedUpdate?.recommendedVersion ?? undefined,
+    );
     setUpdating(false);
     if (result.success) {
       setUpdateResult(t("settings.updateSuccess"));
       setUpdateResultType("success");
       refreshVersion();
+      const refreshed = await window.hermesAPI.getHermesApprovedUpdate();
+      setApprovedUpdate(refreshed);
     } else {
       setUpdateResult(result.error || t("settings.updateFailed"));
       setUpdateResultType("error");
@@ -400,6 +419,7 @@ function Settings({
         dumpRunning,
         setDumpRunning,
         parsedVersion,
+        approvedUpdate,
         handleMigrate,
         handleDismissMigration,
         handleSaveConnection,
@@ -412,7 +432,12 @@ function Settings({
         handleUpdateHermes,
         profile,
         runtimeDiagnostic,
+        onOpenModels: () => setSettingsView("models"),
       };
+
+  if (settingsView === "models") {
+    return <Models profile={profile} onBack={() => setSettingsView("main")} />;
+  }
 
   return (
     <div className="settings-container">

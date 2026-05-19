@@ -151,6 +151,14 @@ describe("New APIs from v0.8/v0.9 features", () => {
     expect(typeMethods).toContain("runHermesImport");
   });
 
+  it("has migration inventory API", () => {
+    expect(preloadMethods).toContain("getMigrationInventory");
+    expect(typeMethods).toContain("getMigrationInventory");
+    expect(preloadSrc).toContain('ipcRenderer.invoke("migration-inventory", options)');
+    expect(preloadTypes).toContain("MigrationInventory");
+    expect(preloadTypes).toContain("MigrationInventoryOptions");
+  });
+
   it("has profile-aware log viewer API", () => {
     expect(preloadMethods).toContain("readLogs");
     expect(typeMethods).toContain("readLogs");
@@ -207,6 +215,25 @@ describe("New APIs from v0.8/v0.9 features", () => {
     expect(preloadMethods).toContain("recordPerfEvent");
     expect(typeMethods).toContain("getPerfTelemetryConfig");
     expect(typeMethods).toContain("recordPerfEvent");
+  });
+
+  it("has role-based model default APIs", () => {
+    const methods = [
+      "listModelRoles",
+      "getModelRoleDefaults",
+      "setGlobalModelRoleDefault",
+      "setProfileModelRoleOverride",
+      "clearProfileModelRoleOverride",
+      "resolveModelForRole",
+    ];
+    for (const method of methods) {
+      expect(preloadMethods).toContain(method);
+      expect(typeMethods).toContain(method);
+    }
+    expect(preloadSrc).toContain('ipcRenderer.invoke("list-model-roles", profile)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("resolve-model-for-role", role, profile)');
+    expect(preloadTypes).toContain("ModelRoleListResult");
+    expect(preloadTypes).toContain("ModelRoleResolution");
   });
 });
 
@@ -282,6 +309,12 @@ describe("Legacy APIs preserved (backward compat)", () => {
     "addModel",
     "removeModel",
     "updateModel",
+    "listModelRoles",
+    "getModelRoleDefaults",
+    "setGlobalModelRoleDefault",
+    "setProfileModelRoleOverride",
+    "clearProfileModelRoleOverride",
+    "resolveModelForRole",
     // Credential pool
     "getCredentialPool",
     "setCredentialPool",

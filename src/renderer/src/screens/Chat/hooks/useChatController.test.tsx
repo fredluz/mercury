@@ -56,9 +56,21 @@ function installHermesApiMock(): void {
 
   (window as unknown as { hermesAPI: Partial<Window["hermesAPI"]> }).hermesAPI = {
     getModelConfig: vi.fn().mockResolvedValue({ provider: "auto", model: "", baseUrl: "" }),
+    resolveModelForRole: vi.fn().mockResolvedValue({
+      role: "chat",
+      kind: "text",
+      ok: true,
+      source: "legacy-chat-config",
+      provider: "auto",
+      model: "",
+      baseUrl: "",
+      contextWindow: 128_000,
+      capabilities: ["text"],
+    }),
     listModels: vi.fn().mockResolvedValue([]),
     getConfig: vi.fn().mockResolvedValue(null),
     setModelConfig: vi.fn().mockResolvedValue(true),
+    setProfileModelRoleOverride: vi.fn().mockResolvedValue(true),
     sendMessage: vi.fn().mockResolvedValue({ response: "", sessionId: "session-1" }),
     abortChat: vi.fn().mockResolvedValue(undefined),
     generateChatTitle: vi.fn().mockResolvedValue("Generated title"),
@@ -345,5 +357,54 @@ describe("useChatController send lifecycle", () => {
     expect(window.hermesAPI.onChatError).toHaveBeenCalledTimes(1);
     expect(listenerCleanups.done[0]).not.toHaveBeenCalled();
     expect(listenerCleanups.error[0]).not.toHaveBeenCalled();
+  });
+
+  it("loads and writes the active profile Chat role override for picker selections", async () => {
+    window.hermesAPI.listModels = vi.fn().mockResolvedValue([
+      {
+        id: "saved-chat",
+        name: "Saved Chat",
+        provider: "openai",
+        model: "gpt-4o",
+        baseUrl: "",
+        createdAt: 1,
+        contextWindow: 128_000,
+        capabilities: ["text"],
+      },
+    ]);
+    window.hermesAPI.resolveModelForRole = vi.fn().mockResolvedValue({
+      role: "chat",
+      kind: "text",
+      ok: true,
+      source: "profile-override",
+      provider: "openai",
+      model: "gpt-4o",
+      baseUrl: "",
+      contextWindow: 128_000,
+      capabilities: ["text"],
+      modelId: "saved-chat",
+    });
+    const { result } = renderHook(() => useControllerProbe());
+
+    await waitFor(() => expect(window.hermesAPI.resolveModelForRole).toHaveBeenCalledWith("chat", "default"));
+    expect(result.current.controller.currentModel).toBe("gpt-4o");
+
+    await act(async () => {
+      await result.current.controller.selectModel("openai", "gpt-4o", "", 128_000, "saved-chat");
+    });
+
+    expect(window.hermesAPI.setProfileModelRoleOverride).toHaveBeenCalledWith(
+      "chat",
+      expect.objectContaining({
+        modelId: "saved-chat",
+        provider: "openai",
+        model: "gpt-4o",
+        baseUrl: "",
+        contextWindow: 128_000,
+        capabilities: ["text"],
+      }),
+      "default",
+    );
+    expect(window.hermesAPI.setModelConfig).not.toHaveBeenCalled();
   });
 });

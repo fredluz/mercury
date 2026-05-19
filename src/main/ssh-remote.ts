@@ -62,4 +62,8 @@ export {
   sshDiscoverMemoryProviders,
   sshListModels,
   sshSaveModels,
+  remoteModelRolesPath,
+  sshReadModelRolesFile,
+  sshWriteModelRolesFile,
+  sshHasCodexAuthCredential,
 } from "./ssh/runtime";

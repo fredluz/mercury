@@ -48,6 +48,7 @@ export function SettingsCoreSections({ values }: SettingsCoreSectionsProps): Rea
   setDumpOutput,
   setDumpRunning,
   parsedVersion,
+  approvedUpdate,
   handleUpdateHermes,
   handleDoctor,
   handleSwitchToLocal,
@@ -55,6 +56,7 @@ export function SettingsCoreSections({ values }: SettingsCoreSectionsProps): Rea
   handleTestConnection,
   handleDismissMigration,
   handleMigrate,
+  onOpenModels,
   } = values;
   return (
     <>
@@ -136,23 +138,42 @@ export function SettingsCoreSections({ values }: SettingsCoreSectionsProps): Rea
               )}
             </div>
           </div>
-          {parsedVersion?.updateInfo && (
+          {approvedUpdate?.canUpdate && approvedUpdate.summary && (
             <div className="settings-hermes-update-badge">
-              {parsedVersion.updateInfo}
+              {approvedUpdate.breakingChange
+                ? `⚠ ${t("settings.breakingChange")}: ${approvedUpdate.summary}`
+                : approvedUpdate.summary}
+            </div>
+          )}
+          {approvedUpdate?.notesUrl && (
+            <div className="settings-field-hint">
+              <a
+                href="#"
+                onClick={(event) => {
+                  event.preventDefault();
+                  void window.hermesAPI.openExternal(approvedUpdate.notesUrl as string);
+                }}
+              >
+                {t("settings.readFullNotes")}
+              </a>
             </div>
           )}
           <div className="settings-hermes-actions">
-            {parsedVersion?.updateInfo ? (
+            {approvedUpdate?.canUpdate && approvedUpdate.recommendedVersion ? (
               <button
                 className="btn btn-primary "
                 onClick={handleUpdateHermes}
                 disabled={updating}
               >
-                {updating ? t("settings.updating") : t("settings.updateEngine")}
+                {updating
+                  ? t("settings.updating")
+                  : t("settings.updateToVersion", {
+                      version: approvedUpdate.recommendedVersion,
+                    })}
               </button>
             ) : (
               <button className="btn btn-secondary" disabled>
-                {t("settings.latestVersion")}
+                {t("settings.latestApprovedVersion")}
               </button>
             )}
             <button
@@ -191,6 +212,20 @@ export function SettingsCoreSections({ values }: SettingsCoreSectionsProps): Rea
           {dumpOutput && (
             <pre className="settings-hermes-doctor">{dumpOutput}</pre>
           )}
+        </div>
+      </div>
+
+      <div className="settings-section settings-models-entry-section">
+        <div className="settings-entry-row">
+          <div>
+            <div className="settings-entry-title">{t("settings.modelsEntryTitle")}</div>
+            <div className="settings-entry-description">
+              {t("settings.modelsEntryDescription")}
+            </div>
+          </div>
+          <button className="btn btn-secondary" onClick={onOpenModels}>
+            {t("settings.openModels")}
+          </button>
         </div>
       </div>
 
