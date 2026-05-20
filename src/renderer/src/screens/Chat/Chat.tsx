@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useCallback } from "react";
 import type React from "react";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { useI18n } from "../../components/useI18n";
@@ -7,17 +7,22 @@ import { ChatComposer } from "./components/ChatComposer";
 import { ChatEmpty } from "./components/ChatEmpty";
 import { ChatHeader } from "./components/ChatHeader";
 import { ChatLoading } from "./components/ChatLoading";
+import { WhileYouWereAway } from "./components/WhileYouWereAway";
 import { MessageRow } from "./components/MessageRow";
 import { ModelPicker } from "./components/ModelPicker";
 import { SlashMenu } from "./components/SlashMenu";
+import {
+  buildScheduleDraftFromConversation,
+  type ChatScheduleConversationDraft,
+} from "./scheduleDraft";
 import { useChatController } from "./hooks/useChatController";
 import type { ChatMessage } from "./types";
 import type { RuntimeDiagnostic } from "../../../../shared/runtime";
 
 export { AgentMarkdown };
-export type { ChatMessage };
+export type { ChatMessage, ChatScheduleConversationDraft };
 
-interface ChatProps {
+export interface ChatProps {
   messages: ChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   sessionId: string | null;
@@ -30,6 +35,11 @@ interface ChatProps {
   onSessionResolved?: (sessionId: string) => void;
   onSessionTitleChange?: (title: string) => void;
   onSessionReset?: () => void;
+  onCreateScheduleFromConversation?: (
+    draft: ChatScheduleConversationDraft,
+  ) => void;
+  onOpenTraceRun?: (runId: string) => void;
+  onViewSchedules?: () => void;
   onNewChat?: () => void;
 }
 
@@ -46,6 +56,9 @@ function Chat({
   onSessionResolved,
   onSessionTitleChange,
   onSessionReset,
+  onCreateScheduleFromConversation,
+  onOpenTraceRun,
+  onViewSchedules,
   onNewChat,
 }: ChatProps): React.JSX.Element {
   const { t } = useI18n();
@@ -62,6 +75,28 @@ function Chat({
     onSessionReset,
     onNewChat,
   });
+  const hasConversationContext = messages.some((message) =>
+    message.content.trim(),
+  );
+  const handleCreateScheduleFromConversation = useCallback((): void => {
+    if (!hasConversationContext || !onCreateScheduleFromConversation) return;
+    onCreateScheduleFromConversation(
+      buildScheduleDraftFromConversation({
+        messages,
+        sessionId: sessionId ?? chat.hermesSessionId,
+        sessionTitle,
+        profile,
+      }),
+    );
+  }, [
+    chat.hermesSessionId,
+    hasConversationContext,
+    messages,
+    onCreateScheduleFromConversation,
+    profile,
+    sessionId,
+    sessionTitle,
+  ]);
 
   return (
     <div className="chat-container">
@@ -74,12 +109,24 @@ function Chat({
         messages={messages}
         profile={profile}
         onFastModeChange={chat.setFastMode}
+        onCreateScheduleFromConversation={
+          hasConversationContext && onCreateScheduleFromConversation
+            ? handleCreateScheduleFromConversation
+            : undefined
+        }
         onNewChat={onNewChat}
         onClear={chat.handleClear}
         t={t}
       />
 
       <div className="chat-messages" ref={chat.messagesContainerRef}>
+        <WhileYouWereAway
+          profile={profile}
+          onOpenTraceRun={onOpenTraceRun}
+          onViewSchedules={onViewSchedules}
+          t={t}
+        />
+
         {messages.length === 0 ? (
           <ChatEmpty
             setPrompt={chat.setInput}

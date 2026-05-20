@@ -145,4 +145,47 @@ describe("read-only CLI commands", () => {
     expect((await runJson(home, ["hermes", "doctor"])).json.data).toBe("Hermes is not installed.");
     expect((await runJson(home, ["dump"])).json.data).toBe("Hermes is not installed.");
   });
+
+  it("builds migration inventory from explicit source roots", async () => {
+    const home = tempHome();
+    mkdirSync(join(home, "memories"), { recursive: true });
+    writeFileSync(join(home, "SOUL.md"), "private soul", "utf-8");
+    writeFileSync(join(home, "memories", "MEMORY.md"), "private memory", "utf-8");
+
+    const inventory = await runJson(home, [
+      "migration",
+      "inventory",
+      "--no-defaults",
+      "--source",
+      home,
+    ]);
+    expect(inventory.exitCode).toBe(0);
+    expect(inventory.json.data.sources.map((source: { kind: string }) => source.kind)).toEqual(["hermes", "openclaw"]);
+    expect(inventory.json.data.sources[0]).toMatchObject({ kind: "hermes", path: home, exists: true });
+    expect(inventory.json.data.candidates[0]).toMatchObject({ sourceKind: "hermes", origin: "hermes-profile" });
+    expect(JSON.stringify(inventory.json.data)).not.toContain("private soul");
+    expect(JSON.stringify(inventory.json.data)).not.toContain("private memory");
+  });
+
+  it("prints a migration agent prompt with redacted inventory context", async () => {
+    const home = tempHome();
+    mkdirSync(join(home, "memories"), { recursive: true });
+    writeFileSync(join(home, "SOUL.md"), "private prompt soul", "utf-8");
+    writeFileSync(join(home, "memories", "MEMORY.md"), "private prompt memory", "utf-8");
+
+    const prompt = await runJson(home, [
+      "migration",
+      "prompt",
+      "--no-defaults",
+      "--source",
+      home,
+    ]);
+
+    expect(prompt.exitCode).toBe(0);
+    expect(prompt.json.data).toContain("Mercury migration agent prompt");
+    expect(prompt.json.data).toContain("Current redacted inventory");
+    expect(prompt.json.data).toContain("hermes-profile");
+    expect(prompt.json.data).not.toContain("private prompt soul");
+    expect(prompt.json.data).not.toContain("private prompt memory");
+  });
 });

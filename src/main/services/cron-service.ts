@@ -1,18 +1,26 @@
 import {
   listCronJobs,
   createCronJob,
+  updateCronJob,
   removeCronJob,
   pauseCronJob,
   resumeCronJob,
   triggerCronJob,
 } from "../cronjobs";
 import { markRuntimeStale } from "../hermes";
+import type {
+  ScheduleCreatePayload,
+  ScheduleUpdatePayload,
+} from "../../shared/schedules";
 
 function markCronMutation(profile?: string): void {
   markRuntimeStale(profile, "Cron schedule changed for profile runtime.");
 }
 
-export function listCronJobsForProfile(includeDisabled?: boolean, profile?: string) {
+export function listCronJobsForProfile(
+  includeDisabled?: boolean,
+  profile?: string,
+) {
   return listCronJobs(includeDisabled, profile);
 }
 
@@ -24,6 +32,25 @@ export async function createCronJobForProfile(
   profile?: string,
 ) {
   const result = await createCronJob(schedule, prompt, name, deliver, profile);
+  if (result.success) markCronMutation(profile);
+  return result;
+}
+
+export async function createScheduleJobForProfile(
+  payload: ScheduleCreatePayload,
+  profile?: string,
+) {
+  const result = await createCronJob(payload, profile);
+  if (result.success) markCronMutation(profile);
+  return result;
+}
+
+export async function updateCronJobForProfile(
+  jobId: string,
+  payload: ScheduleUpdatePayload,
+  profile?: string,
+) {
+  const result = await updateCronJob(jobId, payload, profile);
   if (result.success) markCronMutation(profile);
   return result;
 }

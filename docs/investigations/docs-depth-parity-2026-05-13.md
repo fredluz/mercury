@@ -119,7 +119,6 @@ Excluded in-tree test/setup harness files:
 | `src/shared/i18n/index.test.ts` | 32 | In-tree test file. |
 | **Total excluded** | **117** |  |
 
-I intentionally did **not** exclude app setup source such as `src/renderer/src/screens/Setup/Setup.tsx`, `src/main/claw3d/setup.ts`, setup locale files, or `src/renderer/src/assets/styles/setup.css`; despite containing “setup” in the path, these are application source and belong in the confirmed denominator.
 
 CSS-excluded sensitivity:
 
@@ -137,7 +136,6 @@ What the docs cover well:
 - The root README provides a clear product overview, install/platform guidance, feature inventory, first-run behavior, screens, supported providers, development commands, first-time setup paths, and tech stack. Evidence: install starts at `README.md:34`, features at `README.md:76`, first-run flow at `README.md:114`, screens at `README.md:127`, development commands at `README.md:171`, first-time setup at `README.md:220`, and stack at `README.md:248`.
 - Contributor onboarding exists and is concise: setup, branch workflow, checks, PR process, bug/feature issue guidance, project structure, and code style. Evidence: `CONTRIBUTING.md:10`, `CONTRIBUTING.md:25`, `CONTRIBUTING.md:44`, `CONTRIBUTING.md:53`, `CONTRIBUTING.md:62`, `CONTRIBUTING.md:70`, and `CONTRIBUTING.md:80`.
 - There is a durable product-direction document for trace/evaluation/skill-training concepts. Evidence: `docs/hermes-product-spec.md:5` for product direction, `docs/hermes-product-spec.md:11` for Runs, `docs/hermes-product-spec.md:34` for Traces, `docs/hermes-product-spec.md:63` for Skill Training, and `docs/hermes-product-spec.md:79` for product screens.
-- Testability planning is unusually detailed for UI flows. `docs/pi-flow-sweep-plan.md` maps onboarding, layout, chat, sessions, Trace Lab, Agents, Models, Providers, Skills, Soul, Memory, Tools, Schedules, Gateway, Office, Settings, and a summary matrix; the matrix starts at `docs/pi-flow-sweep-plan.md:751`.
 - Performance documentation includes baseline environment, commands, measurements, observations, prioritized quick wins, and future verification commands. Evidence: `docs/performance-audit.md:6`, `docs/performance-audit.md:14`, `docs/performance-audit.md:36`, `docs/performance-audit.md:82`, `docs/performance-audit.md:138`, and `docs/performance-audit.md:200`.
 
 What is missing or not yet durable enough:

@@ -39,7 +39,7 @@ export default {
   optional: "可选",
   devOnly: "开发者专用",
   updateAvailable: "更新 v{{version}}",
-  updateMercury: "更新 Mercury",
+  updateMercury: "检查更新",
   updateMercuryVersion: "更新 Mercury 到 v{{version}}",
   checkingForUpdates: "正在检查更新...",
   mercuryUpToDate: "Mercury 已是最新版本",

@@ -1,5 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import Chat, { ChatMessage } from "../Chat/Chat";
+import Chat, {
+  ChatMessage,
+  type ChatScheduleConversationDraft,
+} from "../Chat/Chat";
 import Sessions from "../Sessions/Sessions";
 import TraceLab from "../TraceLab/TraceLab";
 import Agents from "../Agents/Agents";
@@ -10,7 +13,7 @@ import Memory from "../Memory/Memory";
 import Tools from "../Tools/Tools";
 import Gateway from "../Gateway/Gateway";
 import Providers from "../Providers/Providers";
-import Schedules from "../Schedules/Schedules";
+import Schedules, { type ScheduleInitialDraft } from "../Schedules/Schedules";
 import RemoteNotice from "../../components/RemoteNotice";
 import { RuntimeDiagnosticNotice } from "../../components/RuntimeDiagnosticNotice";
 import MercuryLockup from "../../components/common/MercuryLockup";
@@ -57,6 +60,12 @@ type TraceLaunchState =
         sessionId: string;
         title?: string | null;
         profile?: string | null;
+      };
+    }
+  | {
+      mode: "run";
+      target: {
+        runId: string;
       };
     };
 
@@ -105,6 +114,8 @@ function Layout(): React.JSX.Element {
     mode: "all",
   });
   const [traceLaunchVersion, setTraceLaunchVersion] = useState(0);
+  const [scheduleInitialDraft, setScheduleInitialDraft] =
+    useState<ScheduleInitialDraft | null>(null);
   // Tabs lazy-mount on first visit, then stay mounted (display:none toggle).
   // Keeps IPC refetch / DOM rebuild off the tab-switch hot path.
   const [visitedViews, setVisitedViews] = useState<Set<View>>(
@@ -310,6 +321,55 @@ function Layout(): React.JSX.Element {
     goTo("traceDetail");
   }, [goTo]);
 
+  const openTraceRun = useCallback(
+    (runId: string) => {
+      const nextRunId = runId.trim();
+      if (!nextRunId) return;
+      setTraceLaunch({ mode: "run", target: { runId: nextRunId } });
+      setTraceLaunchVersion((value) => value + 1);
+      goTo("traceDetail");
+    },
+    [goTo],
+  );
+
+  useEffect(() => {
+    function handleOpenTraceRunEvent(event: Event): void {
+      const runId = (event as CustomEvent<{ runId?: string }>).detail?.runId;
+      if (typeof runId === "string") openTraceRun(runId);
+    }
+
+    window.addEventListener("mercury:open-trace-run", handleOpenTraceRunEvent);
+    return () => {
+      window.removeEventListener(
+        "mercury:open-trace-run",
+        handleOpenTraceRunEvent,
+      );
+    };
+  }, [openTraceRun]);
+
+  const handleCreateScheduleFromConversation = useCallback(
+    (draft: ChatScheduleConversationDraft) => {
+      const draftProfile =
+        typeof draft.metadata?.profile === "string"
+          ? draft.metadata.profile
+          : activeProfile;
+      setScheduleInitialDraft({
+        name: draft.name,
+        prompt: draft.prompt,
+        kind: draft.kind,
+        deliver: Array.isArray(draft.deliver) ? draft.deliver : undefined,
+        skills: draft.skills,
+        agentProfile: draftProfile,
+        context: draft.context,
+        sourceSessionId: draft.sourceSessionId,
+        sourceTraceId: draft.sourceTraceId,
+        metadata: draft.metadata,
+      });
+      goTo("schedules");
+    },
+    [activeProfile, goTo],
+  );
+
   const handleBackToSessions = useCallback(() => {
     goTo("sessions");
   }, [goTo]);
@@ -412,6 +472,11 @@ function Layout(): React.JSX.Element {
               setCurrentSessionProfile(null);
               setConversationVersion((value) => value + 1);
             }}
+            onCreateScheduleFromConversation={
+              handleCreateScheduleFromConversation
+            }
+            onOpenTraceRun={openTraceRun}
+            onViewSchedules={() => goTo("schedules")}
             onNewChat={handleNewChat}
           />
         </div>
@@ -456,6 +521,9 @@ function Layout(): React.JSX.Element {
               mode={traceLaunch.mode}
               sessionTarget={
                 traceLaunch.mode === "session" ? traceLaunch.target : null
+              }
+              runId={
+                traceLaunch.mode === "run" ? traceLaunch.target.runId : null
               }
               reloadToken={traceLaunchVersion}
               onBackToSessions={handleBackToSessions}
@@ -532,7 +600,14 @@ function Layout(): React.JSX.Element {
 
         {visitedViews.has("schedules") && (
           <div style={paneStyle("schedules")}>
-            <Schedules profile={activeProfile} />
+            <Schedules
+              profile={activeProfile}
+              initialDraft={scheduleInitialDraft ?? undefined}
+              onOpenTraceRun={openTraceRun}
+              onOpenConversation={(sessionId) => {
+                void handleResumeSession(sessionId);
+              }}
+            />
           </div>
         )}
 

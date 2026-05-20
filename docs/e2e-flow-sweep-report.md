@@ -27,7 +27,6 @@ Date: 2026-05-12T16:26:04.607Z
 - PASS: Tools renders toolset cards
 - PASS: Schedules opens and closes the create-task modal
 - PASS: Gateway renders status and platform cards
-- PASS: Office renders without blocking the rest of the app
 - PASS: Settings renders and switches connection modes
 
 ## Artifacts
@@ -38,4 +37,3 @@ Date: 2026-05-12T16:26:04.607Z
 ## Notes
 
 - This sweep exercises the real chat path, Trace Lab persistence, and the main desktop surfaces.
-- Schedules, Gateway, Office, provider credential mutations, and external service actions are rendered or opened but not triggered when doing so would start long-running processes or call unrelated services.

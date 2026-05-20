@@ -1,18 +1,38 @@
-export const DELIVER_TARGETS = [
-  { value: "local", label: "Local" },
-  { value: "origin", label: "Origin" },
-  { value: "telegram", label: "Telegram" },
-  { value: "discord", label: "Discord" },
-  { value: "slack", label: "Slack" },
-  { value: "whatsapp", label: "WhatsApp" },
-  { value: "signal", label: "Signal" },
-  { value: "matrix", label: "Matrix" },
-  { value: "mattermost", label: "Mattermost" },
-  { value: "email", label: "Email" },
-  { value: "webhook", label: "Webhook" },
-  { value: "sms", label: "SMS" },
-  { value: "homeassistant", label: "Home Assistant" },
-  { value: "dingtalk", label: "DingTalk" },
-  { value: "feishu", label: "Feishu" },
-  { value: "wecom", label: "WeCom" },
+import type { ScheduleKind } from "../../../../shared/schedules";
+
+export const DELIVERY_TARGETS = [
+  "local",
+  "telegram",
+  "discord",
+  "slack",
+  "whatsapp",
+  "signal",
+  "matrix",
+  "email",
+  "sms",
+  "webhook",
+] as const;
+
+export const DELIVER_TARGETS = DELIVERY_TARGETS.map((value) => ({
+  value,
+  label: value.charAt(0).toUpperCase() + value.slice(1),
+}));
+
+export const SCHEDULE_KIND_OPTIONS: ScheduleKind[] = [
+  "once",
+  "interval",
+  "daily",
+  "weekly",
+  "monthly",
+  "custom",
 ];
+
+export const WEEK_DAYS = [
+  { key: "mon", value: 1 },
+  { key: "tue", value: 2 },
+  { key: "wed", value: 3 },
+  { key: "thu", value: 4 },
+  { key: "fri", value: 5 },
+  { key: "sat", value: 6 },
+  { key: "sun", value: 0 },
+] as const;

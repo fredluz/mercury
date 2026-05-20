@@ -104,13 +104,11 @@ Asset observations:
 
 ### Main process startup
 
-`src/main/index.ts` eagerly imports nearly all main-process subsystems at module load, including installer, Hermes gateway/session helpers, SSH tunnel, Claw3D, config, sessions, session cache, models, profiles, memory, soul, tools, skills, cronjobs, trace store, and locale-related modules.
 
 Current implications:
 
 - IPC handlers can be registered synchronously, but the code currently pays import/initialization cost for optional areas before any matching IPC call.
 - `better-sqlite3` is externalized in `electron.vite.config.ts`, but modules that import it, such as `session-cache.ts`, are still eagerly imported by `main/index.ts`.
-- Claw3D is an optional/soon-to-be-retired surface but still contributes eager main-process import cost until Work item 5 removes or lazy-loads it.
 
 ### Renderer initial route behavior
 
@@ -125,7 +123,6 @@ Current implications:
 - `Memory`
 - `Tools`
 - `Gateway`
-- `Office`
 - `Models`
 - `Providers`
 - `Schedules`
@@ -138,12 +135,10 @@ Current implication: lazy mounting reduces runtime work after startup, but it do
 
 ### I18n loading
 
-`src/shared/i18n/index.ts` eagerly imports all locale namespaces for all four locales, including `office`, into a single `resources` object. This makes all translations available synchronously but adds all locale data to every process/bundle that imports shared i18n.
 
 ### Polling and IPC patterns
 
 - `Gateway.tsx` loads env, gateway status, and platform flags on mount/profile change, then polls `gatewayStatus()` every 10s while the component remains mounted.
-- `Office.tsx` polls Claw3D status every 5s only when the Office tab is visible and ready. Work item 1/5 should remove this cost with the Office feature.
 - `Memory.tsx` performs four IPC reads in parallel on mount/profile change: memory, memory provider config, provider discovery, and env.
 - `Skills.tsx` loads installed and bundled skills in parallel on mount/profile change.
 - `Layout.tsx` calls `isRemoteOnlyMode()` on every tab switch.
@@ -160,7 +155,6 @@ Current implication: lazy mounting reduces runtime work after startup, but it do
 
 ### P0 — Coordinate with active workstreams before code changes
 
-Do not apply performance edits to `Layout.tsx`, `Agents.tsx`, `src/main/index.ts`, preload, e2e, README, or tests until the Office removal and manual skill import agents have landed or coordinated their changes. These files are active merge-conflict surfaces.
 
 ### P1 — Code-split non-default renderer screens
 
@@ -168,7 +162,6 @@ Keep `Chat` eager as the default route, but convert non-default screens in `Layo
 
 Expected effect: lower initial renderer chunk parse/evaluation cost by moving non-chat screens out of `index-CgjHTpTd.js`.
 
-Highest-value candidates after Office removal/profile workspace changes:
 
 1. `TraceLab`
 2. `Sessions`
@@ -183,15 +176,11 @@ First candidates:
 
 1. `session-cache` / `sessions` handlers that touch SQLite or session JSON
 2. `memory` and `skills` handlers used by non-default screens
-3. Claw3D handlers if they remain after visible Office removal; otherwise remove them in Work item 5
 
 Avoid lazy-loading install/boot status paths until measured, because startup screens depend on them.
 
-### P3 — Remove Office/Claw3D from visible and hidden paths via Work items 1 and 5
 
-The Office screen currently adds a renderer screen, i18n namespace, CSS, Claw3D polling path, and main-process imports. Work item 1 should remove the visible renderer/i18n/CSS route. Work item 5 should then remove backend/preload Claw3D imports and IPC handlers.
 
-Expected effect: smaller renderer app chunk, fewer i18n resources, no Office polling path, less eager main-process import cost.
 
 ### P4 — Reduce renderer asset weight
 

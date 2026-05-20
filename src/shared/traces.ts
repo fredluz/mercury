@@ -59,9 +59,26 @@ export interface TraceRun {
   startedAt: number;
   updatedAt: number;
   sessionId?: string;
+  scheduleId?: string;
+  scheduleName?: string;
+  schedulePrompt?: string;
   messagePreview: string;
   events: TraceEvent[];
   usage?: TraceUsage;
+}
+
+export interface TraceScheduleRunSummary {
+  traceRunId: string;
+  scheduleId: string;
+  scheduleName: string;
+  profile: string;
+  status: TraceRun["status"];
+  startedAt: number;
+  updatedAt: number;
+  completedAt?: number;
+  durationMs: number;
+  summary: string;
+  error?: string;
 }
 
 export interface SkillTrainingRun {

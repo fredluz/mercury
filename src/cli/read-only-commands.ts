@@ -15,6 +15,9 @@ const VALUE_FLAGS = new Set([
   "--offset",
   "--file",
   "--lines",
+  "--hermes-root",
+  "--openclaw-root",
+  "--source",
 ]);
 
 function parseOptions(tokens: string[]): { options: OptionMap; positionals: string[] } {
@@ -265,6 +268,35 @@ async function dispatchGateway(rest: string[], context: CliContext): Promise<Rea
   return { handled: false };
 }
 
+async function dispatchMigration(domain: string, rest: string[]): Promise<ReadOnlyDispatchResult> {
+  const action = rest[0];
+  if (action !== "inventory" && action !== "prompt") return { handled: false };
+  const { options } = parseOptions(rest.slice(1));
+  const install = await import("../main/services/install-service");
+  const source = optionValue(options, "--source");
+  const hermesRoot = optionValue(options, "--hermes-root");
+  const openClawRoot = optionValue(options, "--openclaw-root");
+  const includeDefaultSources = !hasOption(options, "--no-defaults");
+  const sourceAsHermesRoot = domain === "hermes" || domain === "migration" ? source : undefined;
+  const sourceAsOpenClawRoot = domain === "openclaw" || domain === "migration" ? source : undefined;
+  const hermesRoots = domain === "openclaw" ? [] : [hermesRoot, sourceAsHermesRoot].filter((value): value is string => Boolean(value));
+  const openClawRoots = domain === "hermes" ? [] : [openClawRoot, sourceAsOpenClawRoot].filter((value): value is string => Boolean(value));
+  const migrationOptions = {
+    includeDefaultSources,
+    ...(hermesRoots.length ? { hermesRoots } : {}),
+    ...(openClawRoots.length ? { openClawRoots } : {}),
+  };
+  return {
+    handled: true,
+    data: action === "inventory"
+      ? install.getMigrationInventory(migrationOptions)
+      : install.getMigrationPrompt({
+          ...migrationOptions,
+          includeInventory: !hasOption(options, "--no-inventory"),
+        }),
+  };
+}
+
 async function dispatchInstall(domain: string, rest: string[]): Promise<ReadOnlyDispatchResult> {
   const action = rest[0];
   const install = await import("../main/services/install-service");
@@ -308,6 +340,10 @@ export async function dispatchReadOnlyCommand(
   }
   if (domain === "connection") return dispatchConnection(rest);
   if (domain === "gateway") return dispatchGateway(rest, context);
+  if (["migration", "openclaw", "hermes"].includes(domain)) {
+    const migration = await dispatchMigration(domain, rest);
+    if (migration.handled) return migration;
+  }
   if (domain === "install" || domain === "hermes") return dispatchInstall(domain, rest);
 
   return { handled: false };

@@ -40,8 +40,9 @@ import {
 } from "./trace-lab.helpers";
 
 interface TraceLabProps {
-  mode?: "all" | "session";
+  mode?: "all" | "session" | "run";
   sessionTarget?: TraceSessionTarget | null;
+  runId?: string | null;
   reloadToken?: number;
   onBackToSessions?: () => void;
 }
@@ -53,14 +54,20 @@ function shortSessionId(value: string): string {
 function TraceLab({
   mode = "all",
   sessionTarget = null,
+  runId = null,
   reloadToken = 0,
   onBackToSessions,
 }: TraceLabProps): React.JSX.Element {
   const { t } = useI18n();
   const [runs, setRuns] = useState<TraceRun[]>([]);
-  const [selectedConversationKey, setSelectedConversationKey] = useState<string | null>(null);
-  const [selectedEventRef, setSelectedEventRef] = useState<SelectedEventRef | null>(null);
-  const [expandedConversationKeys, setExpandedConversationKeys] = useState<Set<string>>(() => new Set());
+  const [selectedConversationKey, setSelectedConversationKey] = useState<
+    string | null
+  >(null);
+  const [selectedEventRef, setSelectedEventRef] =
+    useState<SelectedEventRef | null>(null);
+  const [expandedConversationKeys, setExpandedConversationKeys] = useState<
+    Set<string>
+  >(() => new Set());
   const [skillRuns, setSkillRuns] = useState<SkillTrainingRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [runQuery, setRunQuery] = useState("");
@@ -86,10 +93,14 @@ function TraceLab({
 
   const conversations = useMemo(() => buildTraceConversations(runs), [runs]);
   const isSessionMode = mode === "session" && Boolean(sessionTarget);
+  const directRunId = mode === "run" ? runId?.trim() || null : null;
 
   const sessionConversations = useMemo(() => {
     if (!isSessionMode || !sessionTarget) return [];
-    return filterTraceConversationsForSessionTarget(conversations, sessionTarget);
+    return filterTraceConversationsForSessionTarget(
+      conversations,
+      sessionTarget,
+    );
   }, [conversations, isSessionMode, sessionTarget]);
 
   const filteredConversations = useMemo(() => {
@@ -101,7 +112,9 @@ function TraceLab({
     );
   }, [conversations, isSessionMode, runFilter, runQuery, sessionConversations]);
 
-  const metricConversations = isSessionMode ? sessionConversations : conversations;
+  const metricConversations = isSessionMode
+    ? sessionConversations
+    : conversations;
 
   const selectedConversation = useMemo(() => {
     const selected = filteredConversations.find(
@@ -109,12 +122,23 @@ function TraceLab({
     );
     if (selected) return selected;
     if (filteredConversations[0]) return filteredConversations[0];
-    if (!isSessionMode && !runQuery.trim() && runFilter === "all") return conversations[0] || null;
+    if (!isSessionMode && !runQuery.trim() && runFilter === "all")
+      return conversations[0] || null;
     return null;
-  }, [conversations, filteredConversations, isSessionMode, runFilter, runQuery, selectedConversationKey]);
+  }, [
+    conversations,
+    filteredConversations,
+    isSessionMode,
+    runFilter,
+    runQuery,
+    selectedConversationKey,
+  ]);
 
   const timeline = useMemo(
-    () => (selectedConversation ? buildConversationTimeline(selectedConversation) : []),
+    () =>
+      selectedConversation
+        ? buildConversationTimeline(selectedConversation)
+        : [],
     [selectedConversation],
   );
 
@@ -131,19 +155,25 @@ function TraceLab({
 
   const selectedConversationSkillRuns = useMemo(() => {
     if (!selectedConversation) return [];
-    const selectedRunIds = new Set(selectedConversation.runs.map((run) => run.id));
+    const selectedRunIds = new Set(
+      selectedConversation.runs.map((run) => run.id),
+    );
     return skillRuns.filter(
-      (skillRun) => skillRun.linkedRunId && selectedRunIds.has(skillRun.linkedRunId),
+      (skillRun) =>
+        skillRun.linkedRunId && selectedRunIds.has(skillRun.linkedRunId),
     );
   }, [selectedConversation, skillRuns]);
 
   const metricSkillRunCount = useMemo(() => {
     if (!isSessionMode) return skillRuns.length;
     const scopedRunIds = new Set(
-      metricConversations.flatMap((conversation) => conversation.runs.map((run) => run.id)),
+      metricConversations.flatMap((conversation) =>
+        conversation.runs.map((run) => run.id),
+      ),
     );
     return skillRuns.filter(
-      (skillRun) => skillRun.linkedRunId && scopedRunIds.has(skillRun.linkedRunId),
+      (skillRun) =>
+        skillRun.linkedRunId && scopedRunIds.has(skillRun.linkedRunId),
     ).length;
   }, [isSessionMode, metricConversations, skillRuns]);
 
@@ -156,31 +186,82 @@ function TraceLab({
       : null;
     setSelectedEventRef(
       firstTimelineItem
-        ? { runId: firstTimelineItem.run.id, eventId: firstTimelineItem.event.id }
+        ? {
+            runId: firstTimelineItem.run.id,
+            eventId: firstTimelineItem.event.id,
+          }
         : null,
     );
     if (nextConversation?.runCount && nextConversation.runCount > 1) {
-      setExpandedConversationKeys((current) => new Set(current).add(nextConversation.key));
+      setExpandedConversationKeys((current) =>
+        new Set(current).add(nextConversation.key),
+      );
     }
   }, [isSessionMode, sessionConversations]);
 
+  useEffect(() => {
+    if (!directRunId) return;
+
+    setRunFilter("all");
+    setRunQuery("");
+
+    const nextConversation =
+      conversations.find((conversation) =>
+        conversation.runs.some((run) => run.id === directRunId),
+      ) || null;
+    if (!nextConversation) {
+      setSelectedConversationKey(null);
+      setSelectedEventRef(null);
+      return;
+    }
+
+    const nextRun =
+      nextConversation.runs.find((run) => run.id === directRunId) ||
+      nextConversation.runs[0];
+    setSelectedConversationKey(nextConversation.key);
+    setSelectedEventRef(
+      nextRun.events[0]
+        ? { runId: nextRun.id, eventId: nextRun.events[0].id }
+        : null,
+    );
+    if (nextConversation.runCount > 1) {
+      setExpandedConversationKeys((current) =>
+        new Set(current).add(nextConversation.key),
+      );
+    }
+  }, [conversations, directRunId]);
+
   const headerTitle = isSessionMode
-    ? sessionTarget?.title?.trim() || selectedConversation?.title ||
-      (sessionTarget ? `Session ${shortSessionId(sessionTarget.sessionId)}` : "Session Trace")
+    ? sessionTarget?.title?.trim() ||
+      selectedConversation?.title ||
+      (sessionTarget
+        ? `Session ${shortSessionId(sessionTarget.sessionId)}`
+        : "Session Trace")
     : "Trace Lab";
 
   function selectConversation(conversation: TraceConversation): void {
     setSelectedConversationKey(conversation.key);
     const firstRun = conversation.runs[0];
-    setSelectedEventRef(firstRun?.events[0] ? { runId: firstRun.id, eventId: firstRun.events[0].id } : null);
+    setSelectedEventRef(
+      firstRun?.events[0]
+        ? { runId: firstRun.id, eventId: firstRun.events[0].id }
+        : null,
+    );
     if (conversation.runCount > 1) {
-      setExpandedConversationKeys((current) => new Set(current).add(conversation.key));
+      setExpandedConversationKeys((current) =>
+        new Set(current).add(conversation.key),
+      );
     }
   }
 
-  function selectRunInConversation(conversation: TraceConversation, run: TraceRun): void {
+  function selectRunInConversation(
+    conversation: TraceConversation,
+    run: TraceRun,
+  ): void {
     setSelectedConversationKey(conversation.key);
-    setSelectedEventRef(run.events[0] ? { runId: run.id, eventId: run.events[0].id } : null);
+    setSelectedEventRef(
+      run.events[0] ? { runId: run.id, eventId: run.events[0].id } : null,
+    );
   }
 
   function toggleConversation(conversationKey: string): void {
@@ -201,7 +282,9 @@ function TraceLab({
     if (!linkedConversation) return;
     setSelectedConversationKey(linkedConversation.key);
     setSelectedEventRef({ runId: linkedRun.id, eventId: skillRun.id });
-    setExpandedConversationKeys((current) => new Set(current).add(linkedConversation.key));
+    setExpandedConversationKeys((current) =>
+      new Set(current).add(linkedConversation.key),
+    );
     if (
       runFilter !== "all" &&
       !traceConversationMatchesFilter(linkedConversation, runFilter)
@@ -240,7 +323,11 @@ function TraceLab({
             <BookOpenCheck size={14} />
             Skill evaluation
           </span>
-          <button className="btn btn-secondary" onClick={load} disabled={loading}>
+          <button
+            className="btn btn-secondary"
+            onClick={load}
+            disabled={loading}
+          >
             <RefreshCw size={15} />
             Refresh
           </button>
@@ -248,138 +335,192 @@ function TraceLab({
       </header>
 
       <section className="trace-metrics" aria-label="Trace metrics">
-        <Metric icon={Activity} label="Conversations" value={metricConversations.length} />
+        <Metric
+          icon={Activity}
+          label="Conversations"
+          value={metricConversations.length}
+        />
         <Metric
           icon={CheckCircle2}
           label="Completed"
-          value={metricConversations.filter((conversation) => conversation.status === "completed").length}
+          value={
+            metricConversations.filter(
+              (conversation) => conversation.status === "completed",
+            ).length
+          }
         />
         <Metric
           icon={AlertCircle}
           label="Needs attention"
-          value={metricConversations.filter((conversation) => conversation.hasNeedsAttention).length}
+          value={
+            metricConversations.filter(
+              (conversation) => conversation.hasNeedsAttention,
+            ).length
+          }
         />
-        <Metric icon={BrainCircuit} label="Skill reviews" value={metricSkillRunCount} />
+        <Metric
+          icon={BrainCircuit}
+          label="Skill reviews"
+          value={metricSkillRunCount}
+        />
       </section>
 
-      <section className={`trace-workbench ${isSessionMode ? "trace-workbench--session" : ""}`}>
+      <section
+        className={`trace-workbench ${isSessionMode ? "trace-workbench--session" : ""}`}
+      >
         {!isSessionMode ? (
-        <aside className="trace-run-list" aria-label="Trace conversations">
-          <div className="trace-panel-heading">
-            <div>
-              <p className="trace-eyebrow">Conversations</p>
-              <h3>Recent activity</h3>
+          <aside className="trace-run-list" aria-label="Trace conversations">
+            <div className="trace-panel-heading">
+              <div>
+                <p className="trace-eyebrow">Conversations</p>
+                <h3>Recent activity</h3>
+              </div>
+              <span className="trace-run-count">
+                {filteredConversations.length}/{conversations.length}
+              </span>
             </div>
-            <span className="trace-run-count">
-              {filteredConversations.length}/{conversations.length}
-            </span>
-          </div>
 
-          <label className="trace-run-search">
-            <Search size={14} />
-            <input
-              value={runQuery}
-              onChange={(event) => setRunQuery(event.target.value)}
-              placeholder="Search conversations, runs, events"
-              aria-label="Search trace conversations"
-            />
-          </label>
-
-          <div className="trace-run-filters" aria-label="Trace conversation filters">
-            {RUN_FILTERS.map((filter) => (
-              <button
-                key={filter.key}
-                className={runFilter === filter.key ? "active" : ""}
-                onClick={() => setRunFilter(filter.key)}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="trace-run-results">
-            {conversations.length === 0 ? (
-              <EmptyState title="No trace conversations yet" />
-            ) : filteredConversations.length === 0 ? (
-              <EmptyState
-                title="No matching conversations"
-                body="Try a different search phrase, session id, event type, status, or filter."
+            <label className="trace-run-search">
+              <Search size={14} />
+              <input
+                value={runQuery}
+                onChange={(event) => setRunQuery(event.target.value)}
+                placeholder="Search conversations, runs, events"
+                aria-label="Search trace conversations"
               />
-            ) : (
-              filteredConversations.map((conversation) => {
-                const expanded = expandedConversationKeys.has(conversation.key);
-                const selected = selectedConversation?.key === conversation.key;
-                const selectedRunId = selectedTimelineItem?.run.id;
-                return (
-                  <section
-                    key={conversation.key}
-                    className={`trace-conversation-item ${selected ? "active" : ""}`}
-                  >
-                    <button
-                      className="trace-conversation-row"
-                      title={conversation.latestMessagePreview || conversation.messagePreview}
-                      onClick={() => selectConversation(conversation)}
+            </label>
+
+            <div
+              className="trace-run-filters"
+              aria-label="Trace conversation filters"
+            >
+              {RUN_FILTERS.map((filter) => (
+                <button
+                  key={filter.key}
+                  className={runFilter === filter.key ? "active" : ""}
+                  onClick={() => setRunFilter(filter.key)}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="trace-run-results">
+              {conversations.length === 0 ? (
+                <EmptyState title="No trace conversations yet" />
+              ) : filteredConversations.length === 0 ? (
+                <EmptyState
+                  title="No matching conversations"
+                  body="Try a different search phrase, session id, event type, status, or filter."
+                />
+              ) : (
+                filteredConversations.map((conversation) => {
+                  const expanded = expandedConversationKeys.has(
+                    conversation.key,
+                  );
+                  const selected =
+                    selectedConversation?.key === conversation.key;
+                  const selectedRunId = selectedTimelineItem?.run.id;
+                  return (
+                    <section
+                      key={conversation.key}
+                      className={`trace-conversation-item ${selected ? "active" : ""}`}
                     >
-                      <span className={`trace-status-dot ${conversation.status}`} />
-                      <strong>{conversation.title}</strong>
-                      <span>{conversation.profileLabel}</span>
-                      {conversation.latestMessagePreview ? (
-                        <small className="trace-run-preview">
-                          {conversation.latestMessagePreview}
-                        </small>
-                      ) : null}
-                      <small className="trace-conversation-meta">
-                        {formatTime(conversation.updatedAt)} · {conversation.runCount} {conversation.runCount === 1 ? "run" : "runs"}
-                        {conversation.sessionId ? ` · session ${conversation.sessionId.slice(0, 8)}` : ""}
-                      </small>
-                    </button>
-                    {conversation.runCount > 1 ? (
                       <button
-                        className="trace-conversation-toggle"
-                        onClick={() => toggleConversation(conversation.key)}
-                        aria-expanded={expanded}
+                        className="trace-conversation-row"
+                        title={
+                          conversation.latestMessagePreview ||
+                          conversation.messagePreview
+                        }
+                        onClick={() => selectConversation(conversation)}
                       >
-                        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                        {expanded ? "Hide runs" : "Show runs"}
+                        <span
+                          className={`trace-status-dot ${conversation.status}`}
+                        />
+                        <strong>{conversation.title}</strong>
+                        <span>{conversation.profileLabel}</span>
+                        {conversation.latestMessagePreview ? (
+                          <small className="trace-run-preview">
+                            {conversation.latestMessagePreview}
+                          </small>
+                        ) : null}
+                        <small className="trace-conversation-meta">
+                          {formatTime(conversation.updatedAt)} ·{" "}
+                          {conversation.runCount}{" "}
+                          {conversation.runCount === 1 ? "run" : "runs"}
+                          {conversation.sessionId
+                            ? ` · session ${conversation.sessionId.slice(0, 8)}`
+                            : ""}
+                        </small>
                       </button>
-                    ) : null}
-                    {expanded ? (
-                      <div className="trace-run-children">
-                        {conversation.runs.map((run, index) => (
-                          <button
-                            key={run.id}
-                            className={`trace-run-child-row ${selectedRunId === run.id ? "active" : ""}`}
-                            onClick={() => selectRunInConversation(conversation, run)}
-                          >
-                            <span className={`trace-status-dot ${run.status}`} />
-                            <strong>Run {index + 1}</strong>
-                            <span>{run.title}</span>
-                            <small>
-                              {formatTime(run.updatedAt)} · {run.usage?.totalTokens || 0} tokens
-                            </small>
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </section>
-                );
-              })
-            )}
-          </div>
-        </aside>
+                      {conversation.runCount > 1 ? (
+                        <button
+                          className="trace-conversation-toggle"
+                          onClick={() => toggleConversation(conversation.key)}
+                          aria-expanded={expanded}
+                        >
+                          {expanded ? (
+                            <ChevronDown size={14} />
+                          ) : (
+                            <ChevronRight size={14} />
+                          )}
+                          {expanded ? "Hide runs" : "Show runs"}
+                        </button>
+                      ) : null}
+                      {expanded ? (
+                        <div className="trace-run-children">
+                          {conversation.runs.map((run, index) => (
+                            <button
+                              key={run.id}
+                              className={`trace-run-child-row ${selectedRunId === run.id ? "active" : ""}`}
+                              onClick={() =>
+                                selectRunInConversation(conversation, run)
+                              }
+                            >
+                              <span
+                                className={`trace-status-dot ${run.status}`}
+                              />
+                              <strong>Run {index + 1}</strong>
+                              <span>{run.title}</span>
+                              <small>
+                                {formatTime(run.updatedAt)} ·{" "}
+                                {run.usage?.totalTokens || 0} tokens
+                              </small>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </section>
+                  );
+                })
+              )}
+            </div>
+          </aside>
         ) : null}
 
-        <article className="trace-detail" aria-label="Selected trace conversation">
+        <article
+          className="trace-detail"
+          aria-label="Selected trace conversation"
+        >
           {selectedConversation ? (
             <>
               <div className="trace-detail-title">
                 <div>
-                  <p className="trace-eyebrow">{selectedConversation.profileLabel}</p>
-                  <h3 title={selectedConversation.latestMessagePreview || selectedConversation.messagePreview}>
+                  <p className="trace-eyebrow">
+                    {selectedConversation.profileLabel}
+                  </p>
+                  <h3
+                    title={
+                      selectedConversation.latestMessagePreview ||
+                      selectedConversation.messagePreview
+                    }
+                  >
                     {selectedConversation.title}
                   </h3>
                 </div>
-                <span className={`trace-status-pill ${selectedConversation.status}`}>
+                <span
+                  className={`trace-status-pill ${selectedConversation.status}`}
+                >
                   {selectedConversation.status}
                 </span>
               </div>
@@ -402,7 +543,10 @@ function TraceLab({
                       contextLabel={item.contextLabel}
                       selected={item.key === selectedTimelineItem?.key}
                       onSelect={() =>
-                        setSelectedEventRef({ runId: item.run.id, eventId: item.event.id })
+                        setSelectedEventRef({
+                          runId: item.run.id,
+                          eventId: item.event.id,
+                        })
                       }
                     />
                   ))
@@ -410,10 +554,22 @@ function TraceLab({
               </div>
 
               <div className="trace-facts">
-                <Fact label="Started" value={formatTime(selectedConversation.startedAt)} />
-                <Fact label="Updated" value={formatTime(selectedConversation.updatedAt)} />
-                <Fact label="Agent runs" value={String(selectedConversation.runCount)} />
-                <Fact label="Tokens" value={String(selectedConversation.usage.totalTokens || 0)} />
+                <Fact
+                  label="Started"
+                  value={formatTime(selectedConversation.startedAt)}
+                />
+                <Fact
+                  label="Updated"
+                  value={formatTime(selectedConversation.updatedAt)}
+                />
+                <Fact
+                  label="Agent runs"
+                  value={String(selectedConversation.runCount)}
+                />
+                <Fact
+                  label="Tokens"
+                  value={String(selectedConversation.usage.totalTokens || 0)}
+                />
                 <Fact
                   label="Cost"
                   value={
@@ -431,10 +587,16 @@ function TraceLab({
                     <button
                       key={run.id}
                       className="trace-message-summary"
-                      onClick={() => selectRunInConversation(selectedConversation, run)}
+                      onClick={() =>
+                        selectRunInConversation(selectedConversation, run)
+                      }
                     >
-                      <strong>Run {index + 1}: {run.title}</strong>
-                      <span>{run.messagePreview || "No message preview recorded."}</span>
+                      <strong>
+                        Run {index + 1}: {run.title}
+                      </strong>
+                      <span>
+                        {run.messagePreview || "No message preview recorded."}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -447,8 +609,14 @@ function TraceLab({
             </>
           ) : (
             <EmptyState
-              title={isSessionMode ? t("sessions.noSessionTraces") : "No conversation selected"}
-              body={isSessionMode ? t("sessions.noSessionTracesHint") : undefined}
+              title={
+                isSessionMode
+                  ? t("sessions.noSessionTraces")
+                  : "No conversation selected"
+              }
+              body={
+                isSessionMode ? t("sessions.noSessionTracesHint") : undefined
+              }
             />
           )}
         </article>
@@ -458,7 +626,9 @@ function TraceLab({
             <div>
               <p className="trace-eyebrow">Inspector</p>
               <h3>
-                {selectedTimelineItem ? selectedTimelineItem.event.title : "No event selected"}
+                {selectedTimelineItem
+                  ? selectedTimelineItem.event.title
+                  : "No event selected"}
               </h3>
             </div>
           </div>

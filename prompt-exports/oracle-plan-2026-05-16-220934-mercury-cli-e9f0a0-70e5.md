@@ -10,7 +10,6 @@ docs/contracts/ipc-preload.md: authoritative current renderer-facing API surface
 docs/subsystems/connection-modes.md: local vs pure remote vs SSH behavior, runtime handle contract, fail-closed remote profile limitations, gateway/tunnel semantics.
 docs/subsystems/storage-and-profiles.md: profile scoping, persistent files, session/cache/memory/SOUL/models/credentials/trace storage, local/SSH/remote differences.
 src/preload/index.d.ts, src/preload/index.ts: full `HermesAPI` type contract and preload exposure; use this as the UI parity checklist.
-src/main/ipc/*.ts: full current IPC handlers for chat, config, cron, gateway, install, knowledge, models, sessions/profiles/cache, system, trace, Claw3D; these show current domain routing, mode branching, and side effects.
 src/main/hermes/*.ts: chat dispatch/transports, runtime identity manager, connection helpers, title generation, trace event normalization; these are the core chat/runtime seams for CLI commands.
 src/main/config.ts, cronjobs.ts, memory.ts, soul.ts, skills.ts, skills/importer.ts, tools.ts, models.ts, profiles.ts, sessions.ts, session-cache.ts, session-db.ts, trace-store.ts: reusable local domain services for CLI CRUD/list/read operations.
 src/main/install/*, installer.ts: install/status/version/doctor/update/backup/import/dump/log/provider/MCP helper operations.
@@ -69,7 +68,6 @@ Deliver a phased plan, not code. Include: CLI entrypoint/package layout; command
 │   │   │   └── paths.ts — 2 378 tokens (full)
 │   │   ├── ipc/
 │   │   │   ├── chat.ts — 3 971 tokens (full)
-│   │   │   ├── claw3d.ts — 429 tokens (full)
 │   │   │   ├── config.ts — 2 115 tokens (full)
 │   │   │   ├── cron.ts — 448 tokens (full)
 │   │   │   ├── gateway.ts — 885 tokens (full)
@@ -302,7 +300,6 @@ src/cli/
     gateway.ts
     install.ts
     system.ts
-    claw3d.ts
   schemas/
     *.ts                    # optional command result type guards/schemas for tests
 ```
@@ -925,27 +922,12 @@ Preserve:
 - stale runtime marking after successful import.
 - backup/import remain local-only in current behavior unless a future SSH implementation is added.
 
-### 3.14 Claw3D CLI parity
 
 Commands:
 
 ```text
-mercury claw3d status
-mercury claw3d setup [--ndjson]
-mercury claw3d port get
-mercury claw3d port set <port>
-mercury claw3d ws-url get
-mercury claw3d ws-url set <url>
-mercury claw3d start
-mercury claw3d stop
-mercury claw3d logs
-mercury claw3d dev start
-mercury claw3d dev stop
-mercury claw3d adapter start
-mercury claw3d adapter stop
 ```
 
-Use existing `src/main/claw3d/*` modules through a thin command wrapper. This is lower priority if the “AI agents use Mercury autonomously” goal focuses on Hermes capabilities, but include it for `HermesAPI` parity.
 
 ---
 
@@ -1297,7 +1279,6 @@ Done criteria:
 - NDJSON stream includes start/chunk/trace/tool/usage/done/error.
 - Local, SSH, synthetic-chat, and pure remote failure paths are tested.
 
-### Phase 6 — Install/progress-heavy commands and Claw3D parity
 
 Implement:
 
@@ -1305,13 +1286,11 @@ Implement:
 - `hermes update`
 - `claw migrate`
 - `ssh tunnel start/status/stop`
-- `claw3d *`
 
 Done criteria:
 
 - Progress callbacks emit text or NDJSON.
 - SSH update sequence revalidates runtime.
-- Claw3D command parity matches current `HermesAPI`.
 
 ### Phase 7 — Documentation, parity guardrails, delegation hardening
 

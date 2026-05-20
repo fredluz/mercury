@@ -16,7 +16,6 @@ docs/contracts/ipc-preload.md: authoritative current renderer-facing API surface
 docs/subsystems/connection-modes.md: local vs pure remote vs SSH behavior, runtime handle contract, fail-closed remote profile limitations, gateway/tunnel semantics.
 docs/subsystems/storage-and-profiles.md: profile scoping, persistent files, session/cache/memory/SOUL/models/credentials/trace storage, local/SSH/remote differences.
 src/preload/index.d.ts, src/preload/index.ts: full `HermesAPI` type contract and preload exposure; use this as the UI parity checklist.
-src/main/ipc/*.ts: full current IPC handlers for chat, config, cron, gateway, install, knowledge, models, sessions/profiles/cache, system, trace, Claw3D; these show current domain routing, mode branching, and side effects.
 src/main/hermes/*.ts: chat dispatch/transports, runtime identity manager, connection helpers, title generation, trace event normalization; these are the core chat/runtime seams for CLI commands.
 src/main/config.ts, cronjobs.ts, memory.ts, soul.ts, skills.ts, skills/importer.ts, tools.ts, models.ts, profiles.ts, sessions.ts, session-cache.ts, session-db.ts, trace-store.ts: reusable local domain services for CLI CRUD/list/read operations.
 src/main/install/*, installer.ts: install/status/version/doctor/update/backup/import/dump/log/provider/MCP helper operations.
@@ -143,7 +142,6 @@ Run or document these checks after docs edits:
 │   ├── main/
 │   │   ├── ipc/
 │   │   │   ├── chat.ts — 1 015 tokens (full)
-│   │   │   ├── claw3d.ts — 429 tokens (full)
 │   │   │   ├── config.ts — 892 tokens (full)
 │   │   │   ├── cron.ts — 363 tokens (full)
 │   │   │   ├── gateway.ts — 386 tokens (full)
@@ -605,12 +603,10 @@ Include these domains:
 - `memory-providers`
 - `dump`
 - `claw`
-- `claw3d` as reserved/deferred
 
 For reserved/deferred, be precise:
 
 - `claw migrate` exists through `domain === "claw"` and `action === "migrate"`.
-- `claw3d` is reserved in entrypoint but not implemented; docs should say renderer Claw3D surface is deferred for CLI except `claw migrate`.
 
 #### 7. Chat automation deep section
 
@@ -1179,7 +1175,6 @@ Must be atomic with guard mapping change.
 Mitigation:
 
 - For each command, verify against `src/cli/read-only-commands.ts`, `src/cli/mutating-commands.ts`, and `src/cli/chat-commands.ts`.
-- Use “reserved/deferred” for unsupported domains, especially `claw3d`.
 - Document pure remote profile execution as fail-closed.
 
 ### Risk: docs guard no longer enforces the main CLI reference

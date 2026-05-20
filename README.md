@@ -80,13 +80,32 @@ sudo dnf install ./mercury-<version>.rpm
 
 ### macOS
 
-> **macOS users:** The app is not code-signed or notarized. macOS will block it on first launch. To fix this, run the following after installing:
+Mercury publishes macOS builds through GitHub Releases. For the easiest unsigned install path, use the installer script file from this repo:
+
+```text
+scripts/Install Mercury.command
+```
+
+Double-clicking that file opens Terminal and runs the agent-first installer. The script first looks for a local agent CLI (`codex`, `claude`, `pi`, `hermes`, `openclaw`, or `claw`) and starts a visible terminal session with an install prompt. If no agent is found, it installs directly. The direct installer downloads the latest Mercury DMG, copies `Mercury.app` into `/Applications`, removes the macOS quarantine flag, and opens the app.
+
+You can also run the same installer from Terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fredluz/mercury/main/scripts/install-mac-release.sh | bash
+```
+
+To skip the agent handoff and run the deterministic installer directly:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fredluz/mercury/main/scripts/install-mac-release.sh | bash -s -- --direct
+```
+
+> **macOS users:** Mercury is not currently code-signed or notarized. If you install manually from the DMG, macOS may block first launch. You can either right-click the app → **Open** → **Open**, or run:
 >
 > ```bash
-> xattr -cr "/Applications/Mercury.app"
+> xattr -dr com.apple.quarantine "/Applications/Mercury.app"
+> open "/Applications/Mercury.app"
 > ```
->
-> Or right-click the app → **Open** → click **Open** in the confirmation dialog.
 
 ## Features
 

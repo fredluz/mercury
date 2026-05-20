@@ -1,12 +1,18 @@
 import { ipcMain } from "electron";
 import {
   createCronJobForProfile,
+  createScheduleJobForProfile,
   listCronJobsForProfile,
   pauseCronJobForProfile,
   removeCronJobForProfile,
   resumeCronJobForProfile,
   triggerCronJobForProfile,
+  updateCronJobForProfile,
 } from "../services/cron-service";
+import type {
+  ScheduleCreatePayload,
+  ScheduleUpdatePayload,
+} from "../../shared/schedules";
 
 export function registerCronIpc(): void {
   // Cron orchestration lives in services/cron-service.ts.
@@ -20,12 +26,25 @@ export function registerCronIpc(): void {
     "create-cron-job",
     (
       _event,
-      schedule: string,
+      schedule: string | ScheduleCreatePayload,
       prompt?: string,
       name?: string,
       deliver?: string,
       profile?: string,
-    ) => createCronJobForProfile(schedule, prompt, name, deliver, profile),
+    ) =>
+      typeof schedule === "string"
+        ? createCronJobForProfile(schedule, prompt, name, deliver, profile)
+        : createScheduleJobForProfile(schedule, prompt),
+  );
+  ipcMain.handle(
+    "create-schedule-job",
+    (_event, payload: ScheduleCreatePayload, profile?: string) =>
+      createScheduleJobForProfile(payload, profile),
+  );
+  ipcMain.handle(
+    "update-cron-job",
+    (_event, jobId: string, payload: ScheduleUpdatePayload, profile?: string) =>
+      updateCronJobForProfile(jobId, payload, profile),
   );
   ipcMain.handle("remove-cron-job", (_event, jobId: string, profile?: string) =>
     removeCronJobForProfile(jobId, profile),

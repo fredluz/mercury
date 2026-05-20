@@ -4,7 +4,7 @@ import { HERMES_HOME } from "./installer";
 
 /**
  * Strip ANSI escape codes from terminal output.
- * Used by hermes.ts, claw3d.ts, and installer.ts when processing
+ * Used by Hermes and installer code when processing
  * child process output for display in the renderer.
  */
 // eslint-disable-next-line no-control-regex

@@ -18,10 +18,17 @@ import type {
   RuntimeDiagnostic,
 } from "../shared/runtime";
 import type {
+  CronJob,
+  CronMutationResult,
+  ScheduleCreatePayload,
+  ScheduleUpdatePayload,
+} from "../shared/schedules";
+import type {
   LocalChatTraceRequest,
   SkillTrainingRun,
   TraceEvent,
   TraceRun,
+  TraceScheduleRunSummary,
 } from "../shared/traces";
 import type {
   ModelCapability,
@@ -178,6 +185,14 @@ interface HermesAPI {
   // Trace Lab
   listTraceRuns: () => Promise<TraceRun[]>;
   getTraceRun: (runId: string) => Promise<TraceRun | null>;
+  listTraceRunsForSchedule: (
+    scheduleId: string,
+    profile?: string,
+  ) => Promise<TraceScheduleRunSummary[]>;
+  listCompletedScheduledRunsSince: (
+    timestamp: number,
+    profile?: string,
+  ) => Promise<TraceScheduleRunSummary[]>;
   listSkillTrainingRuns: () => Promise<SkillTrainingRun[]>;
 
   // Gateway
@@ -465,31 +480,23 @@ interface HermesAPI {
   listCronJobs: (
     includeDisabled?: boolean,
     profile?: string,
-  ) => Promise<
-    Array<{
-      id: string;
-      name: string;
-      schedule: string;
-      prompt: string;
-      state: "active" | "paused" | "completed";
-      enabled: boolean;
-      next_run_at: string | null;
-      last_run_at: string | null;
-      last_status: string | null;
-      last_error: string | null;
-      repeat: { times: number | null; completed: number } | null;
-      deliver: string[];
-      skills: string[];
-      script: string | null;
-    }>
-  >;
+  ) => Promise<CronJob[]>;
   createCronJob: (
     schedule: string,
     prompt?: string,
     name?: string,
     deliver?: string,
     profile?: string,
-  ) => Promise<{ success: boolean; error?: string }>;
+  ) => Promise<CronMutationResult>;
+  createScheduleJob: (
+    payload: ScheduleCreatePayload,
+    profile?: string,
+  ) => Promise<CronMutationResult>;
+  updateCronJob: (
+    jobId: string,
+    payload: ScheduleUpdatePayload,
+    profile?: string,
+  ) => Promise<CronMutationResult>;
   removeCronJob: (
     jobId: string,
     profile?: string,

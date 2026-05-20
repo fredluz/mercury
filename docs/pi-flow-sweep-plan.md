@@ -100,7 +100,6 @@ This document lists the main end-to-end flows in Mercury, organised by:
 | 2   | Sessions  | Clock        | Button with `Sessions` label          |
 | 3   | Traces    | Activity     | Button with `Traces` label            |
 | 4   | Agents    | Users        | Button with `Agents` label            |
-| 5   | Office    | Building     | Button with `Office` label            |
 | 6   | Models    | Layers       | Button with `Models` label            |
 | 7   | Providers | KeyRound     | Button with `Providers` label         |
 | 8   | Skills    | Puzzle       | Button with `Skills` label            |
@@ -601,32 +600,23 @@ This document lists the main end-to-end flows in Mercury, organised by:
 
 ---
 
-## 15. Office (Claw3D)
 
-**File**: `src/renderer/src/screens/Office/Office.tsx`  
-**Classes**: `.office-ready`, `.office-toolbar`, `.office-content`, `.office-loading-overlay`, `webview`
 
-### 15.1 Office Status States
 
 | Property       | Value                                                                                                                                                                                                           |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Selectors**  | `.office-center` (checking, not-installed, error states); `.office-setup-card`; `.office-installing` with progress; `.office-ready` with toolbar                                                                |
 | **Offline**    | 🟡 All states are UI-driven from IPC responses                                                                                                                                                                  |
 | **Assertions** | "Checking" shows spinner; "Not installed" shows setup card with Install + GitHub buttons; "Installing" shows progress bar + step info + log; "Ready" shows toolbar with start/stop, settings, and webview area. |
 
-### 15.2 Start/Stop Claw3D
 
 | Property       | Value                                                                                                |
 | -------------- | ---------------------------------------------------------------------------------------------------- |
-| **Selectors**  | Start/Stop button in toolbar; `.office-status-dot` (`.running` / `.stopped`); `.office-status-label` |
-| **Offline**    | ❌ Requires actual Claw3D processes                                                                  |
 | **Assertions** | Start button transitions to "Starting..." then "Running" with green dot; Stop reverts.               |
 
 ### 15.3 Settings Bar
 
 | Property       | Value                                                                                                    |
 | -------------- | -------------------------------------------------------------------------------------------------------- |
-| **Selectors**  | Settings gear icon, `.office-settings-bar`, `.office-port-input`, `.office-ws-input`, "View Logs" button |
 | **Offline**    | ✅ Yes (UI only)                                                                                         |
 | **Assertions** | Clicking gear shows/hides settings bar; port and WS URL inputs present; "View Logs" opens logs panel.    |
 
@@ -776,7 +766,6 @@ Affected screens:
 | **Tools:** Toggle/MCP list            | ✅                             | —                          |
 | **Schedules:** CRUD UI                | ✅                             | ❌ Cron execution          |
 | **Gateway:** UI + toggles             | ✅                             | ❌ Start/stop gateway      |
-| **Office:** All states                | 🟡 UI                          | ❌ Claw3D processes        |
 | **Settings:** Theme/lang/network      | ✅                             | —                          |
 | **Settings:** Engine info/doctor      | 🟡 Buttons                     | ❌ Doctor/dump             |
 | **Settings:** Connection modes        | ✅ UI                          | ❌ Test connections        |

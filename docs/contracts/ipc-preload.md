@@ -36,12 +36,12 @@ Current fragments in `src/preload/api/index.ts` are:
 
 | Fragment | File | Main areas |
 | --- | --- | --- |
-| `installApi` | `src/preload/api/install.ts` | install checks, installer progress, Hermes version/doctor/update, OpenClaw migration, locale |
+| `installApi` | `src/preload/api/install.ts` | install checks, installer progress, Hermes version/doctor/update, migration inventory/prompt, OpenClaw migration, locale |
 | `configApi` | `src/preload/api/config.ts` | env/config/model config, connection mode, remote/SSH tests, SSH tunnel controls |
 | `chatApi` | `src/preload/api/chat.ts` | send/abort chat, generated chat titles, local trace recording, chat stream listeners, and live activity trace events |
 | `navigationApi` | `src/preload/api/navigation.ts` | traces, gateway lifecycle/restart, platform toggles, sessions, profiles |
 | `knowledgeApi` | `src/preload/api/knowledge.ts` | memory, user profile, soul, tools, skills, skill content/metadata, Markdown skill import |
-| `modelsApi` | `src/preload/api/models.ts` | session cache/search, credential pool, models, Claw3D |
+| `modelsApi` | `src/preload/api/models.ts` | session cache/search, credential pool, models |
 | `appApi` | `src/preload/api/app.ts` | runtime diagnostics, updates, menu events, cron jobs, shell, backup/import, dump/log/system helpers, local perf telemetry |
 
 ## IPC composition and handler ownership
@@ -50,7 +50,7 @@ Current fragments in `src/preload/api/index.ts` are:
 
 | Main IPC module | Responsibility |
 | --- | --- |
-| `src/main/ipc/install.ts` | installation, verification, Hermes version/doctor/update, OpenClaw migration, install progress events |
+| `src/main/ipc/install.ts` | installation, verification, Hermes version/doctor/update, migration inventory/prompt, OpenClaw migration, install progress events |
 | `src/main/ipc/config.ts` | profile-aware env/config/model settings, locale, connection mode, remote/SSH tests, SSH tunnel controls |
 | `src/main/ipc/chat.ts` | `send-message`, `generate-chat-title`, `abort-chat`, chat stream events, active-chat abort handling, title persistence, trace run writes, and live chat activity events |
 | `src/main/ipc/trace.ts` | trace run reads, skill-training run reads, and local chat trace writes |
@@ -58,7 +58,6 @@ Current fragments in `src/preload/api/index.ts` are:
 | `src/main/ipc/sessions.ts` | sessions, profiles, session cache sync, session search |
 | `src/main/ipc/knowledge.ts` | memory, user profile, soul, tools, skills, skill content/metadata, skill Markdown import |
 | `src/main/ipc/models.ts` | credential pool and model CRUD |
-| `src/main/ipc/claw3d.ts` | Claw3D status/setup/config/start/stop/logs and setup progress events |
 | `src/main/ipc/cron.ts` | cron job listing and lifecycle actions |
 | `src/main/ipc/system.ts` | external URLs, runtime diagnostics, backup/import, debug dump, MCP servers, memory providers, logs, local perf telemetry |
 
@@ -72,7 +71,7 @@ Most preload methods use `ipcRenderer.invoke("kebab-case-channel", ...)` and are
 
 Examples by domain:
 
-- Install/version/update: `check-install`, `verify-install`, `start-install`, `get-hermes-version`, `refresh-hermes-version`, `run-hermes-doctor`, `run-hermes-update`, `check-openclaw`, `run-claw-migrate`, `get-locale`, `set-locale`, `get-app-version`, `check-for-updates`, `download-update`, `install-update`.
+- Install/version/update: `check-install`, `verify-install`, `start-install`, `get-hermes-version`, `refresh-hermes-version`, `run-hermes-doctor`, `run-hermes-update`, `migration-inventory`, `migration-prompt`, `check-openclaw`, `run-claw-migrate`, `get-locale`, `set-locale`, `get-app-version`, `check-for-updates`, `download-update`, `install-update`.
 - Config/connection: `get-env`, `set-env`, `get-config`, `set-config`, `get-hermes-home`, `get-model-config`, `set-model-config`, `is-remote-mode`, `is-remote-only-mode`, `get-connection-config`, `set-connection-config`, `set-ssh-config`, `test-remote-connection`, `test-ssh-connection`, `is-ssh-tunnel-active`, `start-ssh-tunnel`, `stop-ssh-tunnel`.
 - Chat: `send-message`, `generate-chat-title`, `abort-chat`.
 - Trace Lab: `list-trace-runs`, `get-trace-run`, `list-skill-training-runs`, `record-local-chat-trace`.
@@ -81,7 +80,6 @@ Examples by domain:
   These API names remain profile-based for compatibility and Hermes storage/runtime identity; renderer product copy presents them to users as Agents.
 - Knowledge/skills: `read-memory`, `add-memory-entry`, `update-memory-entry`, `remove-memory-entry`, `write-user-profile`, `read-soul`, `write-soul`, `reset-soul`, `get-toolsets`, `set-toolset-enabled`, `list-installed-skills`, `list-bundled-skills`, `get-skill-content`, `get-skill-metadata`, `install-skill`, `uninstall-skill`, `import-skill-markdown`.
 - Models/credentials: `get-credential-pool`, `set-credential-pool`, `list-models`, `add-model`, `remove-model`, `update-model`.
-- Claw3D: `claw3d-status`, `claw3d-setup`, `claw3d-get-port`, `claw3d-set-port`, `claw3d-get-ws-url`, `claw3d-set-ws-url`, `claw3d-start-all`, `claw3d-stop-all`, `claw3d-get-logs`, `claw3d-start-dev`, `claw3d-stop-dev`, `claw3d-start-adapter`, `claw3d-stop-adapter`.
 - Cron/runtime/system/perf: `list-cron-jobs`, `create-cron-job`, `remove-cron-job`, `pause-cron-job`, `resume-cron-job`, `trigger-cron-job`, `get-runtime-diagnostic`, `open-external`, `run-hermes-backup`, `run-hermes-import`, `run-hermes-dump`, `discover-memory-providers`, `list-mcp-servers`, `read-logs`, `get-perf-telemetry-config`, `record-perf-event`.
 
 ### Chat preload API
@@ -145,7 +143,6 @@ Current event channels exposed through preload listeners include:
 - Installer/update/migration progress: `install-progress`.
 - Auto-update state: `update-available`, `update-download-progress`, `update-downloaded`, `update-not-available`, `update-error`.
 - Native menu actions: `menu-new-chat`, `menu-search-sessions`.
-- Claw3D setup progress: `claw3d-setup-progress`.
 
 `chat-trace-event` is sent only for live activity event types accepted by `src/main/ipc/chat.ts`: `tool.*`, `delegation.*`, `artifact.created`, `approval.*`, and `transport.error`. The persisted `TraceEvent` object is sent after the main process records it, so renderer activity cards can share ids, run ids, timestamps, titles, details, and metadata with Trace Lab.
 

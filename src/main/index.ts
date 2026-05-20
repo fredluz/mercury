@@ -8,7 +8,6 @@ import nightlyIcon from "../../resources/nightly-icon.png?asset";
 import { getConnectionConfig } from "./config";
 import { stopGateway, stopHealthPolling, setSshRemoteApiKey } from "./hermes";
 import { startSshTunnel, stopSshTunnel } from "./ssh-tunnel";
-import { stopAll as stopClaw3d } from "./claw3d";
 import {
   sshGatewayStatus,
   sshStartGateway,
@@ -396,7 +395,6 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     stopGateway();
     stopSshTunnel();
-    stopClaw3d();
     app.quit();
   }
 });
@@ -406,5 +404,4 @@ app.on("before-quit", () => {
   abortActiveChat();
   stopGateway();
   stopSshTunnel();
-  stopClaw3d();
 });

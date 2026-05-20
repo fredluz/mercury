@@ -36,7 +36,6 @@ const RESERVED_DOMAIN_COMMANDS = new Set([
   "backup",
   "chat",
   "claw",
-  "claw3d",
   "config",
   "connection",
   "credentials",
@@ -51,6 +50,7 @@ const RESERVED_DOMAIN_COMMANDS = new Set([
   "mcp",
   "memory",
   "memory-providers",
+  "migration",
   "model-config",
   "models",
   "openclaw",
@@ -91,9 +91,9 @@ Global flags:
 Reserved command domains:
   chat, sessions, profiles, agents, memory, soul, skills, tools, models,
   cron, traces, runtime, gateway, install, system, config, env, connection,
-  ssh, hermes, claw3d
+  ssh, hermes, migration, openclaw, claw
 
-Implemented commands include read/list/status/get/verify/doctor, non-chat mutating CRUD/runtime/install commands,
+Implemented commands include read/list/status/get/verify/doctor/inventory/prompt, non-chat mutating CRUD/runtime/install commands,
   and chat send/title streaming automation.
 `;
 }

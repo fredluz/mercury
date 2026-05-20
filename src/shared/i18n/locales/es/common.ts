@@ -39,7 +39,7 @@ export default {
   optional: "opcional",
   devOnly: "Solo para desarrolladores",
   updateAvailable: "Actualizar a v{{version}}",
-  updateMercury: "Actualizar Mercury",
+  updateMercury: "Buscar actualizaciones",
   updateMercuryVersion: "Actualizar Mercury a v{{version}}",
   checkingForUpdates: "Buscando actualizaciones...",
   mercuryUpToDate: "Mercury está actualizado",

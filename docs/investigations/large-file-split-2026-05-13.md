@@ -33,7 +33,6 @@ No external research required; this investigation is based on repository structu
 | 9 | `src/renderer/src/constants.ts` | 802 | source | Split recommended |
 | 10 | `src/preload/index.ts` | 707 | source | Split recommended |
 | 11 | `src/renderer/src/screens/Schedules/Schedules.tsx` | 634 | source | Split recommended |
-| 12 | `src/main/claw3d.ts` | 633 | source | Split recommended |
 | 13 | `src/renderer/src/screens/Memory/Memory.tsx` | 611 | source | Split recommended |
 | 14 | `src/renderer/src/screens/Skills/Skills.tsx` | 542 | source | Split recommended |
 | 15 | `src/main/skills.ts` | 512 | source | Split recommended, small cut |
@@ -53,7 +52,6 @@ No external research required; this investigation is based on repository structu
 - `ipc/gateway.ts`: gateway/platform handlers at `src/main/index.ts:693-735`, backed by `src/preload/index.ts:235-247`.
 - `ipc/sessions-profiles.ts`: sessions/profiles/session cache/search at `src/main/index.ts:741-953`, backed by `src/preload/index.ts:250-433`.
 - `ipc/memory-soul-tools-skills.ts` or separate domain modules: memory/soul/tools/skills handlers at `src/main/index.ts:779-923`, backed by `src/preload/index.ts:308-387`.
-- `ipc/models-claw-cron-maintenance.ts` or narrower modules: credential pool/models at `src/main/index.ts:955-984`, Claw3D at `src/main/index.ts:987-1026`, cron at `src/main/index.ts:1030-1058`, and shell/backup/dump/MCP/memory-provider/log handlers at `src/main/index.ts:1061-1099`.
 
 **Preload coupling conclusion:** Split preload in lockstep by API group while preserving one public `window.hermesAPI` shape. Keep `src/preload/index.d.ts` aligned because it defines `HermesAPI` and global `window.hermesAPI` coupling (`src/preload/index.d.ts:24`, `src/preload/index.d.ts:476-481`). The parity tests above should catch channel/API drift after extraction.
 
@@ -78,7 +76,6 @@ No external research required; this investigation is based on repository structu
 - `src/main/hermes/chat-cli.ts`: CLI fallback spawn/env/key handling at `src/main/hermes.ts:453-639`.
 - `src/main/hermes/gateway.ts`: lazy init, health polling, start/stop/status/restart and pid handling at `src/main/hermes.ts:671-847`.
 
-**`src/main/claw3d.ts` (633 LOC):** Split into `src/main/claw3d/config.ts` for persisted port/ws-url/settings and status helpers (`src/main/claw3d.ts:32-233`), `src/main/claw3d/setup.ts` for npm/provisioning (`src/main/claw3d.ts:234-420`), and `src/main/claw3d/runtime.ts` for process/PID/log control (`src/main/claw3d.ts:421-633`).
 
 **`src/main/skills.ts` (512 LOC):** Only barely over threshold; extract `src/main/skills/importer.ts` for frontmatter/import preparation and markdown import (`src/main/skills.ts:44-218`, `src/main/skills.ts:453-512`), leaving catalog/search/install functions under 500 (`src/main/skills.ts:227-452`).
 
@@ -118,7 +115,6 @@ No external research required; this investigation is based on repository structu
 4. **Split `src/main/installer.ts` and `src/main/hermes.ts`**: these are service-level files with clear transport/execution/runtime seams and high LOC payoff.
 5. **Split largest renderer screens**: `Chat.tsx`, `Settings.tsx`, `TraceLab.tsx` in that order, extracting constants/hooks/helpers before JSX sections.
 6. **Split `constants.ts`**: use a barrel to avoid broad import churn; this unblocks smaller screen splits that depend on provider/gateway/settings constants.
-7. **Finish remaining >500 files**: `Schedules.tsx`, `claw3d.ts`, `Memory.tsx`, `Skills.tsx`, and the small `src/main/skills.ts` importer extraction.
 
 **Final conclusion:** A logical split plan can bring every source/test/source-like file below 500 LOC without behavior changes. The safest ordering is mechanical CSS + contract-tested IPC/preload first, then domain service splits, then renderer component/hook extractions. Generated metadata (`package-lock.json`) and build outputs should stay ranked for visibility but excluded from refactor recommendations.
 
@@ -127,7 +123,6 @@ No external research required; this investigation is based on repository structu
 ### Phase 1 - Initial Assessment
 **Hypothesis:** The largest files cluster around renderer screens, main-process services, and tests; logical extraction seams can reduce each source/test file under 500 LOC.
 **Findings:** Context Builder identified 15 source/source-like files above 500 LOC. `package-lock.json` is 13,823 LOC but is generated/dependency metadata and excluded from refactor recommendations per user constraints. Checked tests are currently below 500 LOC.
-**Evidence:** Initial ranking: `src/renderer/src/assets/main.css` 5,410; `src/main/index.ts` 1,325; `src/main/ssh-remote.ts` 1,220; `src/renderer/src/screens/Chat/Chat.tsx` 1,175; `src/main/installer.ts` 1,073; `src/renderer/src/screens/Settings/Settings.tsx` 938; `src/main/hermes.ts` 847; `src/renderer/src/screens/TraceLab/TraceLab.tsx` 835; `src/renderer/src/constants.ts` 802; `src/preload/index.ts` 707; `src/renderer/src/screens/Schedules/Schedules.tsx` 634; `src/main/claw3d.ts` 633; `src/renderer/src/screens/Memory/Memory.tsx` 611; `src/renderer/src/screens/Skills/Skills.tsx` 542; `src/main/skills.ts` 512.
 **Conclusion:** Confirmed broad large-file problem; pair validation and Oracle synthesis completed.
 
 ### Phase 3/4 - Pair Validation and Oracle Synthesis
@@ -149,7 +144,6 @@ Large files grew because early convenience boundaries became long-term architect
 1. **Split CSS first**: turn `src/renderer/src/assets/main.css` into ordered imports for tokens/base, app shell, shared primitives, and per-screen/feature styles. Extract shared modal/overlay styles before screen CSS because `Schedules.tsx` currently reuses `.skills-detail-overlay` from the Skills CSS cluster.
 2. **Split IPC + preload + preload types as one contract workstream**: extract `src/main/index.ts` `setupIPC()` channel groups and matching `src/preload/index.ts` API groups together while preserving `window.hermesAPI`. Update parity tests to scan the split modules or introduce a shared channel manifest.
 3. **Split `src/main/ssh-remote.ts` by mirrored domain**: centralize SSH transport/core helpers first, then split skills, memory/soul, config/env/model, sessions/profiles, and runtime/gateway/logs/diagnostics/models modules.
-4. **Split main-process services**: prioritize `src/main/installer.ts` and `src/main/hermes.ts`, then `src/main/claw3d.ts` and the small `src/main/skills.ts` importer extraction. Use compatibility barrels to reduce import churn.
 5. **Split `src/renderer/src/constants.ts` before renderer screens**: shard providers, local presets, theme, settings sections, gateway sections/platforms, install constants, and `tk()` while preserving translation key names.
 6. **Split largest renderer screens**: extract hooks/utilities first, then presentational components for `Chat.tsx`, `Settings.tsx`, and `TraceLab.tsx`; finish with `Schedules.tsx`, `Memory.tsx`, and `Skills.tsx`.
 7. **Keep generated metadata visible but out of scope**: rank `package-lock.json` and build outputs for visibility, but exclude them from refactor recommendations.
@@ -165,6 +159,5 @@ Large files grew because early convenience boundaries became long-term architect
 ## Execution Checklist
 - [x] Item 1: CSS sharding — split `src/renderer/src/assets/main.css` into ordered feature/style files, preserve cascade order, keep `main.css` under 500 LOC, and extract shared modal/overlay styles before screen-specific CSS. Completed: `main.css` is 31 LOC, largest shard is 430 LOC, and `npm run build` passed.
 - [x] Item 2: IPC/preload contract split — split `src/main/index.ts`, `src/preload/index.ts`, and update preload types/tests while preserving `window.hermesAPI`. Completed: `src/main/index.ts` is 304 LOC, `src/preload/index.ts` is 17 LOC, max IPC module is 241 LOC, max preload API module is 157 LOC; focused parity tests, typecheck, and build passed.
-- [x] Item 3: Main service split — split `src/main/ssh-remote.ts`, `installer.ts`, `hermes.ts`, `claw3d.ts`, and `skills.ts` along domain seams. Completed: compatibility files are now 61/30/20/12/287 LOC respectively; largest new service module is `src/main/install/executor.ts` at 444 LOC; focused service tests, typecheck, and build passed.
 - [x] Item 4: Renderer constants/screens split — split `src/renderer/src/constants.ts`, then `Chat.tsx`, `Settings.tsx`, `TraceLab.tsx`, `Schedules.tsx`, `Memory.tsx`, and `Skills.tsx` into hooks/components/utilities. Completed: target files are now 1/133/417/357/414/311/415 LOC respectively; largest new renderer module is `SettingsCoreSections.tsx` at 425 LOC; web typecheck, full typecheck, build, and test suite passed.
 - [x] Item 5: Guardrails/final verification — add/adjust LOC guard and run focused tests/typecheck/lint as feasible. Completed: added `npm run check:loc` backed by `scripts/check-loc.mjs`; it checks tracked source/test/source-like files, warns at 400 LOC, fails above 500 LOC, and excludes lockfiles/generated metadata/build output/assets. `npm test`, `npm run typecheck`, `npm run build`, and `npm run check:loc` passed; full `npm run lint` was attempted and currently fails on existing unrelated lint issues outside the LOC guard change.

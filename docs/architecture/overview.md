@@ -20,7 +20,7 @@ This is the evergreen architecture reference for Mercury's current Electron app 
 Mercury is an Electron/Vite desktop app plus a Node CLI split across five durable boundaries:
 
 1. **Main process** (`src/main/index.ts` and `src/main/*`)
-   - Owns Electron app lifecycle, the `BrowserWindow`, app menu, updater setup, shutdown cleanup, and side-effectful services such as gateway, SSH tunnel, profile runtime manager, and Claw3D shutdown.
+   - Owns Electron app lifecycle, the `BrowserWindow`, app menu, updater setup, shutdown cleanup, and side-effectful services such as gateway, SSH tunnel, and profile runtime manager.
    - `src/main/hermes/runtime.ts` owns the reliable profile runtime contract: profile-keyed local gateway/API state, CLI fallback identity, SSH runtime handles, pure remote fail-closed behavior, runtime diagnostics, and stale-runtime markers.
    - Calls `registerIpcHandlers({ getMainWindow })` so domain IPC modules can expose main-process services to the renderer.
 2. **Preload bridge** (`src/preload/index.ts`, `src/preload/api/*`, `src/preload/index.d.ts`)
@@ -99,13 +99,12 @@ Current main-to-renderer updater/menu event channels include:
 `src/main/index.ts` has two cleanup paths:
 
 - `window-all-closed`
-  - On non-macOS platforms: stop the gateway, stop the SSH tunnel, stop Claw3D, then quit the app.
+  - On non-macOS platforms: stop the gateway, stop the SSH tunnel, then quit the app.
 - `before-quit`
   - Stop health polling.
   - Abort the active chat through `abortActiveChat()`.
   - Stop the gateway.
   - Stop the SSH tunnel.
-  - Stop Claw3D.
 
 Changes that add long-running main-process services should update this section and ensure shutdown cleanup remains explicit.
 
@@ -121,7 +120,6 @@ Changes that add long-running main-process services should update this section a
 - `registerSessionsIpc()`
 - `registerKnowledgeIpc()`
 - `registerModelsIpc()`
-- `registerClaw3dIpc()`
 - `registerCronIpc()`
 - `registerSystemIpc()`
 

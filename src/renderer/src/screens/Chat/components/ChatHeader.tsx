@@ -1,5 +1,5 @@
 import type React from "react";
-import { Plus, Trash2 as Trash, Zap } from "lucide-react";
+import { CalendarPlus, Plus, Trash2 as Trash, Zap } from "lucide-react";
 import type { ChatContextUsage, ChatMessage } from "../types";
 
 interface ChatHeaderProps {
@@ -11,6 +11,7 @@ interface ChatHeaderProps {
   messages: ChatMessage[];
   profile?: string;
   onFastModeChange: (value: boolean) => void;
+  onCreateScheduleFromConversation?: () => void;
   onNewChat?: () => void;
   onClear: () => void;
   t: (key: string, values?: Record<string, string>) => string;
@@ -36,6 +37,7 @@ export function ChatHeader({
   messages,
   profile,
   onFastModeChange,
+  onCreateScheduleFromConversation,
   onNewChat,
   onClear,
   t,
@@ -102,6 +104,15 @@ export function ChatHeader({
             <span>{fastMode ? t("chat.fastModeActive") : t("chat.fastModeInactive")}</span>
           </div>
         </div>
+        {messages.length > 0 && onCreateScheduleFromConversation && (
+          <button
+            className="btn-ghost chat-clear-btn chat-schedule-btn"
+            onClick={onCreateScheduleFromConversation}
+            title={t("chat.createScheduleFromConversation")}
+          >
+            <CalendarPlus size={16} />
+          </button>
+        )}
         {onNewChat && (
           <button className="btn-ghost chat-clear-btn" onClick={onNewChat} title={t("chat.newChat")}>
             <Plus size={16} />

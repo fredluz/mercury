@@ -1,5 +1,9 @@
 import { ipcRenderer } from "electron";
-import type { SkillTrainingRun, TraceRun } from "../../shared/traces";
+import type {
+  SkillTrainingRun,
+  TraceRun,
+  TraceScheduleRunSummary,
+} from "../../shared/traces";
 
 export const navigationApi = {
   // Trace Lab
@@ -8,6 +12,22 @@ export const navigationApi = {
 
   getTraceRun: (runId: string): Promise<TraceRun | null> =>
     ipcRenderer.invoke("get-trace-run", runId),
+
+  listTraceRunsForSchedule: (
+    scheduleId: string,
+    profile?: string,
+  ): Promise<TraceScheduleRunSummary[]> =>
+    ipcRenderer.invoke("list-trace-runs-for-schedule", scheduleId, profile),
+
+  listCompletedScheduledRunsSince: (
+    timestamp: number,
+    profile?: string,
+  ): Promise<TraceScheduleRunSummary[]> =>
+    ipcRenderer.invoke(
+      "list-completed-scheduled-runs-since",
+      timestamp,
+      profile,
+    ),
 
   listSkillTrainingRuns: (): Promise<SkillTrainingRun[]> =>
     ipcRenderer.invoke("list-skill-training-runs"),

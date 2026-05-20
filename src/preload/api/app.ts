@@ -5,6 +5,12 @@ import type {
   RuntimeDebugAgentResult,
   RuntimeDiagnostic,
 } from "../../shared/runtime";
+import type {
+  CronJob,
+  CronMutationResult,
+  ScheduleCreatePayload,
+  ScheduleUpdatePayload,
+} from "../../shared/schedules";
 
 export const appApi = {
   // Runtime diagnostics
@@ -90,24 +96,8 @@ export const appApi = {
   listCronJobs: (
     includeDisabled?: boolean,
     profile?: string,
-  ): Promise<
-    Array<{
-      id: string;
-      name: string;
-      schedule: string;
-      prompt: string;
-      state: "active" | "paused" | "completed";
-      enabled: boolean;
-      next_run_at: string | null;
-      last_run_at: string | null;
-      last_status: string | null;
-      last_error: string | null;
-      repeat: { times: number | null; completed: number } | null;
-      deliver: string[];
-      skills: string[];
-      script: string | null;
-    }>
-  > => ipcRenderer.invoke("list-cron-jobs", includeDisabled, profile),
+  ): Promise<CronJob[]> =>
+    ipcRenderer.invoke("list-cron-jobs", includeDisabled, profile),
 
   createCronJob: (
     schedule: string,
@@ -115,7 +105,7 @@ export const appApi = {
     name?: string,
     deliver?: string,
     profile?: string,
-  ): Promise<{ success: boolean; error?: string }> =>
+  ): Promise<CronMutationResult> =>
     ipcRenderer.invoke(
       "create-cron-job",
       schedule,
@@ -124,6 +114,19 @@ export const appApi = {
       deliver,
       profile,
     ),
+
+  createScheduleJob: (
+    payload: ScheduleCreatePayload,
+    profile?: string,
+  ): Promise<CronMutationResult> =>
+    ipcRenderer.invoke("create-schedule-job", payload, profile),
+
+  updateCronJob: (
+    jobId: string,
+    payload: ScheduleUpdatePayload,
+    profile?: string,
+  ): Promise<CronMutationResult> =>
+    ipcRenderer.invoke("update-cron-job", jobId, payload, profile),
 
   removeCronJob: (
     jobId: string,

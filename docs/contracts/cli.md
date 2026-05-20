@@ -53,7 +53,7 @@ Important architectural rules:
 - IPC and CLI should share service functions rather than copying domain logic into adapters.
 - The CLI adapter owns command parsing, output formatting, process exit codes, streaming event shapes, and `SIGINT` handling.
 - Service modules own domain behavior, profile normalization, local/SSH branching, runtime verification, stale-runtime markers, gateway restart side effects, and file persistence.
-- Renderer-only surfaces such as update menu events, local slash-command trace recording, and Claw3D process controls are not automatically CLI features.
+- Renderer-only surfaces such as update menu events and local slash-command trace recording are not automatically CLI features.
 
 ## Build and invocation
 
@@ -281,7 +281,7 @@ Exit codes are defined in `src/cli/errors.ts` and returned by `runCli(...)`.
 
 Examples:
 
-- `mercury --json claw3d status` returns exit `3` with `unsupported-command` because `claw3d` is reserved but deferred.
+- `mercury config get theme` returns exit `3` with `unsupported-command` because that command is reserved but deferred.
 - Pure remote profile-bound chat/title fails closed with `runtime-unsupported-remote-profile`, mapped to exit `3`.
 - Runtime identity mismatch maps to exit `4`.
 - `SIGINT` during an active chat maps to exit `130`.
@@ -1266,19 +1266,30 @@ Example:
 mercury --ndjson claw migrate
 ```
 
-### `claw3d`
+### `migration` / `openclaw` inventory
 
-`claw3d` is a reserved/deferred CLI domain. The renderer/preload contract exposes Claw3D setup/status/port/ws/log/dev/adapter controls, but the CLI currently has no implemented `claw3d` subcommands.
+Source anchors: `src/cli/read-only-commands.ts`, `src/main/services/install-service.ts`, `src/main/migration/inventory.ts`.
 
-Current behavior:
+Implemented read-only commands:
 
 ```bash
-mercury --json claw3d status
+mercury migration inventory [--hermes-root <path>] [--openclaw-root <path>] [--source <path>] [--no-defaults]
+mercury migration prompt [--hermes-root <path>] [--openclaw-root <path>] [--source <path>] [--no-defaults] [--no-inventory]
+mercury hermes inventory [--source <path>] [--no-defaults]
+mercury hermes prompt [--source <path>] [--no-defaults] [--no-inventory]
+mercury openclaw inventory [--source <path>] [--no-defaults]
+mercury openclaw prompt [--source <path>] [--no-defaults] [--no-inventory]
 ```
 
-returns exit `3` with `unsupported-command`.
+Output: `inventory` returns a redacted migration inventory with `sources`, user-pickable candidate `candidates`, confidence/evidence/privacy flags, and warnings. `prompt` returns a complete migration-agent prompt explaining Mercury's profile model, Hermes/OpenClaw layouts, extraction rules, privacy rules, and next actions; by default it embeds the current redacted inventory unless `--no-inventory` is supplied. Both commands are read-only and do not import or mutate source roots.
 
-Use `mercury claw migrate` for the implemented OpenClaw migration command.
+Default behavior scans standard Hermes/OpenClaw roots. Use `--no-defaults` with explicit roots for deterministic automation. On `migration inventory` and `migration prompt`, `--source <path>` is treated as both a potential Hermes root and a potential OpenClaw root; use `--hermes-root` or `--openclaw-root` when the source type is known.
+
+Example:
+
+```bash
+mercury --json migration inventory --hermes-root ~/.hermes-old --openclaw-root ~/.openclaw --no-defaults
+```
 
 ### `system`
 
@@ -1297,7 +1308,7 @@ Use `mercury claw migrate` for the implemented OpenClaw migration command.
 
 ### Reserved domains without implemented subcommands
 
-The entrypoint reserves `openclaw` for future naming compatibility, but no `openclaw` subcommands are implemented. The implemented migration command is `claw migrate`.
+The entrypoint reserves `openclaw` for migration naming compatibility. The implemented OpenClaw commands are read-only `openclaw inventory` and mutating `claw migrate`.
 
 Renderer-only/deferred surfaces with no direct CLI command today include:
 
@@ -1306,7 +1317,6 @@ Renderer-only/deferred surfaces with no direct CLI command today include:
 - Renderer menu events.
 - Local performance telemetry recording.
 - Renderer local slash-command trace creation (`recordLocalChatTrace`).
-- Claw3D process/control commands.
 
 ## Connection-mode behavior
 
@@ -1383,8 +1393,9 @@ This matrix maps major `window.hermesAPI` domains to CLI coverage. Rows are inte
 | `mcp` | `listMcpServers` | `mcp list` | `system-service.ts` | Local/SSH server listing. |
 | `memory-providers` | `discoverMemoryProviders` | `memory-providers list` | `system-service.ts` | Local/SSH discovery. |
 | `dump` | `runHermesDump` | `dump` | `system-service.ts` | Local/SSH dump text. |
+| `migration` | `getMigrationInventory`, `getMigrationPrompt` | `migration inventory`, `migration prompt` | `install-service.ts`, `migration/inventory.ts`, `migration/prompt.ts` | Read-only candidate-agent inventory and migration-agent prompt. |
+| `openclaw` | `getMigrationInventory`, `getMigrationPrompt` | `openclaw inventory`, `openclaw prompt` | `install-service.ts`, `migration/inventory.ts`, `migration/prompt.ts` | Read-only OpenClaw candidate inventory and migration-agent prompt. |
 | `claw` | `runClawMigrate` | `claw migrate` | `install-service.ts` | OpenClaw migration only. |
-| `claw3d` | `claw3dStatus`, setup/progress/port/ws/log/dev/adapter methods | Reserved/deferred | `src/main/ipc/claw3d.ts` | CLI returns unsupported for `claw3d ...`. |
 
 ## Automation examples
 
@@ -1496,7 +1507,6 @@ Cause: command domain is reserved but the specific command is not implemented.
 Examples:
 
 ```bash
-mercury claw3d status
 mercury config get theme
 mercury connection test
 ```
@@ -1587,7 +1597,6 @@ These are known CLI gaps, not bugs in this contract:
 - No `config get`, `env get`, `model-config get`, or `getHermesHome` CLI commands yet, despite service/preload read methods.
 - No CLI remote/SSH connection test commands yet, despite service/preload helpers.
 - No CLI command for renderer local trace recording (`recordLocalChatTrace`).
-- No CLI commands for Claw3D setup/status/port/ws/log/dev/adapter controls.
 - No app-update event/menu/shell/performance-telemetry CLI parity.
 - `--table`, `--stream`, `--raw`, and `--color` are parsed but mostly reserved until individual commands implement specialized behavior.
 - Pure remote HTTP profile-bound execution remains fail-closed until Mercury has a verifiable remote profile identity contract.

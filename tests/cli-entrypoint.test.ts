@@ -33,12 +33,12 @@ describe("CLI entrypoint foundation", () => {
 
   it("returns JSON errors for placeholder domain commands", async () => {
     const { io, output } = createIo();
-    const exitCode = await runCli({ argv: ["--json", "claw3d", "status"], io });
+    const exitCode = await runCli({ argv: ["--json", "backup", "status"], io });
 
     expect(exitCode).toBe(3);
     expect(JSON.parse(output().stderr)).toMatchObject({
       ok: false,
-      command: "claw3d status",
+      command: "backup status",
       error: {
         code: "unsupported-command",
       },
