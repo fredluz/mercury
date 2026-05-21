@@ -14,13 +14,12 @@ export type RuntimePurpose =
   | "sessions"
   | "mcp";
 
-export type RuntimeTransport = "cli" | "api" | "ssh-api" | "remote-api";
+export type RuntimeTransport = "api" | "ssh-api" | "remote-api";
 
 export type RuntimeVerificationSource =
   | "identity-endpoint"
   | "managed-process"
   | "declared-remote"
-  | "cli-args"
   | "unverified";
 
 export type RuntimeErrorCode =
@@ -38,7 +37,7 @@ export interface ProfileRuntimeRequest {
   mode?: RuntimeMode;
   purpose: RuntimePurpose;
   sessionId?: string;
-  preferTransport?: "api" | "cli";
+  preferTransport?: "api";
 }
 
 export interface RuntimeIdentity {
@@ -70,7 +69,6 @@ export interface ProfileRuntimeHandle {
   transport: RuntimeTransport;
   apiBaseUrl?: string;
   authHeaders?: Record<string, string>;
-  cliCommand?: string[];
 }
 
 export class ProfileRuntimeError extends Error {

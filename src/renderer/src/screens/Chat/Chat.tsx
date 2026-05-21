@@ -5,6 +5,7 @@ import { useI18n } from "../../components/useI18n";
 import { ChatActivityGroup } from "./components/ChatActivityGroup";
 import { ChatComposer } from "./components/ChatComposer";
 import { ChatEmpty } from "./components/ChatEmpty";
+import { ChatRuntimeReadinessCard } from "./components/ChatRuntimeReadinessCard";
 import { ChatHeader } from "./components/ChatHeader";
 import { ChatLoading } from "./components/ChatLoading";
 import { WhileYouWereAway } from "./components/WhileYouWereAway";
@@ -127,13 +128,17 @@ function Chat({
           t={t}
         />
 
+        <ChatRuntimeReadinessCard
+          diagnostic={runtimeDiagnostic}
+          profile={profile}
+          onRuntimeDiagnosticRefresh={onRuntimeDiagnosticRefresh}
+          t={t}
+        />
+
         {messages.length === 0 ? (
           <ChatEmpty
             setPrompt={chat.setInput}
             focusInput={() => chat.inputRef.current?.focus()}
-            runtimeDiagnostic={runtimeDiagnostic}
-            profile={profile}
-            onRuntimeDiagnosticRefresh={onRuntimeDiagnosticRefresh}
             t={t}
           />
         ) : (

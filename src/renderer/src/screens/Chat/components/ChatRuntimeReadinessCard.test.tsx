@@ -1,22 +1,22 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatRuntimeReadinessCard } from "./ChatRuntimeReadinessCard";
 import type { RuntimeDiagnostic } from "../../../../../shared/runtime";
 
 const t = (key: string): string => {
   const dictionary: Record<string, string> = {
-    "chat.runtimeReadinessTitle": "Chat runtime not verified yet",
+    "chat.runtimeReadinessTitle": "Chat requires a verified API runtime",
     "chat.runtimeReadinessCopy":
-      "Mercury will verify the selected Agent runtime when chat starts.",
+      "Mercury will start the selected Agent gateway, wait for the API, and verify the runtime before chat can run.",
     "chat.runtimeReadinessReasonFallback":
-      "Runtime identity has not been verified yet.",
-    "chat.runtimeVerify": "Verify runtime",
-    "chat.runtimeVerifying": "Starting and verifying the runtime...",
+      "API runtime identity has not been verified yet.",
+    "chat.runtimeVerify": "Verify API runtime",
+    "chat.runtimeVerifying": "Starting and verifying the API runtime...",
     "chat.runtimeVerifyingShort": "Verifying...",
-    "chat.runtimeVerified": "Runtime verified. You can start chatting.",
+    "chat.runtimeVerified": "API runtime verified. You can start chatting.",
     "chat.runtimeStillUnverified":
-      "Runtime is still not verified. Try debugging with an agent.",
-    "chat.runtimeVerifyFailed": "Runtime verification failed.",
+      "API runtime is still not verified. Try debugging with an agent.",
+    "chat.runtimeVerifyFailed": "API runtime verification failed.",
     "chat.runtimeDebugGroup": "Debug with",
     "chat.runtimeDebugCodex": "Codex",
     "chat.runtimeDebugClaude": "Claude Code",
@@ -49,8 +49,8 @@ const verifiedDiagnostic: RuntimeDiagnostic = {
   ...unverifiedDiagnostic,
   actualProfile: "default",
   verified: true,
-  verificationSource: "cli-args",
-  transport: "cli",
+  verificationSource: "managed-process",
+  transport: "api",
   status: "verified",
   mismatchReason: undefined,
 };
@@ -59,6 +59,7 @@ function installHermesApiMock(): void {
   (window as unknown as { hermesAPI: Partial<Window["hermesAPI"]> }).hermesAPI =
     {
       startGateway: vi.fn().mockResolvedValue(true),
+      restartGateway: vi.fn().mockResolvedValue(true),
       revalidateRuntime: vi.fn().mockResolvedValue(true),
       launchRuntimeDebugAgent: vi
         .fn()
@@ -67,6 +68,9 @@ function installHermesApiMock(): void {
 }
 
 describe("ChatRuntimeReadinessCard", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
   it("renders unverified runtime diagnostics in chat space", () => {
     installHermesApiMock();
     render(
@@ -74,13 +78,13 @@ describe("ChatRuntimeReadinessCard", () => {
     );
 
     expect(
-      screen.getByText("Chat runtime not verified yet"),
+      screen.getByText("Chat requires a verified API runtime"),
     ).toBeInTheDocument();
     expect(
       screen.getByText("Local runtime identity has not been verified yet."),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /Verify runtime/i }),
+      screen.getByRole("button", { name: /Verify API runtime/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Codex/i })).toBeInTheDocument();
   });
@@ -90,7 +94,7 @@ describe("ChatRuntimeReadinessCard", () => {
     render(<ChatRuntimeReadinessCard diagnostic={verifiedDiagnostic} t={t} />);
 
     expect(
-      screen.queryByText("Chat runtime not verified yet"),
+      screen.queryByText("Chat requires a verified API runtime"),
     ).not.toBeInTheDocument();
   });
 
@@ -106,13 +110,43 @@ describe("ChatRuntimeReadinessCard", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Verify runtime/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Verify API runtime/i }));
 
     await waitFor(() =>
       expect(window.hermesAPI.startGateway).toHaveBeenCalledWith("default"),
     );
     expect(window.hermesAPI.revalidateRuntime).toHaveBeenCalledWith("default");
     await waitFor(() => expect(onRuntimeDiagnosticRefresh).toHaveBeenCalled());
+  });
+
+  it("restarts a local gateway if start plus revalidation stays unverified", async () => {
+    vi.useFakeTimers();
+    installHermesApiMock();
+    vi.mocked(window.hermesAPI.revalidateRuntime)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+
+    render(
+      <ChatRuntimeReadinessCard
+        diagnostic={unverifiedDiagnostic}
+        profile="default"
+        t={t}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Verify API runtime/i }));
+
+    await Promise.resolve();
+    expect(window.hermesAPI.startGateway).toHaveBeenCalledWith("default");
+
+    await vi.advanceTimersByTimeAsync(700);
+    await vi.advanceTimersByTimeAsync(1_400);
+    await Promise.resolve();
+
+    expect(window.hermesAPI.restartGateway).toHaveBeenCalledWith("default");
+    expect(window.hermesAPI.revalidateRuntime).toHaveBeenCalledTimes(4);
   });
 
   it("launches the selected external debug agent", async () => {

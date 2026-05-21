@@ -1,7 +1,7 @@
 import { sendMessageViaApi } from "./chat-api";
-import { sendMessageViaCli } from "./chat-cli";
 import { isRemoteMode } from "./connection";
 import { profileRuntimeManager } from "./runtime";
+import { assertVerifiedApiRuntimeHandle } from "./runtime/api-runtime";
 import { isSyntheticChatStreamEnabled, sendSyntheticChatStream } from "./synthetic-chat";
 import type { ChatCallbacks, ChatHandle, ProfileRuntimeHandle } from "./types";
 
@@ -28,31 +28,14 @@ export async function sendMessage(
       sessionId: resumeSessionId,
     }));
 
-  if (runtime.request.profile !== normalizedProfile) {
-    throw new Error(
-      `Runtime profile ${runtime.request.profile} does not match requested profile ${normalizedProfile}`,
-    );
-  }
-
-  if (runtime.transport === "api" || runtime.transport === "ssh-api") {
-    return sendMessageViaApi(
-      message,
-      cb,
-      normalizedProfile,
-      resumeSessionId,
-      history,
-      runtime,
-    );
-  }
-
-  if (runtime.transport === "cli") {
-    return sendMessageViaCli(message, cb, normalizedProfile, resumeSessionId);
-  }
-
-  throw new Error(
-    isRemoteMode()
-      ? `Verified ${runtime.transport} chat runtime is not available for profile ${normalizedProfile}`
-      : `Unsupported chat runtime transport ${runtime.transport}`,
+  assertVerifiedApiRuntimeHandle(runtime, normalizedProfile, "chat");
+  return sendMessageViaApi(
+    message,
+    cb,
+    normalizedProfile,
+    resumeSessionId,
+    history,
+    runtime,
   );
 }
 

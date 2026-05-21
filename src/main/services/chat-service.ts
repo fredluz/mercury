@@ -160,8 +160,6 @@ export async function runChatMessage({
   history,
   callbacks,
 }: RunChatRequest): Promise<ChatResponse> {
-  const runtime = await prepareChatBackend(profile, "chat", resumeSessionId);
-
   abortCurrentRun("Superseded by a new Hermes message.");
 
   let fullResponse = "";
@@ -366,6 +364,7 @@ export async function runChatMessage({
   };
 
   try {
+    const runtime = await prepareChatBackend(profile, "chat", resumeSessionId);
     const handle = await sendMessage(
       message,
       transportCallbacks,
@@ -387,23 +386,28 @@ export async function runChatMessage({
       };
     }
   } catch (error) {
+    const code = error && typeof error === "object" && "code" in error && typeof (error as { code?: unknown }).code === "string"
+      ? (error as { code: string }).code
+      : undefined;
     const errorMessage = error instanceof Error ? error.message : String(error);
+    const visibleError = code ? `${code}: ${errorMessage}` : errorMessage;
     const recordedError = recordChatTraceEvent(
       "trace send setup error",
       "transport.error",
       "Transport error",
-      errorMessage,
-      { source: "chat-send" },
+      visibleError,
+      { source: "chat-send", code },
     );
     emitLiveTrace(callbacks, recordedError ?? null);
     finishChatTraceRun(
       "trace send setup failure finalization",
       "failed",
       undefined,
-      errorMessage,
+      visibleError,
     );
-    notify("chat setup error callback", () => callbacks?.onError?.(errorMessage));
+    notify("chat setup error callback", () => callbacks?.onError?.(visibleError));
     settleRejected(error);
+    notify("chat setup failure callback", () => callbacks?.onFailed?.(visibleError));
   }
 
   return promise;

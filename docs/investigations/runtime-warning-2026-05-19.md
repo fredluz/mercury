@@ -1,9 +1,13 @@
 # Investigation: Runtime Warning Banner
 
 ## Summary
-The banner is one conservative local-runtime diagnostic shown twice: `Layout` polls runtime diagnostics before chat execution has verified a local runtime, then renders the warning globally while `ChatHeader` renders the same diagnostic compactly next to `Agent: Default`.
+The banner was one conservative local-runtime diagnostic shown twice: `Layout` polled runtime diagnostics before chat execution had verified a local runtime, then rendered the warning globally while `ChatHeader` rendered the same diagnostic compactly next to `Agent: Default`.
 
-The underlying state is usually idle/preflight “no verified runtime identity yet,” not two failures and not necessarily a failed verification attempt.
+The underlying state was usually idle/preflight “no verified runtime identity yet,” not two failures and not necessarily a failed verification attempt.
+
+## Implementation status — 2026-05-21
+
+This investigation is historical/superseded for current chat runtime behavior. The API-only runtime change removed local CLI fallback and moved actionable chat readiness into an API-runtime verification flow: chat/title now require verified `api`/`ssh-api` handles and fail with structured errors if verification cannot complete.
 
 ## Symptoms
 - New Chat screen shows a top-level banner: “RUNTIME WARNING Local runtime identity has not been verified yet.”

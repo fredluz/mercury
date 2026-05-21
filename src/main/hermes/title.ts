@@ -4,6 +4,7 @@ import { generateTitle } from "../session-cache";
 import { getSessionTitle } from "../sessions";
 import { profileRuntimeManager } from "./runtime";
 import { resolveChatRuntimeModel } from "./chat-model";
+import { assertVerifiedApiRuntimeHandle, type VerifiedApiRuntimeHandle } from "./runtime/api-runtime";
 import type { ProfileRuntimeHandle } from "./types";
 import {
   type GenerateChatTitleRequest,
@@ -31,28 +32,12 @@ function compactMessages(
     }));
 }
 
-function runtimeMatchesRequest(
-  runtime: ProfileRuntimeHandle,
-  profile?: string,
-): boolean {
-  const requestedProfile = profileRuntimeManager.normalizeProfile(profile);
-  return (
-    runtime.request.profile === requestedProfile &&
-    runtime.identity.verified &&
-    runtime.identity.actualProfile === requestedProfile
-  );
-}
-
 async function requestModelTitle(
   request: GenerateChatTitleRequest,
-  runtime: ProfileRuntimeHandle,
+  runtime: VerifiedApiRuntimeHandle,
 ): Promise<string> {
   const mc = await resolveChatRuntimeModel(request.profile);
   return new Promise((resolve, reject) => {
-    if (!runtime.apiBaseUrl) {
-      reject(new Error("Title runtime does not expose an API base URL"));
-      return;
-    }
     const chatUrl = `${runtime.apiBaseUrl}/v1/chat/completions`;
     const requester = chatUrl.startsWith("https") ? https : http;
     const body = JSON.stringify({
@@ -128,21 +113,18 @@ export async function generateChatTitle(
   const fallback = fallbackTitle(request.messages);
   if (compactMessages(request.messages).length === 0) return fallback;
 
+  const requestedProfile = profileRuntimeManager.normalizeProfile(request.profile);
+  const runtime =
+    preparedRuntime ??
+    (await profileRuntimeManager.resolveRuntime({
+      profile: requestedProfile,
+      purpose: "title",
+      sessionId: request.sessionId,
+      preferTransport: "api",
+    }));
+  assertVerifiedApiRuntimeHandle(runtime, requestedProfile, "title");
+
   try {
-    const runtime =
-      preparedRuntime ??
-      (await profileRuntimeManager.resolveRuntime({
-        profile: request.profile,
-        purpose: "title",
-        sessionId: request.sessionId,
-        preferTransport: "api",
-      }));
-    if (
-      (runtime.transport !== "api" && runtime.transport !== "ssh-api") ||
-      !runtimeMatchesRequest(runtime, request.profile)
-    ) {
-      return fallback;
-    }
     const modelTitle = sanitizeChatTitle(await requestModelTitle(request, runtime));
     return modelTitle || fallback;
   } catch {

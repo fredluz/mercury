@@ -171,6 +171,145 @@ describe("chat CLI commands", () => {
     });
   });
 
+  it("returns structured JSON runtime failures for chat send", async () => {
+    tempHome();
+    const runtimeError = Object.assign(new Error("Local API runtime unavailable"), {
+      code: "runtime-unavailable",
+      identity: {
+        requestedProfile: "work",
+        actualProfile: null,
+        verified: false,
+        transport: "api",
+      },
+    });
+    vi.doMock("../src/main/services/chat-service", () => ({
+      runChatMessage: vi.fn(async () => {
+        throw runtimeError;
+      }),
+      generateChatTitleForRequest: vi.fn(),
+      abortActiveChatRun: vi.fn(),
+    }));
+    vi.doMock("../src/main/services/config-service", () => ({ getConnection: () => ({ mode: "local" }) }));
+
+    const { runCli } = await loadCli();
+    const { io, output } = createIo();
+    const exitCode = await runCli({ argv: ["--json", "--profile", "work", "chat", "send", "hello"], io });
+
+    expect(exitCode).toBe(4);
+    expect(output().stdout).toBe("");
+    expect(JSON.parse(output().stderr)).toMatchObject({
+      ok: false,
+      error: {
+        code: "runtime-unavailable",
+        details: { identity: { requestedProfile: "work", transport: "api" } },
+      },
+    });
+  });
+
+  it("emits NDJSON runtime failures for chat send", async () => {
+    tempHome();
+    const runtimeError = Object.assign(new Error("Local API runtime unavailable"), {
+      code: "runtime-unavailable",
+      identity: {
+        requestedProfile: "work",
+        actualProfile: null,
+        verified: false,
+        transport: "api",
+      },
+    });
+    vi.doMock("../src/main/services/chat-service", () => ({
+      runChatMessage: vi.fn(async ({ callbacks }) => {
+        callbacks?.onError?.("runtime-unavailable: Local API runtime unavailable");
+        throw runtimeError;
+      }),
+      generateChatTitleForRequest: vi.fn(),
+      abortActiveChatRun: vi.fn(),
+    }));
+    vi.doMock("../src/main/services/config-service", () => ({ getConnection: () => ({ mode: "local" }) }));
+
+    const { runCli } = await loadCli();
+    const { io, output } = createIo();
+    const exitCode = await runCli({ argv: ["--ndjson", "--profile", "work", "chat", "send", "hello"], io });
+
+    expect(exitCode).toBe(4);
+    const events = output().stdout.trim().split("\n").map((line) => JSON.parse(line));
+    expect(events.map((event) => event.type)).toEqual(["start", "error"]);
+    expect(events.at(-1)).toMatchObject({
+      type: "error",
+      error: { code: "chat-error", message: "runtime-unavailable: Local API runtime unavailable" },
+    });
+    expect(JSON.parse(output().stderr)).toMatchObject({
+      error: {
+        code: "runtime-unavailable",
+        details: { identity: { requestedProfile: "work", transport: "api" } },
+      },
+    });
+  });
+
+  it("prints stable text runtime failures for chat send", async () => {
+    tempHome();
+    const runtimeError = Object.assign(new Error("Local API runtime unavailable"), {
+      code: "runtime-unavailable",
+      identity: {
+        requestedProfile: "work",
+        actualProfile: null,
+        verified: false,
+        transport: "api",
+      },
+    });
+    vi.doMock("../src/main/services/chat-service", () => ({
+      runChatMessage: vi.fn(async () => {
+        throw runtimeError;
+      }),
+      generateChatTitleForRequest: vi.fn(),
+      abortActiveChatRun: vi.fn(),
+    }));
+    vi.doMock("../src/main/services/config-service", () => ({ getConnection: () => ({ mode: "local" }) }));
+
+    const { runCli } = await loadCli();
+    const { io, output } = createIo();
+    const exitCode = await runCli({ argv: ["--text", "--profile", "work", "chat", "send", "hello"], io });
+
+    expect(exitCode).toBe(4);
+    expect(output().stdout).toBe("");
+    expect(output().stderr).toBe(
+      "Error (runtime-unavailable): Local API runtime unavailable\n",
+    );
+  });
+
+  it("returns structured JSON runtime failures for chat title", async () => {
+    tempHome();
+    const runtimeError = Object.assign(new Error("Local API runtime unavailable"), {
+      code: "runtime-unavailable",
+      identity: {
+        requestedProfile: "work",
+        actualProfile: null,
+        verified: false,
+        transport: "api",
+      },
+    });
+    vi.doMock("../src/main/services/chat-service", () => ({
+      runChatMessage: vi.fn(),
+      generateChatTitleForRequest: vi.fn(async () => {
+        throw runtimeError;
+      }),
+      abortActiveChatRun: vi.fn(),
+    }));
+    vi.doMock("../src/main/services/config-service", () => ({ getConnection: () => ({ mode: "local" }) }));
+
+    const { runCli } = await loadCli();
+    const { io, output } = createIo();
+    const exitCode = await runCli({ argv: ["--json", "--profile", "work", "chat", "title", "hello"], io });
+
+    expect(exitCode).toBe(4);
+    expect(JSON.parse(output().stderr)).toMatchObject({
+      error: {
+        code: "runtime-unavailable",
+        details: { identity: { requestedProfile: "work", transport: "api" } },
+      },
+    });
+  });
+
   it("aborts active chat on SIGINT and exits 130", async () => {
     tempHome();
     let resolveRun!: (value: { response: string }) => void;

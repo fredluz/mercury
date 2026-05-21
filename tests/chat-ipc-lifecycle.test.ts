@@ -162,8 +162,18 @@ function resetMockState(): void {
     .mockImplementation((profile?: string) => profile?.trim() || "default");
   mocks.profileRuntimeManager.resolveRuntime.mockReset().mockResolvedValue({
     request: { profile: "default", mode: "local", purpose: "chat" },
-    identity: { requestedProfile: "default", actualProfile: "default", verified: true },
-    transport: "cli",
+    identity: {
+      requestedProfile: "default",
+      actualProfile: "default",
+      verified: true,
+      verificationSource: "managed-process",
+      mode: "local",
+      transport: "api",
+      startedByMercury: true,
+      verifiedAt: 1,
+    },
+    transport: "api",
+    apiBaseUrl: "http://127.0.0.1:19001",
   });
   mocks.sendMessage.mockReset().mockImplementation(
     async (
@@ -277,8 +287,18 @@ describe("chat IPC lifecycle hardening", () => {
     const event = createEvent();
     const runtime = {
       request: { profile: "alpha", mode: "local", purpose: "chat" },
-      identity: { requestedProfile: "alpha", actualProfile: "alpha", verified: true },
-      transport: "cli",
+      identity: {
+        requestedProfile: "alpha",
+        actualProfile: "alpha",
+        verified: true,
+        verificationSource: "managed-process",
+        mode: "local",
+        transport: "api",
+        startedByMercury: true,
+        verifiedAt: 1,
+      },
+      transport: "api",
+      apiBaseUrl: "http://127.0.0.1:19001",
     };
     mocks.profileRuntimeManager.resolveRuntime.mockResolvedValueOnce(runtime);
 
@@ -303,6 +323,40 @@ describe("chat IPC lifecycle hardening", () => {
       "resume-session",
       undefined,
       runtime,
+    );
+  });
+
+  it("surfaces runtime setup failures through chat-error and rejects", async () => {
+    const handler = await setupHandler();
+    const event = createEvent();
+    const runtimeError = Object.assign(new Error("Local API runtime unavailable"), {
+      code: "runtime-unavailable",
+      identity: {
+        requestedProfile: "alpha",
+        actualProfile: null,
+        verified: false,
+        verificationSource: "managed-process",
+        mode: "local",
+        transport: "api",
+        startedByMercury: true,
+        verifiedAt: 1,
+      },
+    });
+    mocks.profileRuntimeManager.resolveRuntime.mockRejectedValueOnce(runtimeError);
+
+    const invokePromise = handler(event, "hello", "alpha");
+
+    await expect(invokePromise).rejects.toBe(runtimeError);
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+    expect(sentChannels(event.sender, "chat-error")).toEqual([
+      ["chat-error", "runtime-unavailable: Local API runtime unavailable"],
+    ]);
+    expect(mocks.recordTraceEvent).toHaveBeenCalledWith(
+      "trace-1",
+      "transport.error",
+      "Transport error",
+      "runtime-unavailable: Local API runtime unavailable",
+      { source: "chat-send", code: "runtime-unavailable" },
     );
   });
 

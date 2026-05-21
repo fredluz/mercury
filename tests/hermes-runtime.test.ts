@@ -76,7 +76,7 @@ describe("ProfileRuntimeManager contract", () => {
     ]);
   });
 
-  it("falls back to a verified CLI identity for named local profiles without managed API evidence", async () => {
+  it("fails closed for local profiles without managed API evidence", async () => {
     const isApiServerReady = vi.fn().mockResolvedValue(true);
     const manager = new ProfileRuntimeManager({
       hermesScript: "hermes",
@@ -91,23 +91,24 @@ describe("ProfileRuntimeManager contract", () => {
       ...noOpTimers(),
     });
 
-    const handle = await manager.resolveRuntime({
-      profile: "alpha",
-      mode: "local",
-      purpose: "chat",
-      sessionId: "session-1",
+    await expect(
+      manager.resolveRuntime({
+        profile: "alpha",
+        mode: "local",
+        purpose: "chat",
+        sessionId: "session-1",
+      }),
+    ).rejects.toMatchObject({
+      code: "runtime-profile-unverified",
+      identity: expect.objectContaining({
+        requestedProfile: "alpha",
+        actualProfile: null,
+        verified: false,
+        verificationSource: "unverified",
+        transport: "api",
+        hermesHome: "/tmp/hermes/profiles/alpha",
+      }),
     });
-
-    expect(handle.transport).toBe("cli");
-    expect(handle.identity).toMatchObject({
-      requestedProfile: "alpha",
-      actualProfile: "alpha",
-      verified: true,
-      verificationSource: "cli-args",
-      transport: "cli",
-      hermesHome: "/tmp/hermes/profiles/alpha",
-    });
-    expect(handle.cliCommand).toEqual(["hermes", "-p", "alpha", "chat"]);
     expect(isApiServerReady).not.toHaveBeenCalled();
   });
 
@@ -194,6 +195,95 @@ describe("ProfileRuntimeManager contract", () => {
       "http://127.0.0.1:19001",
       { Authorization: "Bearer alpha-secret" },
     );
+  });
+
+  it("waits briefly for a managed local API runtime to become ready", async () => {
+    const child = fakeChildProcess(4_321);
+    const setTimeoutFn = vi.fn((callback: () => void, ms?: number) => {
+      if (ms !== 3_000) callback();
+      return 1;
+    }) as unknown as typeof setTimeout;
+    const isApiServerReady = vi
+      .fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    const manager = new ProfileRuntimeManager({
+      baseHermesHome: "/tmp/hermes",
+      hermesPython: "python",
+      hermesRepo: "/tmp/hermes/hermes-agent",
+      hermesScript: "hermes",
+      spawn: vi.fn().mockReturnValue(child),
+      readEnv: vi.fn().mockReturnValue({}),
+      getConnectionConfig: vi.fn().mockReturnValue({ mode: "local" }),
+      ensureApiServerConfig: vi.fn(),
+      isApiServerReady,
+      getEnhancedPath: vi.fn().mockReturnValue("/usr/bin"),
+      profileHome: (profile?: string) =>
+        profile && profile !== "default"
+          ? `/tmp/hermes/profiles/${profile}`
+          : "/tmp/hermes",
+      getLocalApiPort: vi.fn().mockReturnValue(19_001),
+      getLocalApiUrl: vi.fn().mockReturnValue("http://127.0.0.1:19001"),
+      apiStartupTimeoutMs: 10,
+      apiStartupRetryIntervalMs: 1,
+      ...noOpTimers(),
+      setTimeout: setTimeoutFn,
+    });
+
+    manager.startGateway("alpha");
+    await expect(
+      manager.resolveRuntime({ profile: "alpha", mode: "local", purpose: "chat" }),
+    ).resolves.toMatchObject({
+      transport: "api",
+      apiBaseUrl: "http://127.0.0.1:19001",
+      identity: expect.objectContaining({ verified: true, actualProfile: "alpha" }),
+    });
+    expect(isApiServerReady).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails loudly when a managed local API runtime never becomes ready", async () => {
+    const child = fakeChildProcess(4_321);
+    const setTimeoutFn = vi.fn((callback: () => void, ms?: number) => {
+      if (ms !== 3_000) callback();
+      return 1;
+    }) as unknown as typeof setTimeout;
+    const isApiServerReady = vi.fn().mockResolvedValue(false);
+    const manager = new ProfileRuntimeManager({
+      baseHermesHome: "/tmp/hermes",
+      hermesPython: "python",
+      hermesRepo: "/tmp/hermes/hermes-agent",
+      hermesScript: "hermes",
+      spawn: vi.fn().mockReturnValue(child),
+      readEnv: vi.fn().mockReturnValue({}),
+      getConnectionConfig: vi.fn().mockReturnValue({ mode: "local" }),
+      ensureApiServerConfig: vi.fn(),
+      isApiServerReady,
+      getEnhancedPath: vi.fn().mockReturnValue("/usr/bin"),
+      profileHome: (profile?: string) =>
+        profile && profile !== "default"
+          ? `/tmp/hermes/profiles/${profile}`
+          : "/tmp/hermes",
+      getLocalApiPort: vi.fn().mockReturnValue(19_001),
+      getLocalApiUrl: vi.fn().mockReturnValue("http://127.0.0.1:19001"),
+      apiStartupTimeoutMs: 2,
+      apiStartupRetryIntervalMs: 1,
+      ...noOpTimers(),
+      setTimeout: setTimeoutFn,
+    });
+
+    manager.startGateway("alpha");
+    await expect(
+      manager.resolveRuntime({ profile: "alpha", mode: "local", purpose: "chat" }),
+    ).rejects.toMatchObject({
+      code: "runtime-unavailable",
+      identity: expect.objectContaining({
+        requestedProfile: "alpha",
+        verified: false,
+        transport: "api",
+        mismatchReason: "Gateway process is managed by Mercury but the API is not ready yet.",
+      }),
+    });
+    expect(isApiServerReady).toHaveBeenCalledTimes(3);
   });
 
   it("reports verified diagnostics and stale invalidation for profile runtimes", async () => {

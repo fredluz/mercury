@@ -1,5 +1,7 @@
 # Investigation: Profile Manager Agent and Profile-First Mercury
 
+> Historical note (2026-05-21): this investigation predates the API-only runtime change. Current chat/title execution requires verified local `api` or SSH `ssh-api` handles and no longer falls back to local Hermes CLI transport.
+
 ## Summary
 Mercury should become profile-first by launching into a Mercury-owned profile manager surface, built from the existing Profiles/Agents card grid, rather than into `New Chat / Agent: Default`. The current code already has profile card actions and profile-aware destination screens, but the shell is still chat-first, the sidebar exposes profile-specific controls globally, profile metadata/recency is too thin for recommendations, and API/gateway runtime isolation must be fixed before the UX can honestly promise separate agents.
 

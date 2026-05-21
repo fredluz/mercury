@@ -271,7 +271,7 @@ Backup/import remain local filesystem operations; pure remote HTTP mode does not
 
 ## Local, remote, and SSH differences
 
-- **Local mode** reads/writes local files under `HERMES_HOME` and `profileHome(profile)`. Local gateway/API state is owned by `ProfileRuntimeManager`, keyed by profile, and uses profile-specific port/PID/log/config/auth evidence. CLI fallback uses `hermes -p <profile>` for named profiles, which is treated as verified command identity.
+- **Local mode** reads/writes local files under `HERMES_HOME` and `profileHome(profile)`. Local gateway/API state is owned by `ProfileRuntimeManager`, keyed by profile, and uses profile-specific port/PID/log/config/auth evidence. Chat/title execution requires a verified local API runtime and fails with structured runtime errors instead of treating `hermes -p <profile>` as a fallback command identity.
 - **Pure remote HTTP mode** is renderer-gated for filesystem-backed screens and fail-closed for profile runtime execution unless an identity can be declared or verified. Generic remote `/health` success is not enough to satisfy a selected Mercury profile, so chat/title/cron/gateway paths do not silently reuse a profile-less remote API.
 - **SSH mode** uses SSH helpers for many env/config/session/profile/memory/soul/skill/runtime reads and writes. Remote paths are under `~/.hermes` and `~/.hermes/profiles/<profile>`. Gateway status/start/stop/restart/API-key/log/MCP paths accept profile and use `hermes -p <profile>` or profile-specific remote paths. SSH tunnel state is keyed by profile plus host/user/port/remote-port/local-port so a tunnel for one profile cannot satisfy another accidentally.
 

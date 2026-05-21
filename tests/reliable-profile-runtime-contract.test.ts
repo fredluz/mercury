@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { sendMessageViaApi } from "../src/main/hermes/chat-api";
 
@@ -60,6 +60,11 @@ describe("reliable profile runtime contract sentinels", () => {
     expect(runtimeManager).toContain("markRuntimeStale");
     expect(runtimeManager).toContain("markAllRuntimeStale");
     expect(runtimeManager).toContain("getRuntimeDiagnostic");
+    expect(runtimeManager).not.toContain("createCliRuntimeHandle");
+    expect(runtimeManager).not.toContain('preferTransport === "cli"');
+    expect(runtimeIdentity).not.toContain("createCliRuntimeHandle");
+    expect(runtimeIdentity).not.toContain('"cli-args"');
+    expect(existsSync(join(ROOT, "src/main/hermes/chat-cli.ts"))).toBe(false);
   });
 
   it("keeps gateway lifecycle profile-aware from renderer through preload IPC into main/SSH/local handlers", () => {
@@ -120,21 +125,21 @@ describe("reliable profile runtime contract sentinels", () => {
 
     expect(hermesGateway).toContain("preparedRuntime ??");
     expect(hermesGateway).toContain("profileRuntimeManager.resolveRuntime({");
-    expect(hermesGateway).toContain("runtime.request.profile !== normalizedProfile");
+    expect(hermesGateway).toContain("assertVerifiedApiRuntimeHandle(runtime, normalizedProfile, \"chat\")");
     expect(hermesGateway).toContain("sendMessageViaApi(");
+    expect(hermesGateway).not.toContain("sendMessageViaCli");
     expect(hermesGateway).toContain("runtime,");
     expect(chatApi).toContain("runtime: ProfileRuntimeHandle");
-    expect(chatApi).toContain("Verified API runtime handle is required for chat API execution");
+    expect(chatApi).toContain("assertVerifiedApiRuntimeHandle(runtime");
     expect(chatApi).toContain("`${runtime.apiBaseUrl}/v1/chat/completions`");
     expect(chatApi).toContain("...(runtime.authHeaders ?? {})");
     expect(chatApi).not.toContain("getApiUrl(");
     expect(chatApi).not.toContain("getRemoteAuthHeader");
 
     expect(title).toContain("getSessionTitle(request.sessionId, request.profile)");
-    expect(title).toContain("runtimeMatchesRequest(runtime, request.profile)");
+    expect(title).toContain("assertVerifiedApiRuntimeHandle(runtime, requestedProfile, \"title\")");
     expect(title).toContain("profileRuntimeManager.resolveRuntime({");
     expect(title).toContain("purpose: \"title\"");
-    expect(title).toContain("!runtime.apiBaseUrl");
     expect(title).toContain("`${runtime.apiBaseUrl}/v1/chat/completions`");
 
     expect(cron).toContain("buildHermesProfileCommandArgs(HERMES_SCRIPT, profile");
@@ -224,9 +229,11 @@ describe("reliable profile runtime contract sentinels", () => {
     const settingsCore = src("src/renderer/src/screens/Settings/components/SettingsCoreSections.tsx");
 
     expect(gatewayScreen).toContain("RuntimeDiagnosticNotice");
-    expect(chatScreen).toContain("runtimeDiagnostic={runtimeDiagnostic}");
-    expect(chatEmpty).toContain("ChatRuntimeReadinessCard");
+    expect(chatScreen).toContain("diagnostic={runtimeDiagnostic}");
+    expect(chatScreen).toContain("ChatRuntimeReadinessCard");
+    expect(chatEmpty).not.toContain("ChatRuntimeReadinessCard");
     expect(chatRuntimeCard).toContain("launchRuntimeDebugAgent");
+    expect(chatRuntimeCard).toContain("restartGateway");
     expect(settingsScreen).toContain("runtimeDiagnostic");
     expect(settingsCore).toContain("RuntimeDiagnosticNotice");
   });
@@ -247,7 +254,7 @@ describe("reliable profile runtime contract sentinels", () => {
         undefined,
         undefined as never,
       ),
-    ).toThrow("Verified API runtime handle is required for chat API execution");
+    ).toThrow("Verified chat API runtime is not available for profile alpha.");
     expect(() =>
       sendMessageViaApi(
         "hello",
@@ -270,7 +277,31 @@ describe("reliable profile runtime contract sentinels", () => {
           transport: "api",
         },
       ),
-    ).toThrow("Verified API runtime handle is required for chat API execution");
+    ).toThrow("Verified chat API runtime is not available for profile alpha.");
+    expect(() =>
+      sendMessageViaApi(
+        "hello",
+        callbacks,
+        "alpha",
+        undefined,
+        undefined,
+        {
+          request: { profile: "beta", mode: "local", purpose: "chat" },
+          identity: {
+            requestedProfile: "beta",
+            actualProfile: "beta",
+            verified: true,
+            verificationSource: "managed-process",
+            mode: "local",
+            transport: "api",
+            startedByMercury: true,
+            verifiedAt: 1,
+          },
+          transport: "api",
+          apiBaseUrl: "http://127.0.0.1:19002",
+        },
+      ),
+    ).toThrow("Runtime profile beta does not match requested profile alpha.");
   });
 
   it("documents storage isolation separately from runtime isolation", () => {

@@ -1,5 +1,7 @@
 # Investigation: Sessions Resume and Profile Metadata
 
+> Historical note (2026-05-21): this investigation predates the API-only runtime change. References to CLI mode or `sendMessageViaCli()` describe removed fallback behavior, not current chat/title execution.
+
 ## Summary
 The Sessions screen is losing profile context. Rows display `unknown profile` because cache sync creates session rows from SQLite data that has no profile field, while profile metadata is only written later if chat completion returns a session id; resume is unreliable because row clicks pass only `sessionId/title`, main reads only the default `HERMES_HOME/state.db`, and an empty transcript causes Chat to clear the selected resume id.
 

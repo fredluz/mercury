@@ -13,7 +13,7 @@ Mercury source:
 - Preload knowledge API: `src/preload/api/knowledge.ts`, `src/preload/index.d.ts`
 - Renderer memory UI: `src/renderer/src/screens/Memory/Memory.tsx`
 - Renderer slash commands: `src/renderer/src/screens/Chat/chatCommands.ts`
-- Hermes runtime/profile selection: `src/main/hermes/runtime.ts`, `src/main/hermes/chat-cli.ts`, `src/main/hermes/chat-api.ts`, `src/main/hermes/gateway.ts`
+- Hermes runtime/profile selection: `src/main/hermes/runtime.ts`, `src/main/hermes/chat-api.ts`, `src/main/hermes/gateway.ts`
 - SSH memory helpers: `src/main/ssh/memory-soul.ts`
 
 Hermes upstream runtime source, installed under the user's Hermes checkout:
@@ -102,14 +102,8 @@ Agents do **not** add memories through Mercury's `addMemoryEntry()` IPC handler.
 
 Autonomous agent memory writes happen inside Hermes:
 
-1. Mercury launches or resolves a Hermes runtime for a selected profile.
-2. For CLI execution, named profiles are launched as:
-
-   ```text
-   hermes -p <profile> chat ...
-   ```
-
-   or, for a headless one-shot test:
+1. Mercury launches or resolves a verified runtime for a selected profile. Current Mercury desktop and `mercury chat` execution use verified local `api` or SSH `ssh-api` runtime handles; they do not fall back to spawning Hermes CLI chat.
+2. For upstream/manual verification probes outside Mercury's current chat transport, named profiles can still be invoked directly with Hermes CLI commands such as:
 
    ```text
    hermes -p <profile> -t memory -z "..."
@@ -125,7 +119,7 @@ Autonomous agent memory writes happen inside Hermes:
    get_hermes_home()/memories/USER.md
    ```
 
-Because `get_hermes_home()` resolves from the profile-adjusted `HERMES_HOME`, an agent launched with `hermes -p alpha ...` writes built-in memories under `profiles/alpha`, not the default profile.
+Because `get_hermes_home()` resolves from the verified selected-profile runtime or from an explicit manual `hermes -p alpha ...` probe, built-in memory writes land under `profiles/alpha`, not the default profile.
 
 ## Runtime memory snapshot behavior
 
@@ -165,7 +159,7 @@ Test Files  4 passed (4)
 Tests       33 passed (33)
 ```
 
-These tests prove Mercury constructs profile-aware runtime handles, CLI commands, diagnostics, and SSH verification paths. They do not by themselves prove Hermes' own memory tool writes to the selected profile.
+These tests prove Mercury constructs profile-aware runtime handles, API dispatch, diagnostics, and SSH verification paths. They do not by themselves prove Hermes' own memory tool writes to the selected profile.
 
 ### Hermes built-in memory reset smoke test
 

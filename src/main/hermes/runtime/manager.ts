@@ -11,17 +11,23 @@ import { ensureApiServerConfig, getLocalApiPort, getLocalApiUrl, isApiServerRead
 import type { RuntimeDiagnostic } from "../../../shared/runtime";
 import type { ProfileRuntimeHandle, ProfileRuntimeRequest, RuntimeIdentity } from "../types";
 import { ProfileRuntimeError } from "../types";
-import { assertNoLocalPortConflict, gatewayCommandArgs, localAuthHeaders, resolveLocalApiRuntime } from "./local-runtime";
+import { assertNoLocalPortConflict, gatewayCommandArgs, localAuthHeaders, resolveLocalApiRuntimeAttempt, type LocalApiRuntimeFailure } from "./local-runtime";
 import { buildRuntimeDiagnostic } from "./diagnostics";
-import { createCliRuntimeHandle, createDiagnosticIdentity, createLocalApiIdentity, createUnverifiedExternalIdentity, type RuntimeIdentityContext } from "./identity";
+import { createDiagnosticIdentity, createLocalApiIdentity, createUnverifiedExternalIdentity, type RuntimeIdentityContext } from "./identity";
 import { normalizeProfile } from "./profile";
 import { createInitialRuntimeState, type RuntimeState } from "./state";
 import { resolveSshApiRuntime } from "./ssh-runtime";
 
 const HEALTH_POLL_INTERVAL_MS = 15_000;
 const API_STARTUP_CHECK_DELAY_MS = 3_000;
+const DEFAULT_API_STARTUP_TIMEOUT_MS = 12_000;
+const DEFAULT_API_STARTUP_RETRY_INTERVAL_MS = 500;
 
 type SpawnLike = typeof defaultSpawn;
+type NormalizedRuntimeRequest = ProfileRuntimeRequest & {
+  profile: string;
+  mode: NonNullable<ProfileRuntimeRequest["mode"]>;
+};
 
 export interface ProfileRuntimeManagerDeps {
   baseHermesHome?: string;
@@ -43,6 +49,8 @@ export interface ProfileRuntimeManagerDeps {
   setInterval?: typeof setInterval;
   clearInterval?: typeof clearInterval;
   verifySshRuntime?: typeof sshVerifyProfileRuntime;
+  apiStartupTimeoutMs?: number;
+  apiStartupRetryIntervalMs?: number;
 }
 
 export class ProfileRuntimeManager {
@@ -65,6 +73,8 @@ export class ProfileRuntimeManager {
   private readonly setIntervalFn: typeof setInterval;
   private readonly clearIntervalFn: typeof clearInterval;
   private readonly verifySshRuntime: typeof sshVerifyProfileRuntime;
+  private readonly apiStartupTimeoutMs: number;
+  private readonly apiStartupRetryIntervalMs: number;
   private readonly states = new Map<string, RuntimeState>();
 
   constructor(deps: ProfileRuntimeManagerDeps = {}) {
@@ -87,6 +97,8 @@ export class ProfileRuntimeManager {
     this.setIntervalFn = deps.setInterval ?? setInterval;
     this.clearIntervalFn = deps.clearInterval ?? clearInterval;
     this.verifySshRuntime = deps.verifySshRuntime ?? sshVerifyProfileRuntime;
+    this.apiStartupTimeoutMs = deps.apiStartupTimeoutMs ?? DEFAULT_API_STARTUP_TIMEOUT_MS;
+    this.apiStartupRetryIntervalMs = deps.apiStartupRetryIntervalMs ?? DEFAULT_API_STARTUP_RETRY_INTERVAL_MS;
   }
 
   normalizeProfile(profile?: string): string {
@@ -122,23 +134,7 @@ export class ProfileRuntimeManager {
       );
     }
 
-    if (request.preferTransport === "cli") {
-      return createCliRuntimeHandle(this.identityContext(), normalizedRequest);
-    }
-
-    if (request.preferTransport === "api" || request.purpose === "gateway") {
-      const apiHandle = await resolveLocalApiRuntime(this.localRuntimeContext(), normalizedRequest, { requireReady: request.purpose !== "gateway" });
-      if (apiHandle) return apiHandle;
-      if (request.purpose === "gateway") {
-        throw new ProfileRuntimeError(
-          "runtime-unavailable",
-          `Local gateway runtime for profile ${profile} is not ready.`,
-        );
-      }
-    }
-
-    const apiHandle = await resolveLocalApiRuntime(this.localRuntimeContext(), normalizedRequest, { requireReady: true });
-    return apiHandle ?? createCliRuntimeHandle(this.identityContext(), normalizedRequest);
+    return this.resolveRequiredLocalApiRuntime(normalizedRequest);
   }
 
   ensureInitialized(profile?: string): void {
@@ -380,6 +376,47 @@ export class ProfileRuntimeManager {
     });
   }
 
+  private async resolveRequiredLocalApiRuntime(
+    request: NormalizedRuntimeRequest,
+  ): Promise<ProfileRuntimeHandle> {
+    const intervalMs = Math.max(0, this.apiStartupRetryIntervalMs);
+    const timeoutMs = Math.max(0, this.apiStartupTimeoutMs);
+    const maxAttempts = intervalMs === 0
+      ? 1
+      : Math.max(1, Math.floor(timeoutMs / intervalMs) + 1);
+    let lastRetryableFailure: LocalApiRuntimeFailure | undefined;
+
+    for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
+      const attempt = await resolveLocalApiRuntimeAttempt(this.localRuntimeContext(), request);
+      if (attempt.ok) return attempt.handle;
+
+      if (!attempt.failure.retryable) {
+        throw new ProfileRuntimeError(
+          attempt.failure.code,
+          attempt.failure.message,
+          attempt.failure.identity,
+        );
+      }
+
+      lastRetryableFailure = attempt.failure;
+      if (attemptIndex < maxAttempts - 1) await this.sleep(intervalMs);
+    }
+
+    const failure = lastRetryableFailure;
+    throw new ProfileRuntimeError(
+      "runtime-unavailable",
+      `Local API runtime for profile ${request.profile} did not become ready within ${timeoutMs}ms.`,
+      failure?.identity,
+    );
+  }
+
+  private sleep(ms: number): Promise<void> {
+    if (ms <= 0) return Promise.resolve();
+    return new Promise((resolve) => {
+      this.setTimeoutFn(() => resolve(), ms);
+    });
+  }
+
   private stateFor(profile: string): RuntimeState {
     let state = this.states.get(profile);
     if (!state) {
@@ -428,7 +465,7 @@ export class ProfileRuntimeManager {
     }
   }
 
-  private localRuntimeContext(): Parameters<typeof resolveLocalApiRuntime>[0] {
+  private localRuntimeContext(): Parameters<typeof resolveLocalApiRuntimeAttempt>[0] {
     return {
       hermesScript: this.hermesScript,
       readEnv: this.readEnv,

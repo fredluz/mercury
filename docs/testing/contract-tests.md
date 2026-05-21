@@ -33,7 +33,7 @@ Run contract tests when a change touches any of these areas:
 - Local performance telemetry helpers under `src/main/perf/**`, `src/renderer/src/perf.ts`, and `src/shared/perf.ts`.
 - Chat IPC lifecycle, generated-title persistence, stream completion/error delivery, or trace side effects.
 - Chat metadata helpers, context-window inference, context usage display inputs, or generated-title request validation.
-- Hermes stream/CLI trace event normalization, artifact extraction, or legacy progress parsing.
+- Hermes stream trace event normalization, artifact extraction, or legacy progress parsing.
 - Trace persistence, trace event schema, skill-training derivation, or real-app Trace Lab harness expectations.
 - Manual Markdown skill import behavior.
 - Session cache sync, generated session titles, session cache persistence, local session DB reads, or session search inputs.
@@ -104,7 +104,7 @@ Current responsibilities by file:
 - `tests/cli-entrypoint.test.ts` protects `runCli(...)` help/version behavior, domain dispatch, and reserved/unsupported domain failures.
 - `tests/cli-read-only-commands.test.ts` protects read-only service routing for profiles/agents, sessions, memory, soul, tools, skills, models, credentials, cron, traces, runtime diagnostics, logs, MCP, memory providers, dump, connection, gateway, install, and Hermes status commands.
 - `tests/cli-mutating-commands.test.ts` protects mutation routing and side effects for profiles/agents, session cache/title, env/config/model config, connection/SSH settings, gateway, memory/user profile/SOUL/tools, skills, models, credentials, cron, backup/import, runtime revalidation, install/update, Claw migration, and SSH tunnel commands.
-- `tests/cli-chat-commands.test.ts` protects `mercury chat send` and `mercury chat title`: positional/`--message`/stdin input, history and messages files, profile/session forwarding, text streaming, `--json` final-only output, `--ndjson` `start`/`chunk`/`trace`/`tool`/`usage`/`done`/`error` events, service error propagation, and SIGINT abort exit `130` with mocked chat services.
+- `tests/cli-chat-commands.test.ts` protects `mercury chat send` and `mercury chat title`: positional/`--message`/stdin input, history and messages files, profile/session forwarding, text streaming, `--json` final-only output, `--ndjson` `start`/`chunk`/`trace`/`tool`/`usage`/`done`/`error` events, service error propagation, API-runtime verification failure envelopes/exit `4`, and SIGINT abort exit `130` with mocked chat services.
 - `tests/cli-parity.test.ts` protects major preload-domain reservation/documentation in [CLI contract](../contracts/cli.md), chat automation sentinel phrases, and the required NDJSON event names.
 
 Run `npm run test:cli` when changing:
@@ -148,6 +148,7 @@ Current assertions:
 - Trace-run creation failures still allow transport startup and stream completion.
 - `generate-chat-title` trims request fields, calls the title generator, and persists generated titles with the selected profile.
 - Error side-effect failures still deliver a single `chat-error` and reject the handler once.
+- Runtime setup failures before transport dispatch surface a visible `chat-error`, reject with the original structured runtime error, and do not install an active chat run.
 
 Run this test when changing:
 
@@ -183,27 +184,28 @@ Protects the main-process chat-title generation fallback contract.
 Current assertions:
 
 - Existing persisted session titles are sanitized and returned before the model path is attempted.
-- Gateway/model failures fall back to a sanitized heuristic title generated from the first user message.
-- Empty message lists fall back to the default heuristic title.
+- Model-call failures after a verified API runtime fall back to a sanitized heuristic title generated from the first user message.
+- Runtime verification failures such as unavailable, unverified, or mismatched profile runtimes reject instead of silently persisting a heuristic title.
+- Empty message lists fall back to the default heuristic title without requiring runtime setup.
 
 Run this test when changing:
 
 - `src/main/hermes/title.ts`
 - `src/main/sessions.ts` title lookup behavior
 - `src/main/session-cache.ts` heuristic title generation
-- Model config or gateway connection code used by title generation
+- Model config, runtime verification, or gateway connection code used by title generation
 
 ### `tests/hermes-trace-events.test.ts`
 
-Protects normalization of Hermes stream events, CLI activity text, legacy progress labels, and artifact evidence before trace storage.
+Protects normalization of Hermes stream events, legacy CLI-style activity/progress labels, and artifact evidence before trace storage. CLI-style normalization is retained for backward-compatibility fixtures and imported text patterns; current chat execution does not use a local CLI fallback transport.
 
 Current assertions:
 
 - Failed image tool progress becomes structured `tool.failed` evidence with sensitive metadata removed.
 - Image artifact events are extracted only when assistant text contains image references or supported generated image paths.
 - Standalone legacy API progress labels are split from assistant prose without treating ordinary inline code as progress.
-- Standalone CLI activity lines are suppressible while natural prose remains visible.
-- Codex app-server image paths emit both `tool.progress` and `artifact.created` evidence when normalized from CLI progress text.
+- Standalone legacy CLI-style activity lines are suppressible while natural prose remains visible.
+- Codex app-server image paths emit both `tool.progress` and `artifact.created` evidence when normalized from legacy CLI-style progress text.
 
 Run this test when changing:
 
@@ -320,6 +322,7 @@ Current assertions:
 - `ProfileRuntimeManager` keeps per-profile runtime state, can create unverified external identities, marks one or all runtimes stale, exposes diagnostics, and models unsupported pure remote profile behavior.
 - Gateway lifecycle stays profile-aware from renderer calls through preload IPC into main local/SSH handlers, including profile-aware gateway status/start/stop/restart and remote-mode fail-closed behavior.
 - Chat startup, gateway chat sending, title generation, and cron execution route through verified `ProfileRuntimeHandle` instances rather than ad-hoc API URL/auth lookup.
+- API-only runtime sentinels prevent fallback reintroduction: production runtime/gateway code must not re-add `sendMessageViaCli`, `src/main/hermes/chat-cli.ts`, `createCliRuntimeHandle`, `preferTransport === "cli"`, `"cli-args"`, or executable `transport: "cli"` paths for chat/title/cron.
 - API chat transport requires a verified runtime handle and uses the handle's API base URL and auth headers.
 - SSH runtime, config, skills, and tunnel helpers remain profile-bound; pure remote HTTP mode rejects profile-specific runtime verification instead of silently using the wrong profile.
 - Runtime diagnostics and stale-state warnings surface through IPC, preload, Layout, Gateway, Chat, Settings, and the runtime diagnostic notice component.

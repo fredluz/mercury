@@ -21,7 +21,7 @@ Mercury is an Electron/Vite desktop app plus a Node CLI split across five durabl
 
 1. **Main process** (`src/main/index.ts` and `src/main/*`)
    - Owns Electron app lifecycle, the `BrowserWindow`, app menu, updater setup, shutdown cleanup, and side-effectful services such as gateway, SSH tunnel, and profile runtime manager.
-   - `src/main/hermes/runtime.ts` owns the reliable profile runtime contract: profile-keyed local gateway/API state, CLI fallback identity, SSH runtime handles, pure remote fail-closed behavior, runtime diagnostics, and stale-runtime markers.
+   - `src/main/hermes/runtime.ts` owns the reliable profile runtime contract: profile-keyed local gateway/API state, verified API/SSH-API runtime handles, pure remote fail-closed behavior, runtime diagnostics, and stale-runtime markers.
    - Calls `registerIpcHandlers({ getMainWindow })` so domain IPC modules can expose main-process services to the renderer.
 2. **Preload bridge** (`src/preload/index.ts`, `src/preload/api/*`, `src/preload/index.d.ts`)
    - Builds `hermesAPI` from split preload API fragments.

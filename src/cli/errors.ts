@@ -92,7 +92,24 @@ function getErrorCode(error: unknown): string | undefined {
 
 function getErrorDetails(error: unknown): unknown {
   if (!error || typeof error !== "object") return undefined;
-  return (error as { details?: unknown }).details;
+  const directDetails = (error as { details?: unknown }).details;
+  if (directDetails !== undefined) return directDetails;
+
+  const directIdentity = (error as { identity?: unknown }).identity;
+  if (directIdentity !== undefined) return { identity: directIdentity };
+
+  const toJSON = (error as { toJSON?: unknown }).toJSON;
+  if (typeof toJSON === "function") {
+    try {
+      const serialized = toJSON.call(error) as { details?: unknown; identity?: unknown } | undefined;
+      if (serialized?.details !== undefined) return serialized.details;
+      if (serialized?.identity !== undefined) return { identity: serialized.identity };
+    } catch {
+      // Ignore serialization failures; error message/code still surface.
+    }
+  }
+
+  return undefined;
 }
 
 export function normalizeCliError(error: unknown): NormalizedCliError {

@@ -1,5 +1,7 @@
 # Investigation: Profile Tools, Skills, and Memory Isolation
 
+> Historical note (2026-05-21): this investigation predates the API-only runtime change. Current chat/title execution requires verified local `api` or SSH `ssh-api` handles and no longer falls back to local Hermes CLI transport.
+
 ## Summary
 Mercury mostly isolates profile-backed storage and UI state for tools, skills, memory, and SOUL, but it does not reliably isolate the runtime assistant when chat goes through the preferred API/gateway path. CLI chat uses `-p <profile>`, while local and SSH gateway/API flows start or reuse a default/global Hermes runtime and send chat API requests without a profile selector, so profile-specific tools, skills, memory, and SOUL can be configured correctly yet not actually used by the running agent.
 

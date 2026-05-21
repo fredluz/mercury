@@ -284,6 +284,7 @@ Examples:
 - `mercury config get theme` returns exit `3` with `unsupported-command` because that command is reserved but deferred.
 - Pure remote profile-bound chat/title fails closed with `runtime-unsupported-remote-profile`, mapped to exit `3`.
 - Runtime identity mismatch maps to exit `4`.
+- Local chat/title API runtime verification failures such as `runtime-unavailable` or `runtime-profile-unverified` map to exit `4`; JSON/NDJSON errors include the runtime code and identity details when available.
 - `SIGINT` during an active chat maps to exit `130`.
 
 ## Command reference
@@ -350,8 +351,9 @@ Side effects:
 - Creates a trace run with the user message preview when trace-store writes succeed.
 - Records resume/history/tool/transport/artifact/usage/terminal trace events as callbacks arrive.
 - Updates the desktop session cache with the selected profile when a session id is returned.
-- Aborts any previous active in-process CLI chat run before starting the new one.
+- Aborts any previous active chat run in the current process before starting the new one.
 - In local/SSH modes, may start/restart gateway/tunnel state as needed through `prepareChatBackend(...)`.
+- In local mode, requires a verified API runtime. If gateway startup/readiness/profile verification fails, the command emits a normalized runtime error and exits `4`; it does not spawn Hermes CLI as a fallback transport.
 
 Examples:
 
@@ -1329,7 +1331,7 @@ Local mode is the default.
 Current CLI behavior:
 
 - Profile-scoped files are read/written under `HERMES_HOME` and `profileHome(profile)` according to shared storage services.
-- `mercury chat send` and `mercury chat title` use `prepareChatBackend(...)`, which lazy-starts the selected profile gateway when needed, then resolves a verified local API runtime or CLI fallback.
+- `mercury chat send` and `mercury chat title` use `prepareChatBackend(...)`, which lazy-starts the selected profile gateway when needed, waits for a verified local API runtime, and fails with structured runtime verification errors if the API runtime cannot be verified.
 - Gateway commands control local gateway processes.
 - Env/model/platform mutations mark runtimes stale and may restart the gateway when the service says they should.
 - Session, memory, SOUL, tools, skills, cron, logs, MCP, model, credential, backup/import/dump commands use local implementations unless their service has a more specific branch.

@@ -3,13 +3,11 @@ import type { profileHome as defaultProfileHome } from "../../utils";
 import type { SshRuntimeVerificationEvidence } from "../../ssh/runtime";
 import type { RuntimeDiagnostic } from "../../../shared/runtime";
 import type {
-  ProfileRuntimeHandle,
   ProfileRuntimeRequest,
   RuntimeIdentity,
   RuntimeMode,
 } from "../types";
-import { buildHermesProfileCommandArgs } from "./command";
-import { fingerprintSecret, isNamedProfile } from "./profile";
+import { fingerprintSecret } from "./profile";
 
 export interface RuntimeIdentityContext {
   hermesScript: string;
@@ -26,35 +24,6 @@ export interface RuntimeIdentityContext {
 }
 
 type NormalizedRuntimeRequest = ProfileRuntimeRequest & { profile: string; mode: RuntimeMode };
-
-export function createCliRuntimeHandle(
-  ctx: RuntimeIdentityContext,
-  request: NormalizedRuntimeRequest,
-): ProfileRuntimeHandle {
-  const command = buildHermesProfileCommandArgs(ctx.hermesScript, request.profile, [
-    request.purpose,
-  ]);
-  const identity: RuntimeIdentity = {
-    requestedProfile: request.profile,
-    actualProfile: request.profile,
-    verified: true,
-    verificationSource: "cli-args",
-    mode: "local",
-    transport: "cli",
-    hermesHome: homeFor(ctx, request.profile),
-    configPath: ctx.configPathFor(request.profile),
-    startedByMercury: false,
-    verifiedAt: ctx.now(),
-    command,
-    capabilities: { profileArgument: isNamedProfile(request.profile) },
-  };
-  return {
-    request,
-    identity,
-    transport: "cli",
-    cliCommand: command,
-  };
-}
 
 export function createLocalApiIdentity(
   ctx: RuntimeIdentityContext,

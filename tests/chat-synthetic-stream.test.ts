@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ChatCallbacks, ChatHandle } from "../src/main/hermes/types";
+import type { ChatCallbacks } from "../src/main/hermes/types";
 
 const mocks = vi.hoisted(() => ({
   sendMessageViaApi: vi.fn(),
-  sendMessageViaCli: vi.fn(),
   ensureApiServerConfig: vi.fn(),
   isApiServerReady: vi.fn(),
   isRemoteMode: vi.fn(),
@@ -16,10 +15,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../src/main/hermes/chat-api", () => ({
   sendMessageViaApi: mocks.sendMessageViaApi,
-}));
-
-vi.mock("../src/main/hermes/chat-cli", () => ({
-  sendMessageViaCli: mocks.sendMessageViaCli,
 }));
 
 vi.mock("../src/main/hermes/connection", () => ({
@@ -77,7 +72,6 @@ function resetEnv(): void {
 beforeEach(() => {
   resetEnv();
   mocks.sendMessageViaApi.mockReset();
-  mocks.sendMessageViaCli.mockReset().mockReturnValue({ abort: vi.fn() } satisfies ChatHandle);
   mocks.ensureApiServerConfig.mockReset();
   mocks.isApiServerReady.mockReset().mockResolvedValue(false);
   mocks.isRemoteMode.mockReset().mockReturnValue(false);
@@ -98,12 +92,12 @@ describe("synthetic chat stream", () => {
     const gateway = await importGateway();
     const callbacks = makeCallbacks();
 
-    await gateway.sendMessage("hello", callbacks, "default");
+    await expect(gateway.sendMessage("hello", callbacks, "default")).rejects.toMatchObject({
+      code: "runtime-profile-unverified",
+    });
 
     expect(mocks.ensureApiServerConfig).toHaveBeenCalledTimes(1);
-    expect(mocks.isApiServerReady).toHaveBeenCalledTimes(1);
-    expect(mocks.sendMessageViaCli).toHaveBeenCalledTimes(1);
-    expect(mocks.sendMessageViaCli).toHaveBeenCalledWith("hello", callbacks, "default", undefined);
+    expect(mocks.isApiServerReady).not.toHaveBeenCalled();
     expect(mocks.sendMessageViaApi).not.toHaveBeenCalled();
     expect(callbacks.chunks).toEqual([]);
   });
@@ -130,7 +124,6 @@ describe("synthetic chat stream", () => {
     expect(mocks.ensureApiServerConfig).not.toHaveBeenCalled();
     expect(mocks.isApiServerReady).not.toHaveBeenCalled();
     expect(mocks.sendMessageViaApi).not.toHaveBeenCalled();
-    expect(mocks.sendMessageViaCli).not.toHaveBeenCalled();
   });
 
   it("supports abort and does not finish after the stream is stopped", async () => {
@@ -150,6 +143,5 @@ describe("synthetic chat stream", () => {
     expect(callbacks.done).not.toHaveBeenCalled();
     expect(callbacks.error).not.toHaveBeenCalled();
     expect(mocks.sendMessageViaApi).not.toHaveBeenCalled();
-    expect(mocks.sendMessageViaCli).not.toHaveBeenCalled();
   });
 });

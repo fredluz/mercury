@@ -2,12 +2,11 @@ import http from "http";
 import https from "https";
 import type { ChatCallbacks, ChatHandle, ProfileRuntimeHandle } from "./types";
 import { resolveChatRuntimeModel } from "./chat-model";
+import { assertVerifiedApiRuntimeHandle, type VerifiedApiRuntimeHandle } from "./runtime/api-runtime";
 import {
   normalizeHermesStreamEvent,
   splitLegacyToolProgressContent,
 } from "./trace-events";
-
-type VerifiedApiRuntimeHandle = ProfileRuntimeHandle & { apiBaseUrl: string };
 
 export function sendMessageViaApi(
   message: string,
@@ -17,11 +16,9 @@ export function sendMessageViaApi(
   history: Array<{ role: string; content: string }> | undefined,
   runtime: ProfileRuntimeHandle,
 ): Promise<ChatHandle> {
-  if (!runtime?.apiBaseUrl) {
-    throw new Error("Verified API runtime handle is required for chat API execution");
-  }
-  const verifiedRuntime = runtime as VerifiedApiRuntimeHandle;
-  return sendMessageViaVerifiedApi(message, cb, profile, _resumeSessionId, history, verifiedRuntime);
+  const expectedProfile = profile?.trim() || runtime?.request.profile || "default";
+  assertVerifiedApiRuntimeHandle(runtime, expectedProfile, "chat");
+  return sendMessageViaVerifiedApi(message, cb, expectedProfile, _resumeSessionId, history, runtime);
 }
 
 async function sendMessageViaVerifiedApi(

@@ -7,7 +7,7 @@ This document is the canonical Mercury guide for Codex-backed image generation. 
 - Toolset registry: `src/main/tools.ts`
 - SSH toolset registry: `src/main/ssh/config.ts`
 - Tool UI labels: `src/shared/i18n/locales/*/tools.ts`
-- Chat dispatch and trace callbacks: `src/main/ipc/chat.ts`, `src/main/hermes/gateway.ts`, `src/main/hermes/chat-api.ts`, `src/main/hermes/chat-cli.ts`
+- Chat dispatch and trace callbacks: `src/main/ipc/chat.ts`, `src/main/hermes/gateway.ts`, `src/main/hermes/chat-api.ts`
 - Trace normalization: `src/main/hermes/trace-events.ts`
 - Trace schema: `src/shared/traces.ts`, [Trace schema contract](../contracts/trace-schema.md)
 - Trace artifact tests: `tests/hermes-trace-events.test.ts`, `tests/trace-store.test.ts`
@@ -105,9 +105,10 @@ The renderer sends chat through `window.hermesAPI.sendMessage(...)`. Main IPC cr
 
 Current executable transports are:
 
-- API server: `src/main/hermes/chat-api.ts`
-- SSH API server: same API transport with SSH-resolved runtime
-- CLI fallback: `src/main/hermes/chat-cli.ts`
+- Local API server: `src/main/hermes/chat-api.ts` with a verified `api` runtime handle
+- SSH API server: the same API transport with a verified `ssh-api` runtime handle
+
+Local chat/title no longer use a Hermes CLI fallback transport; unverified or unavailable API runtimes fail explicitly before image generation can run.
 
 Image generation should surface as tool activity inside those runs. The user prompt must require a real image tool result, for example:
 

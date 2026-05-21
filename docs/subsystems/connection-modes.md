@@ -80,8 +80,8 @@ Low-level helpers:
 `src/main/hermes/runtime.ts` is the authoritative runtime dispatcher:
 
 - `ProfileRuntimeRequest` carries profile, mode, purpose, optional session id, and optional transport preference.
-- `ProfileRuntimeHandle` carries the verified runtime identity, transport (`api`, `ssh-api`, or `cli` for executable chat paths), API base URL/auth headers, or CLI command.
-- Local API handles require managed-process/profile evidence except for the legacy default-profile probe; otherwise local chat falls back to CLI.
+- `ProfileRuntimeHandle` carries the verified runtime identity, transport (`api`, `ssh-api`, or diagnostic-only `remote-api`), and API base URL/auth headers.
+- Local executable chat/title paths require a verified local API runtime with managed-process/profile evidence. Mercury waits a bounded time for cold-started local gateways to become ready, then fails with structured runtime verification errors instead of falling back to local Hermes CLI execution.
 - SSH API handles require a profile-bound tunnel plus `sshVerifyProfileRuntime(...)` evidence from the remote profile config/gateway.
 - Pure remote HTTP currently fails closed for profile-bound execution with `runtime-unsupported-remote-profile`; `remote-api` appears only as an unverified external diagnostic identity.
 - Runtime diagnostics expose stale, mismatch, unverified, and unsupported states to the renderer.
@@ -95,7 +95,7 @@ Current behavior:
 - `getApiUrl(profile)` resolves to the selected profile's local API URL; the default profile is `http://127.0.0.1:8642` unless config overrides the API port.
 - `isRemoteMode()` is false.
 - `send-message` in `src/main/ipc/chat.ts` lazy-starts the selected profile's local gateway when not remote and not already running, then resolves a `ProfileRuntimeHandle` for `{ profile, purpose: "chat", sessionId }`.
-- Chat dispatch in `src/main/hermes/gateway.ts` uses the resolved handle: `api` when a verified local API runtime exists, otherwise `cli`.
+- Chat dispatch in `src/main/hermes/gateway.ts` uses the resolved handle only when it is a verified API runtime (`api` locally or `ssh-api` over SSH); local unverified/unavailable runtimes fail loudly with structured runtime errors.
 - `ensureApiServerConfig(profile)` appends a profile-specific API server config block to the selected profile's `config.yaml` if no `api_server` text is present. It is called during local initialization, not in remote modes.
 - Local gateway startup runs Hermes via `HERMES_PYTHON` and `HERMES_SCRIPT`, with `HERMES_HOME`, enhanced `PATH`, `HOME`, `API_SERVER_ENABLED=true`, profile-specific `API_SERVER_HOST`/`API_SERVER_PORT`, and profile API keys from `.env` injected into the child process environment.
 - Local config/env/model/storage functions operate under `profileHome(profile)` for profile-aware files.
@@ -104,7 +104,7 @@ Local persistent storage is covered in [Storage and profiles](storage-and-profil
 
 ### CLI notes
 
-`mercury chat send` and `mercury chat title` use the same shared chat service as IPC. In local mode the CLI lazily starts the selected profile gateway when needed, resolves a verified local runtime handle or CLI fallback, and streams text/NDJSON without launching Electron. `mercury connection set --mode local`, local gateway commands, and local install/update/doctor commands mutate the same `desktop.json`, gateway state, and Hermes home used by the desktop app.
+`mercury chat send` and `mercury chat title` use the same shared chat service as IPC. In local mode the CLI lazily starts the selected profile gateway when needed, waits for a verified local API runtime handle, and streams text/NDJSON without launching Electron. If the API runtime cannot be verified within the bounded startup window, the CLI exits with a structured runtime verification error instead of spawning Hermes CLI as a fallback transport. `mercury connection set --mode local`, local gateway commands, and local install/update/doctor commands mutate the same `desktop.json`, gateway state, and Hermes home used by the desktop app.
 
 ## Pure remote HTTP mode
 
@@ -191,7 +191,7 @@ The CLI reports mode/profile metadata in JSON envelopes on a best-effort basis f
 
 | Mode | CLI behavior |
 | --- | --- |
-| Local | Reads and writes local `HERMES_HOME`; chat/title use verified local API runtime or Hermes CLI fallback; gateway/install/config commands operate on local files and processes. |
+| Local | Reads and writes local `HERMES_HOME`; chat/title require a verified local API runtime and fail with runtime verification errors if the API cannot be verified; gateway/install/config commands operate on local files and processes. |
 | Pure remote HTTP | Connection config can be read/written, but profile-bound execution fails closed because Mercury cannot verify remote profile identity; filesystem-backed mutations are not documented as remote operations unless a specific service implements remote support. |
 | SSH | Chat/title, sessions, memory/SOUL/tools/skills, config/env/model reads/writes, gateway/log/MCP/dump operations use SSH branches where the shared service exposes them; tunnel commands expose `start`, `status`, and `stop`. |
 

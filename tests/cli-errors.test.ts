@@ -16,6 +16,37 @@ describe("CLI exit-code mapping", () => {
     );
   });
 
+  it("normalizes ProfileRuntimeError-style identity details", () => {
+    const error = Object.assign(new Error("Local API runtime unavailable"), {
+      code: "runtime-unavailable",
+      identity: { requestedProfile: "work", transport: "api" },
+    });
+
+    expect(normalizeCliError(error)).toMatchObject({
+      code: "runtime-unavailable",
+      exitCode: CLI_EXIT_CODES.runtimeVerification,
+      details: { identity: { requestedProfile: "work", transport: "api" } },
+    });
+  });
+
+  it("normalizes runtime identity details from toJSON", () => {
+    const error = new Error("Local API runtime unavailable") as Error & {
+      code: string;
+      toJSON: () => unknown;
+    };
+    error.code = "runtime-unavailable";
+    error.toJSON = () => ({
+      code: "runtime-unavailable",
+      message: "Local API runtime unavailable",
+      identity: { requestedProfile: "work", transport: "api" },
+    });
+
+    expect(normalizeCliError(error)).toMatchObject({
+      code: "runtime-unavailable",
+      details: { identity: { requestedProfile: "work", transport: "api" } },
+    });
+  });
+
   it("preserves explicit CLI error exit codes", () => {
     expect(normalizeCliError(unsupportedError("Not implemented yet"))).toMatchObject({
       code: "unsupported-command",

@@ -24,30 +24,98 @@ interface LocalRuntimeContext {
   now: () => number;
 }
 
-export async function resolveLocalApiRuntime(
+export type LocalApiRuntimeFailureReason = "stale" | "unmanaged" | "not-ready";
+
+export interface LocalApiRuntimeFailure {
+  reason: LocalApiRuntimeFailureReason;
+  retryable: boolean;
+  code:
+    | "runtime-stale-after-profile-switch"
+    | "runtime-profile-unverified"
+    | "runtime-unavailable";
+  message: string;
+  identity: ProfileRuntimeHandle["identity"];
+}
+
+export type LocalApiRuntimeAttempt =
+  | { ok: true; handle: ProfileRuntimeHandle }
+  | { ok: false; failure: LocalApiRuntimeFailure };
+
+export async function resolveLocalApiRuntimeAttempt(
   ctx: LocalRuntimeContext,
   request: NormalizedRuntimeRequest,
-  options: { requireReady: boolean },
-): Promise<ProfileRuntimeHandle | null> {
+): Promise<LocalApiRuntimeAttempt> {
   const state = ctx.stateFor(request.profile);
-  if (state.staleReason) return null;
+  if (state.staleReason) {
+    const identity = state.lastIdentity ?? createLocalApiIdentity(ctx.identityContext, request.profile, {
+      pid: ctx.pidFor(request.profile),
+      startedByMercury: false,
+      verified: false,
+      verificationSource: "unverified",
+      mismatchReason: state.staleReason,
+    });
+    return {
+      ok: false,
+      failure: {
+        reason: "stale",
+        retryable: false,
+        code: "runtime-stale-after-profile-switch",
+        message: `Local API runtime for profile ${request.profile} is stale: ${state.staleReason}`,
+        identity: { ...identity, verified: false, actualProfile: null, mismatchReason: state.staleReason },
+      },
+    };
+  }
+
   const managedProcessEvidence = hasManagedProcessEvidence(ctx, request.profile);
-  const allowLegacyDefaultProbe = request.profile === "default";
-  if (!managedProcessEvidence && !allowLegacyDefaultProbe) {
+  if (!managedProcessEvidence) {
     state.apiServerAvailable = false;
-    return null;
+    const identity = createLocalApiIdentity(ctx.identityContext, request.profile, {
+      pid: ctx.pidFor(request.profile),
+      startedByMercury: false,
+      verified: false,
+      verificationSource: "unverified",
+      command: state.gatewayCommand,
+      mismatchReason: `Mercury cannot prove the local API belongs to profile ${request.profile}; start or restart the gateway from Mercury before running ${request.purpose}.`,
+    });
+    state.lastIdentity = identity;
+    return {
+      ok: false,
+      failure: {
+        reason: "unmanaged",
+        retryable: false,
+        code: "runtime-profile-unverified",
+        message: `Mercury cannot prove the local API belongs to profile ${request.profile}; start or restart the selected Agent gateway from Mercury and try again.`,
+        identity,
+      },
+    };
   }
 
-  if (state.apiServerAvailable !== true || options.requireReady) {
-    state.apiServerAvailable = await checkLocalApiReady(ctx, request.profile);
+  state.apiServerAvailable = await checkLocalApiReady(ctx, request.profile);
+  if (!state.apiServerAvailable) {
+    const identity = createLocalApiIdentity(ctx.identityContext, request.profile, {
+      pid: ctx.pidFor(request.profile),
+      startedByMercury: true,
+      verified: false,
+      verificationSource: "managed-process",
+      command: state.gatewayCommand ?? state.lastIdentity?.command ?? gatewayCommandArgs(ctx, request.profile),
+      mismatchReason: "Gateway process is managed by Mercury but the API is not ready yet.",
+    });
+    state.lastIdentity = identity;
+    return {
+      ok: false,
+      failure: {
+        reason: "not-ready",
+        retryable: true,
+        code: "runtime-unavailable",
+        message: `Local API runtime for profile ${request.profile} is not ready yet.`,
+        identity,
+      },
+    };
   }
-
-  if (options.requireReady && !state.apiServerAvailable) return null;
-  if (state.apiServerAvailable !== true) return null;
 
   const identity = createLocalApiIdentity(ctx.identityContext, request.profile, {
     pid: ctx.pidFor(request.profile),
-    startedByMercury: managedProcessEvidence,
+    startedByMercury: true,
     verified: true,
     verificationSource: "managed-process",
     command: state.gatewayCommand ?? state.lastIdentity?.command ?? gatewayCommandArgs(ctx, request.profile),
@@ -55,11 +123,14 @@ export async function resolveLocalApiRuntime(
   state.lastIdentity = identity;
 
   return {
-    request,
-    identity,
-    transport: "api",
-    apiBaseUrl: identity.apiBaseUrl,
-    authHeaders: localAuthHeaders(ctx, request.profile),
+    ok: true,
+    handle: {
+      request,
+      identity,
+      transport: "api",
+      apiBaseUrl: identity.apiBaseUrl,
+      authHeaders: localAuthHeaders(ctx, request.profile),
+    },
   };
 }
 

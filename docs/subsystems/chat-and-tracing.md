@@ -16,8 +16,7 @@ This document traces the current chat path from renderer input to preload, main 
 - Hermes dispatch: `src/main/hermes/gateway.ts`
 - Profile runtime manager/identity contract: `src/main/hermes/runtime.ts`, `src/main/hermes/types.ts`, `src/shared/runtime.ts`
 - API transport: `src/main/hermes/chat-api.ts`
-- CLI transport: `src/main/hermes/chat-cli.ts`
-- Stream/CLI trace normalization: `src/main/hermes/trace-events.ts`
+- Stream trace normalization: `src/main/hermes/trace-events.ts`
 - Codex image generation and image artifact behavior: [Codex image generation](codex-image-generation.md)
 - Callback/handle types: `src/main/hermes/types.ts`
 - Connection helpers: `src/main/hermes/connection.ts`
@@ -164,7 +163,7 @@ Input and output behavior is CLI-specific:
 
 Trace/session effects are the same as the IPC path: each send creates a trace run, records user/history/session-resume evidence, persists structured tool/delegation/artifact/approval/transport events, accumulates usage, finishes completed/failed/aborted runs, and associates returned session ids with the requested profile in the desktop session cache. Generated titles from `chat title --session` update the same profile-aware session title storage as renderer title generation.
 
-Pure remote HTTP profile execution still fails closed before dispatch. Local mode can use verified API runtime or Hermes CLI fallback; SSH mode uses the verified `ssh-api` runtime after tunnel/gateway/API-key preparation. See [Connection modes](connection-modes.md) and the [CLI contract](../contracts/cli.md) for mode-specific errors and output envelopes.
+Pure remote HTTP profile execution still fails closed before dispatch. Local mode requires a verified local API runtime; if Mercury cannot verify the selected profile's API runtime after the bounded startup wait, chat/title fail with structured runtime verification errors. SSH mode uses the verified `ssh-api` runtime after tunnel/gateway/API-key preparation. The CLI command is a client of this same API-runtime service path and does not spawn Hermes CLI as a fallback transport. See [Connection modes](connection-modes.md) and the [CLI contract](../contracts/cli.md) for mode-specific errors and output envelopes.
 
 ## Main `send-message` flow
 
@@ -228,9 +227,8 @@ The `sendMessage(...)` callbacks bridge transport events to both trace persisten
 Preferred modern flow:
 
 1. API transports parse custom SSE event names such as `hermes.tool.progress`, `hermes.approval.*`, and `hermes.artifact.created`.
-2. CLI transports normalize standalone activity-looking lines.
-3. Transports call `ChatCallbacks.onTraceEvent(...)` with structured events.
-4. Main IPC records those events and emits `chat-trace-event` for live renderer activity groups.
+2. Transports call `ChatCallbacks.onTraceEvent(...)` with structured events.
+3. Main IPC records those events and emits `chat-trace-event` for live renderer activity groups.
 
 Compatibility paths still exist:
 
@@ -259,10 +257,10 @@ Compatibility paths still exist:
 - The gateway uses a caller-supplied `preparedRuntime` when `send-message` has already resolved one; otherwise it calls `profileRuntimeManager.resolveRuntime({ profile: normalizedProfile, purpose: "chat", sessionId })` itself.
 - It rejects runtime handles whose `runtime.request.profile` does not match the normalized requested profile.
 - `runtime.transport === "api"` or `"ssh-api"` routes to `sendMessageViaApi(...)` with the handle.
-- `runtime.transport === "cli"` routes to `sendMessageViaCli(...)`.
+- Any missing, unverified, mismatched, or non-API executable handle is rejected with `ProfileRuntimeError` before dispatch.
 - Pure remote HTTP currently does not produce an executable chat handle; `ProfileRuntimeManager.resolveRuntime(...)` throws `ProfileRuntimeError` with code `runtime-unsupported-remote-profile` until remote profile identity can be declared or verified.
 
-The transport names used by executable chat paths are `api`, `ssh-api`, and `cli`. `remote-api` exists in the runtime identity type for unverified external diagnostics, but current profile-bound chat execution fails closed before using it.
+The transport names used by executable chat paths are `api` and `ssh-api`. `remote-api` exists only for unverified external diagnostics, and current profile-bound chat execution fails closed before using it.
 
 ## API transport behavior
 
@@ -285,23 +283,16 @@ The transport names used by executable chat paths are `api`, `ssh-api`, and `cli
 
 The API transport no longer calls `getApiUrl()` or `getRemoteAuthHeader()` directly during chat execution. URL and auth are resolved earlier by `ProfileRuntimeManager.resolveRuntime(...)` and passed as `runtime.apiBaseUrl` and `runtime.authHeaders`.
 
-## CLI transport behavior
+## Removed local CLI fallback transport
 
-`sendMessageViaCli(...)` in `src/main/hermes/chat-cli.ts` is local-mode fallback only.
+Mercury no longer has an executable local Hermes CLI fallback transport for chat/title. The former internal `src/main/hermes/chat-cli.ts` path was removed so local execution cannot silently bypass API runtime verification.
 
 Current behavior:
 
-- Builds Hermes CLI args from `HERMES_SCRIPT`, optional `-p <profile>`, `chat -q <message> -Q --source desktop`, optional `--resume <sessionId>`, and optional `-m <model>`.
-- Builds an environment with enhanced `PATH`, `HOME`, `HERMES_HOME`, `PYTHONUNBUFFERED=1`, and known API keys from the profile `.env` when available.
-- For custom/local providers with a base URL, sets `HERMES_INFERENCE_PROVIDER=custom`, `OPENAI_BASE_URL`, and an appropriate `OPENAI_API_KEY` fallback, including `no-key-required` for localhost/127.0.0.1 endpoints without a key.
-- Captures `session_id: <id>` from output.
-- Strips ANSI escape sequences and suppresses known UI/noise lines.
-- Normalizes standalone activity-looking stdout lines into structured trace callbacks and omits those lines from visible prose.
-- Forwards remaining meaningful stdout chunks to `onChunk`.
-- For stderr, ignores empty warning-only output, records/sends `transport.error` for error-looking text, forwards that text visibly as chunks, and buffers other stderr for non-zero exit reporting.
-- Calls `onDone(capturedSessionId)` when exit code is zero or output was produced without a transport error.
-- Calls `onError(...)` when the process exits non-zero without successful output.
-- Returns a `ChatHandle` whose `abort()` sends `SIGTERM`, then sends `SIGKILL` after 3 seconds if needed.
+- Renderer and CLI chat/title both call `src/main/services/chat-service.ts`.
+- Local mode starts the selected profile gateway when needed, waits a bounded time for the API to become ready, and requires a verified `api` runtime handle before dispatch.
+- SSH mode requires a verified `ssh-api` runtime handle before dispatch.
+- Runtime verification failures surface through renderer `chat-error` / rejected IPC promises and CLI normalized error envelopes instead of being hidden by a second transport.
 
 ## Trace lifecycle summary
 

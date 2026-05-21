@@ -33,9 +33,16 @@ async function revalidateWithRetry(profile?: string): Promise<boolean> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const verified = await window.hermesAPI.revalidateRuntime(profile);
     if (verified) return true;
-    await wait(700 * (attempt + 1));
+    if (attempt < 2) await wait(700 * (attempt + 1));
   }
   return false;
+}
+
+async function repairLocalRuntime(profile: string): Promise<boolean> {
+  await window.hermesAPI.startGateway(profile);
+  if (await revalidateWithRetry(profile)) return true;
+  await window.hermesAPI.restartGateway(profile);
+  return revalidateWithRetry(profile);
 }
 
 export function ChatRuntimeReadinessCard({
@@ -60,9 +67,10 @@ export function ChatRuntimeReadinessCard({
     setBusyAction("verify");
     setStatusMessage(t("chat.runtimeVerifying"));
     try {
-      if (diagnostic?.mode === "local")
-        await window.hermesAPI.startGateway(selectedProfile);
-      const verified = await revalidateWithRetry(selectedProfile);
+      const verified =
+        diagnostic?.mode === "local"
+          ? await repairLocalRuntime(selectedProfile)
+          : await revalidateWithRetry(selectedProfile);
       setStatusMessage(
         verified ? t("chat.runtimeVerified") : t("chat.runtimeStillUnverified"),
       );

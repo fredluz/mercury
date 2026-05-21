@@ -1,5 +1,7 @@
 # Investigation: Chat Stop-State Input Lock
 
+> Historical note (2026-05-21): this investigation predates the API-only runtime change. References to `chat-cli.ts` or CLI transport behavior describe removed fallback transport archaeology, not current chat execution.
+
 ## Summary
 The stuck red stop button is a lifecycle-finalization bug: visible assistant text streams via `chat-chunk`, but the composer unlocks only when renderer `isLoading` is cleared by `chat-done` / `chat-error` or manual abort/clear. The strongest concrete trigger is that main IPC runs trace/artifact/session side effects before emitting terminal IPC, so any exception there can skip `chat-done` / `chat-error` and leave the renderer locked.
 

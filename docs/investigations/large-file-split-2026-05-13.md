@@ -1,5 +1,7 @@
 # Investigation: Large Files Split Plan
 
+> Historical note (2026-05-21): this split plan predates the API-only runtime change. References to `src/main/hermes/chat-cli.ts` describe a file that has since been removed.
+
 ## Summary
 Mercury has 15 tracked source/source-like files above 500 LOC, plus generated metadata/build artifacts that should be excluded from refactor work. The highest-value split path is: mechanical CSS sharding, IPC/preload contract extraction, SSH/service domain splits, constants sharding, then renderer screen component/hook extraction.
 

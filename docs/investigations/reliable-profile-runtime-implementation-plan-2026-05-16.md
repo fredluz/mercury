@@ -1,5 +1,7 @@
 # Reliable Profile Runtime Implementation Plan
 
+> Historical note (2026-05-21): this implementation plan predates the API-only runtime change. References to verified local CLI identity/fallback are superseded; current chat/title execution requires verified local `api` or SSH `ssh-api` runtime handles.
+
 Source investigation: `docs/investigations/reliable-profile-runtime-2026-05-16.md`
 
 ## Work Items

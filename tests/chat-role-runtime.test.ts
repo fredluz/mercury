@@ -96,57 +96,6 @@ async function loadTitleWithModel(model: { provider: string; model: string; base
   return { ...module, bodies };
 }
 
-async function loadChatCliWithModel(model: {
-  provider: string;
-  model: string;
-  baseUrl: string;
-}) {
-  vi.resetModules();
-  const spawn = vi.fn(() => {
-    const proc = new EventEmitter() as EventEmitter & {
-      stdout: EventEmitter;
-      stderr: EventEmitter;
-      kill: ReturnType<typeof vi.fn>;
-      killed: boolean;
-    };
-    proc.stdout = new EventEmitter();
-    proc.stderr = new EventEmitter();
-    proc.killed = false;
-    proc.kill = vi.fn(() => {
-      proc.killed = true;
-      return true;
-    });
-    return proc;
-  });
-  vi.doMock("child_process", () => ({ default: { spawn }, spawn }));
-  vi.doMock("../src/main/install/paths", () => ({
-    HERMES_HOME: "/tmp/hermes-home",
-    HERMES_PYTHON: "python",
-    HERMES_REPO: "/tmp/hermes-repo",
-    HERMES_SCRIPT: "hermes",
-    getEnhancedPath: () => "/usr/bin",
-  }));
-  vi.doMock("../src/main/config", () => ({
-    readEnv: vi.fn(() => ({})),
-  }));
-  vi.doMock("../src/main/utils", () => ({
-    stripAnsi: (value: string) => value,
-  }));
-  vi.doMock("../src/main/hermes/runtime", () => ({
-    buildHermesProfileCommandArgs: (script: string, profile: string | undefined, args: string[]) =>
-      profile && profile !== "default" ? [script, "-p", profile, ...args] : [script, ...args],
-  }));
-  vi.doMock("../src/main/hermes/trace-events", () => ({
-    isStandaloneCliActivityLine: () => false,
-    normalizeCliProgressLine: () => [],
-  }));
-  vi.doMock("../src/main/hermes/chat-model", () => ({
-    resolveChatRuntimeModel: vi.fn().mockResolvedValue({ ...model, source: "profile-override" }),
-  }));
-  const module = await import("../src/main/hermes/chat-cli");
-  return { ...module, spawn };
-}
-
 beforeEach(() => {
   vi.restoreAllMocks();
 });
@@ -209,7 +158,7 @@ describe("Chat role runtime model resolution", () => {
       undefined,
       {
         request: { profile: "work", mode: "local", purpose: "chat" },
-        identity: { requestedProfile: "work", actualProfile: "work", verified: true, mode: "local", transport: "api", startedByMercury: true, verifiedAt: 1 },
+        identity: { requestedProfile: "work", actualProfile: "work", verified: true, verificationSource: "managed-process", mode: "local", transport: "api", startedByMercury: true, verifiedAt: 1 },
         transport: "api",
         apiBaseUrl: "http://127.0.0.1:19001",
       },
@@ -230,7 +179,7 @@ describe("Chat role runtime model resolution", () => {
         { profile: "work", messages: [{ role: "user", content: "Summarize this" }] },
         {
           request: { profile: "work", mode: "local", purpose: "title" },
-          identity: { requestedProfile: "work", actualProfile: "work", verified: true, mode: "local", transport: "api", startedByMercury: true, verifiedAt: 1 },
+          identity: { requestedProfile: "work", actualProfile: "work", verified: true, verificationSource: "managed-process", mode: "local", transport: "api", startedByMercury: true, verifiedAt: 1 },
           transport: "api",
           apiBaseUrl: "http://127.0.0.1:19001",
         },
@@ -239,38 +188,4 @@ describe("Chat role runtime model resolution", () => {
     expect(bodies[0]).toMatchObject({ model: "role-title-model", stream: false });
   });
 
-  it("passes the resolved Chat role model to the local Hermes CLI", async () => {
-    const { sendMessageViaCli, spawn } = await loadChatCliWithModel({
-      provider: "custom",
-      model: "role-chat-model",
-      baseUrl: "http://localhost:1234/v1",
-    });
-
-    await sendMessageViaCli(
-      "hello",
-      { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() },
-      "work",
-    );
-
-    expect(spawn).toHaveBeenCalledTimes(1);
-    const [, args, options] = spawn.mock.calls[0];
-    expect(args).toEqual([
-      "hermes",
-      "-p",
-      "work",
-      "chat",
-      "-q",
-      "hello",
-      "-Q",
-      "--source",
-      "desktop",
-      "-m",
-      "role-chat-model",
-    ]);
-    expect(options.env).toMatchObject({
-      HERMES_INFERENCE_PROVIDER: "custom",
-      OPENAI_BASE_URL: "http://localhost:1234/v1",
-      OPENAI_API_KEY: "no-key-required",
-    });
-  });
 });

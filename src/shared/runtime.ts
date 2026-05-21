@@ -1,12 +1,11 @@
 export type RuntimeMode = "local" | "ssh" | "remote";
 
-export type RuntimeTransport = "cli" | "api" | "ssh-api" | "remote-api";
+export type RuntimeTransport = "api" | "ssh-api" | "remote-api";
 
 export type RuntimeVerificationSource =
   | "identity-endpoint"
   | "managed-process"
   | "declared-remote"
-  | "cli-args"
   | "unverified";
 
 export type RuntimeDiagnosticStatus =
