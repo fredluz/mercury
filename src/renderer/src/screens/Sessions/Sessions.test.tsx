@@ -183,6 +183,30 @@ describe("Sessions resume profile flow", () => {
     expect(screen.getByText("unknown agent")).toBeInTheDocument();
   });
 
+  it("shows retry when cached and synced session loading fails", async () => {
+    vi.mocked(window.hermesAPI.listCachedSessions).mockRejectedValue(
+      new Error("cache failed"),
+    );
+    vi.mocked(window.hermesAPI.syncSessionCache).mockRejectedValue(
+      new Error("sync failed"),
+    );
+
+    render(
+      <Sessions
+        onResumeSession={vi.fn()}
+        onOpenSessionTrace={vi.fn()}
+        onNewChat={vi.fn()}
+        currentSessionId={null}
+      />,
+    );
+
+    expect(await screen.findByText("sessions.loadError")).toBeInTheDocument();
+    expect(screen.getByText("sync failed")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "common.retry" }),
+    ).toBeInTheDocument();
+  });
+
   it("opens all trace activity from the header", async () => {
     const onOpenTraceActivity = vi.fn();
     render(

@@ -1,27 +1,18 @@
-import { useEffect, useState, useRef, useCallback, memo } from "react";
+import { useEffect, useState, useRef, memo } from "react";
 import { Activity, Plus, Search, X, ChatBubble } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
-
-interface CachedSession {
-  id: string;
-  title: string;
-  startedAt: number;
-  source: string;
-  messageCount: number;
-  model: string;
-  profile?: string;
-}
-
-interface SearchResult {
-  sessionId: string;
-  title: string | null;
-  startedAt: number;
-  source: string;
-  messageCount: number;
-  model: string;
-  snippet: string;
-  profile?: string;
-}
+import { useCachedSessions } from "./useCachedSessions";
+import {
+  formatSessionFullDate,
+  formatSessionModel,
+  formatSessionProfile,
+  formatSessionTime,
+  groupSessionsByDate,
+  isActiveSession,
+  sessionRowKey,
+  type CachedSession,
+  type SearchResult,
+} from "./sessionListUtils";
 
 interface SessionsProps {
   onResumeSession: (sessionId: string, title?: string | null, profile?: string) => void;
@@ -31,62 +22,6 @@ interface SessionsProps {
   currentSessionId: string | null;
   currentSessionProfile?: string | null;
   refreshToken?: number;
-}
-
-function formatTime(ts: number): string {
-  const d = new Date(ts * 1000);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function formatFullDate(ts: number): string {
-  const d = new Date(ts * 1000);
-  return (
-    d.toLocaleDateString([], { month: "short", day: "numeric" }) +
-    ", " +
-    d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-  );
-}
-
-type DateGroup = "today" | "yesterday" | "thisWeek" | "earlier";
-
-function getDateGroup(ts: number): DateGroup {
-  const d = new Date(ts * 1000);
-  const now = new Date();
-
-  const isToday =
-    d.getDate() === now.getDate() &&
-    d.getMonth() === now.getMonth() &&
-    d.getFullYear() === now.getFullYear();
-  if (isToday) return "today";
-
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const isYesterday =
-    d.getDate() === yesterday.getDate() &&
-    d.getMonth() === yesterday.getMonth() &&
-    d.getFullYear() === yesterday.getFullYear();
-  if (isYesterday) return "yesterday";
-
-  const weekAgo = new Date(now);
-  weekAgo.setDate(weekAgo.getDate() - 7);
-  if (d >= weekAgo) return "thisWeek";
-
-  return "earlier";
-}
-
-function groupSessions(
-  sessions: CachedSession[],
-): Array<{ label: DateGroup; sessions: CachedSession[] }> {
-  const groups = new Map<DateGroup, CachedSession[]>();
-  for (const s of sessions) {
-    const group = getDateGroup(s.startedAt);
-    if (!groups.has(group)) groups.set(group, []);
-    groups.get(group)!.push(s);
-  }
-  const order: DateGroup[] = ["today", "yesterday", "thisWeek", "earlier"];
-  return order
-    .filter((label) => groups.has(label))
-    .map((label) => ({ label, sessions: groups.get(label)! }));
 }
 
 function highlightSnippet(snippet: string): React.JSX.Element {
@@ -101,34 +36,6 @@ function highlightSnippet(snippet: string): React.JSX.Element {
       })}
     </span>
   );
-}
-
-function formatModel(model: string): string {
-  const name = model.split("/").pop() || model;
-  // Shorten common patterns: "gpt-oss-20b:free" → "gpt-oss-20b"
-  return name.split(":")[0];
-}
-
-function formatProfile(profile?: string): string {
-  const clean = profile?.trim();
-  return clean || "unknown agent";
-}
-
-function sessionRowKey(sessionId: string, profile?: string): string {
-  return `${profile?.trim() || "unknown"}:${sessionId}`;
-}
-
-function isActiveSession(
-  currentSessionId: string | null,
-  currentSessionProfile: string | null | undefined,
-  rowSessionId: string,
-  rowProfile?: string,
-): boolean {
-  if (currentSessionId !== rowSessionId) return false;
-  const activeProfile = currentSessionProfile?.trim();
-  const profile = rowProfile?.trim();
-  if (activeProfile) return profile === activeProfile;
-  return !profile;
 }
 
 // Memoized session card
@@ -158,20 +65,20 @@ const SessionCard = memo(function SessionCard({
           </span>
           <span className="sessions-card-time">
             {showFullDate
-              ? formatFullDate(session.startedAt)
-              : formatTime(session.startedAt)}
+              ? formatSessionFullDate(session.startedAt)
+              : formatSessionTime(session.startedAt)}
           </span>
         </div>
         <div className="sessions-card-tags">
           <span className="sessions-tag sessions-tag--source">
-            {formatProfile(session.profile)}
+            {formatSessionProfile(session.profile)}
           </span>
           <span className="sessions-tag">
             {session.messageCount} msg{session.messageCount !== 1 ? "s" : ""}
           </span>
           {session.model && (
             <span className="sessions-tag sessions-tag--model">
-              {formatModel(session.model)}
+              {formatSessionModel(session.model)}
             </span>
           )}
         </div>
@@ -202,29 +109,15 @@ function Sessions({
   refreshToken,
 }: SessionsProps): React.JSX.Element {
   const { t } = useI18n();
-  const [sessions, setSessions] = useState<CachedSession[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { sessions, loading, error, reload } = useCachedSessions({
+    limit: 50,
+    refreshToken,
+  });
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-
-  const loadSessions = useCallback(async (): Promise<void> => {
-    setLoading(true);
-    const cached = await window.hermesAPI.listCachedSessions(50);
-    if (cached.length > 0) {
-      setSessions(cached);
-      setLoading(false);
-    }
-    const synced = await window.hermesAPI.syncSessionCache();
-    setSessions(synced.slice(0, 50));
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    loadSessions();
-  }, [loadSessions, refreshToken]);
 
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -245,7 +138,7 @@ function Sessions({
   }, [searchQuery, refreshToken]);
 
   const isShowingSearch = searchQuery.trim().length > 0;
-  const grouped = groupSessions(sessions);
+  const grouped = groupSessionsByDate(sessions);
 
   return (
     <div className="sessions-container">
@@ -323,7 +216,7 @@ function Sessions({
                     <div className="sessions-card-main">
                       <span className="sessions-card-title">{title}</span>
                       <span className="sessions-card-time">
-                        {formatFullDate(r.startedAt)}
+                        {formatSessionFullDate(r.startedAt)}
                       </span>
                     </div>
                     {r.snippet && (
@@ -333,14 +226,14 @@ function Sessions({
                     )}
                     <div className="sessions-card-tags">
                       <span className="sessions-tag sessions-tag--source">
-                        {formatProfile(r.profile)}
+                        {formatSessionProfile(r.profile)}
                       </span>
                       <span className="sessions-tag">
                         {r.messageCount} {r.messageCount !== 1 ? t("sessions.messages") : t("sessions.messageSingular")}
                       </span>
                       {r.model && (
                         <span className="sessions-tag sessions-tag--model">
-                          {formatModel(r.model)}
+                          {formatSessionModel(r.model)}
                         </span>
                       )}
                     </div>
@@ -362,6 +255,15 @@ function Sessions({
             })}
           </div>
         )
+      ) : error && sessions.length === 0 ? (
+        <div className="sessions-empty">
+          <ChatBubble size={32} className="sessions-empty-icon" />
+          <p className="sessions-empty-text">{t("sessions.loadError")}</p>
+          <p className="sessions-empty-hint">{error}</p>
+          <button className="btn btn-secondary" onClick={() => void reload()}>
+            {t("common.retry")}
+          </button>
+        </div>
       ) : sessions.length === 0 ? (
         <div className="sessions-empty">
           <ChatBubble size={32} className="sessions-empty-icon" />

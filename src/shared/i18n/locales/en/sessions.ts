@@ -4,6 +4,7 @@ export default {
   noResults: "No results found",
   noResultsHint: "Try different search terms",
   empty: "No sessions yet",
+  loadError: "Could not load sessions",
   newConversation: "New conversation",
   newChat: "New Chat",
   traceActivity: "Trace Activity",

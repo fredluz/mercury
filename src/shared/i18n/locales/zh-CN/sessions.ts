@@ -4,6 +4,7 @@ export default {
   noResults: "未找到结果",
   noResultsHint: "试试其他搜索词",
   empty: "还没有会话",
+  loadError: "Could not load sessions",
   newConversation: "新对话",
   newChat: "新建聊天",
   traceActivity: "追踪活动",

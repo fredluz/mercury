@@ -24,10 +24,16 @@ vi.mock("../../components/RemoteNotice", () => ({
 
 vi.mock("../Chat/Chat", () => ({
   default: ({
+    messages = [],
+    sessionId,
+    profile,
     onCreateScheduleFromConversation,
     onOpenTraceRun,
     onViewSchedules,
   }: {
+    messages?: Array<{ id: string; role: string; content: string }>;
+    sessionId?: string | null;
+    profile?: string;
     onCreateScheduleFromConversation?: (draft: {
       name?: string;
       prompt?: string;
@@ -39,7 +45,8 @@ vi.mock("../Chat/Chat", () => ({
     onViewSchedules?: () => void;
   }) => (
     <div>
-      Chat mock
+      Chat mock profile:{profile} session:{sessionId ?? "none"} messages:
+      {messages.length}
       <button
         onClick={() =>
           onCreateScheduleFromConversation?.({
@@ -133,6 +140,54 @@ vi.mock("../TraceLab/TraceLab", () => ({
   ),
 }));
 
+const layoutCachedRows = [
+  {
+    id: "session-default",
+    title: "Default session",
+    startedAt: 1_700_000_000,
+    source: "local",
+    messageCount: 2,
+    model: "openai/gpt-4o",
+    profile: "default",
+  },
+  {
+    id: "session-work",
+    title: "Work session",
+    startedAt: 1_700_000_100,
+    source: "local",
+    messageCount: 3,
+    model: "anthropic/claude-sonnet",
+    profile: "work",
+  },
+];
+
+const layoutProfiles = [
+  {
+    name: "default",
+    path: "/profiles/default",
+    isDefault: true,
+    isActive: true,
+    model: "openai/gpt-4o",
+    provider: "openai",
+    hasEnv: true,
+    hasSoul: true,
+    skillCount: 1,
+    gatewayRunning: false,
+  },
+  {
+    name: "work",
+    path: "/profiles/work",
+    isDefault: false,
+    isActive: false,
+    model: "anthropic/claude-sonnet",
+    provider: "anthropic",
+    hasEnv: true,
+    hasSoul: true,
+    skillCount: 2,
+    gatewayRunning: false,
+  },
+];
+
 function installHermesApiMock(
   remoteOnly = false,
   runtimeDiagnostic: Awaited<
@@ -163,6 +218,15 @@ function installHermesApiMock(
       onMenuNewChat: vi.fn(() => vi.fn()),
       onMenuSearchSessions: vi.fn(() => vi.fn()),
       checkForUpdates: vi.fn().mockResolvedValue(null),
+      abortChat: vi.fn().mockResolvedValue(undefined),
+      listCachedSessions: vi.fn().mockResolvedValue(layoutCachedRows),
+      syncSessionCache: vi.fn().mockResolvedValue(layoutCachedRows),
+      listProfiles: vi.fn().mockResolvedValue(layoutProfiles),
+      setActiveProfile: vi.fn().mockResolvedValue(true),
+      getSessionMessages: vi.fn().mockResolvedValue([
+        { id: 1, role: "user", content: "hello", timestamp: 1 },
+        { id: 2, role: "assistant", content: "hi", timestamp: 2 },
+      ]),
     };
 }
 
@@ -271,6 +335,113 @@ describe("Layout trace routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "navigation.agents" }));
 
     expect(await screen.findByText("Remote Agents")).toBeInTheDocument();
+  });
+
+  it("opens the compact chat-list sidebar from Chat nav and Back restores main sidebar", async () => {
+    render(<Layout />);
+    await waitFor(() =>
+      expect(window.hermesAPI.isRemoteOnlyMode).toHaveBeenCalled(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "navigation.chat" }));
+
+    expect(await screen.findByText("chat.sidebarTitle")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "navigation.sessions" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "chat.sidebarBack" }));
+
+    expect(
+      screen.getByRole("button", { name: "navigation.sessions" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the main sidebar when Chat nav is clicked in remote-only mode", async () => {
+    installHermesApiMock(true);
+    render(<Layout />);
+    await waitFor(() =>
+      expect(window.hermesAPI.isRemoteOnlyMode).toHaveBeenCalled(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "navigation.chat" }));
+
+    expect(screen.queryByText("chat.sidebarTitle")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "navigation.sessions" }),
+    ).toBeInTheDocument();
+    expect(window.hermesAPI.listCachedSessions).not.toHaveBeenCalled();
+  });
+
+  it("toggles compact sidebar between Agents and All chats", async () => {
+    render(<Layout />);
+    await waitFor(() =>
+      expect(window.hermesAPI.isRemoteOnlyMode).toHaveBeenCalled(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "navigation.chat" }));
+    await screen.findByText("Work session");
+
+    const agentsToggle = screen.getByRole("button", {
+      name: "chat.sidebarModeAgents",
+    });
+    const allToggle = screen.getByRole("button", {
+      name: "chat.sidebarModeAll",
+    });
+    expect(agentsToggle).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(allToggle);
+
+    expect(allToggle).toHaveAttribute("aria-pressed", "true");
+    expect(agentsToggle).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText("Default session")).toBeInTheDocument();
+  });
+
+  it("requires picking an agent before starting a new compact-sidebar chat", async () => {
+    render(<Layout />);
+    await waitFor(() =>
+      expect(window.hermesAPI.isRemoteOnlyMode).toHaveBeenCalled(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "navigation.chat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "chat.sidebarNewChat" }));
+
+    expect(screen.getByText("chat.sidebarPickAgent")).toBeInTheDocument();
+    expect(window.hermesAPI.setActiveProfile).not.toHaveBeenCalled();
+
+    const workProfileOption = screen
+      .getAllByRole("button", { name: /work/i })
+      .find((button) => button.classList.contains("chat-sidebar-profile-option"));
+    fireEvent.click(workProfileOption!);
+
+    await waitFor(() =>
+      expect(window.hermesAPI.setActiveProfile).toHaveBeenCalledWith("work"),
+    );
+    expect(window.hermesAPI.abortChat).toHaveBeenCalled();
+    expect(
+      screen.getByText(/Chat mock profile:work session:none messages:\s*0/),
+    ).toBeInTheDocument();
+  });
+
+  it("resumes profile-aware sessions from the compact sidebar", async () => {
+    render(<Layout />);
+    await waitFor(() =>
+      expect(window.hermesAPI.isRemoteOnlyMode).toHaveBeenCalled(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "navigation.chat" }));
+    const workRow = await screen.findByRole("button", { name: /Work session/i });
+    fireEvent.click(workRow);
+
+    await waitFor(() =>
+      expect(window.hermesAPI.getSessionMessages).toHaveBeenCalledWith(
+        "session-work",
+        "work",
+      ),
+    );
+    expect(
+      screen.getByText(/Chat mock profile:work session:session-work messages:\s*2/),
+    ).toBeInTheDocument();
   });
 
   it("keeps idle unverified runtime diagnostics out of the global Chat banner", async () => {
