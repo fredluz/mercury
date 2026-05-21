@@ -2,6 +2,18 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { SETTINGS_SECTIONS, PROVIDERS } from "../../constants";
 import { useI18n } from "../../components/useI18n";
 
+type CodexAuthStatus = Awaited<
+  ReturnType<typeof window.hermesAPI.getCodexAuthStatus>
+>;
+type CodexDeviceAuthStart = Awaited<
+  ReturnType<typeof window.hermesAPI.startCodexDeviceAuth>
+>;
+type PendingCodexAuth = CodexDeviceAuthStart & { profile?: string };
+
+function sameProfile(a?: string, b?: string): boolean {
+  return (a || "default") === (b || "default");
+}
+
 function Providers({
   profile,
   visible,
@@ -32,17 +44,30 @@ function Providers({
   const [poolNewKey, setPoolNewKey] = useState("");
   const [poolNewLabel, setPoolNewLabel] = useState("");
 
+  // Codex app-server OAuth
+  const [codexStatus, setCodexStatus] = useState<CodexAuthStatus | null>(null);
+  const [codexPending, setCodexPending] = useState<PendingCodexAuth | null>(
+    null,
+  );
+  const [codexAuthState, setCodexAuthState] = useState<
+    "idle" | "starting" | "waiting" | "success" | "error"
+  >("idle");
+  const [codexMessage, setCodexMessage] = useState("");
+  const codexPollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const loadConfig = useCallback(async (): Promise<void> => {
-    const [envData, mc, pool] = await Promise.all([
+    const [envData, mc, pool, codex] = await Promise.all([
       window.hermesAPI.getEnv(profile),
       window.hermesAPI.getModelConfig(profile),
       window.hermesAPI.getCredentialPool(),
+      window.hermesAPI.getCodexAuthStatus(profile),
     ]);
     setEnv(envData);
     setModelProvider(mc.provider);
     setModelName(mc.model);
     setModelBaseUrl(mc.baseUrl);
     setCredPool(pool);
+    setCodexStatus(codex);
 
     requestAnimationFrame(() => {
       modelLoaded.current = true;
@@ -58,11 +83,15 @@ function Providers({
   useEffect(() => {
     if (!visible) return;
     (async (): Promise<void> => {
-      const mc = await window.hermesAPI.getModelConfig(profile);
+      const [mc, codex] = await Promise.all([
+        window.hermesAPI.getModelConfig(profile),
+        window.hermesAPI.getCodexAuthStatus(profile),
+      ]);
       modelLoaded.current = false;
       setModelProvider(mc.provider);
       setModelName(mc.model);
       setModelBaseUrl(mc.baseUrl);
+      setCodexStatus(codex);
       requestAnimationFrame(() => {
         modelLoaded.current = true;
       });
@@ -101,6 +130,95 @@ function Providers({
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, [modelProvider, modelName, modelBaseUrl, saveModelConfig]);
+
+  useEffect(() => {
+    if (!codexPending || codexAuthState !== "waiting") return;
+    if (codexPollTimer.current) clearInterval(codexPollTimer.current);
+
+    async function poll(): Promise<void> {
+      if (!codexPending) return;
+      try {
+        const authProfile = codexPending.profile;
+        const result = await window.hermesAPI.pollCodexDeviceAuth(
+          codexPending.sessionId,
+          authProfile,
+        );
+        if (result.status === "pending") return;
+        if (result.status === "authenticated") {
+          if (codexPollTimer.current) clearInterval(codexPollTimer.current);
+          codexPollTimer.current = null;
+          setCodexAuthState("success");
+          setCodexMessage("Codex app-server login complete.");
+          setCodexPending(null);
+          if (sameProfile(authProfile, profile)) {
+            modelLoaded.current = false;
+            setModelProvider(result.provider || "openai-codex");
+            setModelName(result.model || "gpt-5.5");
+            setModelBaseUrl("");
+            requestAnimationFrame(() => {
+              modelLoaded.current = true;
+            });
+          }
+          await window.hermesAPI.revalidateRuntime(authProfile);
+          await loadConfig();
+          return;
+        }
+        if (codexPollTimer.current) clearInterval(codexPollTimer.current);
+        codexPollTimer.current = null;
+        setCodexAuthState("error");
+        setCodexMessage(result.message || "Codex login failed.");
+      } catch (error) {
+        if (codexPollTimer.current) clearInterval(codexPollTimer.current);
+        codexPollTimer.current = null;
+        setCodexAuthState("error");
+        setCodexMessage(error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    codexPollTimer.current = setInterval(
+      () => void poll(),
+      Math.max(3000, codexPending.intervalSeconds * 1000),
+    );
+    void poll();
+    return () => {
+      if (codexPollTimer.current) clearInterval(codexPollTimer.current);
+      codexPollTimer.current = null;
+    };
+  }, [codexAuthState, codexPending, loadConfig, profile]);
+
+  async function handleStartCodexAuth(): Promise<void> {
+    setCodexAuthState("starting");
+    setCodexMessage("");
+    try {
+      const start = await window.hermesAPI.startCodexDeviceAuth();
+      setCodexPending({ ...start, profile });
+      setCodexAuthState("waiting");
+      setCodexMessage(
+        "Browser opened. Enter the code, then Mercury will finish automatically.",
+      );
+    } catch (error) {
+      setCodexAuthState("error");
+      setCodexMessage(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function handleUseCodexAppServer(): Promise<void> {
+    const configured = await window.hermesAPI.configureCodexAppServer(profile);
+    modelLoaded.current = false;
+    setModelProvider(configured.provider);
+    setModelName(configured.model);
+    setModelBaseUrl("");
+    requestAnimationFrame(() => {
+      modelLoaded.current = true;
+    });
+    await window.hermesAPI.revalidateRuntime(profile);
+    await loadConfig();
+  }
+
+  async function handleCopyCodexCode(): Promise<void> {
+    if (!codexPending?.userCode) return;
+    await navigator.clipboard.writeText(codexPending.userCode);
+  }
 
   async function handleBlur(key: string): Promise<void> {
     const value = env[key] || "";
@@ -222,6 +340,87 @@ function Providers({
             </div>
           </div>
         )}
+      </div>
+
+      <div className="settings-section settings-codex-auth-section">
+        <div className="settings-section-title">Codex app-server auth</div>
+        <div className="settings-codex-auth-card">
+          <div className="settings-codex-auth-main">
+            <div className="settings-entry-title">OpenAI Codex login</div>
+            <div className="settings-entry-description">
+              Use the OAuth-backed Codex app server that Hermes uses. This saves
+              a dedicated <code>openai-codex</code> session in Hermes instead of
+              asking for an OpenAI API key.
+            </div>
+            <div className="settings-codex-status-row">
+              <span
+                className={
+                  codexStatus?.hasHermesAuth
+                    ? "settings-codex-pill settings-codex-pill-ok"
+                    : "settings-codex-pill"
+                }
+              >
+                {codexStatus?.hasHermesAuth ? "Signed in" : "Not signed in"}
+              </span>
+              {codexStatus?.hasCodexCliAuth && !codexStatus.hasHermesAuth && (
+                <span className="settings-codex-pill">
+                  Codex CLI login found; Hermes needs its own session
+                </span>
+              )}
+              {modelProvider === "openai-codex" && (
+                <span className="settings-codex-pill settings-codex-pill-ok">
+                  Selected for this profile
+                </span>
+              )}
+            </div>
+            {codexPending && codexAuthState === "waiting" && (
+              <div className="settings-codex-code-box">
+                <div>
+                  Open <code>{codexPending.verificationUri}</code> and enter:
+                </div>
+                <strong>{codexPending.userCode}</strong>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => void handleCopyCodexCode()}
+                >
+                  Copy code
+                </button>
+              </div>
+            )}
+            {codexMessage && (
+              <div
+                className={
+                  codexAuthState === "error"
+                    ? "settings-codex-message settings-codex-message-error"
+                    : "settings-codex-message"
+                }
+              >
+                {codexMessage}
+              </div>
+            )}
+          </div>
+          <div className="settings-codex-actions">
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => void handleStartCodexAuth()}
+              disabled={
+                codexAuthState === "starting" || codexAuthState === "waiting"
+              }
+            >
+              {codexStatus?.hasHermesAuth ? "Re-authenticate" : "Sign in"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => void handleUseCodexAppServer()}
+              disabled={!codexStatus?.hasHermesAuth}
+            >
+              Use for this profile
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="settings-section">

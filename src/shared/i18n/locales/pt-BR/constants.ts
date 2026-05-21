@@ -1,6 +1,9 @@
 export default {
   // Provider labels
   autoDetect: "Detectar automaticamente",
+  codexAppServerName: "Servidor do app Codex",
+  codexAppServerDesc: "Runtime OpenAI Codex com OAuth",
+  codexAppServerTag: "Recomendado",
   // Provider setup cards
   openrouterName: "OpenRouter",
   openrouterDesc: "Mais de 200 modelos",

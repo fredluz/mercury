@@ -227,6 +227,7 @@ interface HermesAPI {
       profile?: string;
     }>
   >;
+  // prettier-ignore
   getSessionMessages: (sessionId: string, profile?: string) => Promise<
     Array<{
       id: number;
@@ -379,6 +380,35 @@ interface HermesAPI {
       profile?: string;
     }>
   >;
+
+  // Codex app-server OAuth
+  getCodexAuthStatus: (profile?: string) => Promise<{
+    hasHermesAuth: boolean;
+    hasCodexCliAuth: boolean;
+    selectedProvider: string;
+    selectedModel: string;
+    hermesAuthPath: string;
+    codexAuthPath: string;
+  }>;
+  startCodexDeviceAuth: () => Promise<{
+    sessionId: string;
+    userCode: string;
+    verificationUri: string;
+    intervalSeconds: number;
+    expiresAt: number;
+  }>;
+  pollCodexDeviceAuth: (
+    sessionId: string,
+    profile?: string,
+  ) => Promise<{
+    status: "pending" | "authenticated" | "expired" | "error";
+    message?: string;
+    provider?: string;
+    model?: string;
+  }>;
+  configureCodexAppServer: (
+    profile?: string,
+  ) => Promise<{ provider: string; model: string }>;
 
   // Credential Pool
   getCredentialPool: () => Promise<

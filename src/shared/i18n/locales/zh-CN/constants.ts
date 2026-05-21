@@ -1,6 +1,9 @@
 export default {
   // Provider labels
   autoDetect: "自动检测",
+  codexAppServerName: "Codex 应用服务器",
+  codexAppServerDesc: "OpenAI Codex OAuth 运行时",
+  codexAppServerTag: "推荐",
   // Provider setup cards
   openrouterName: "OpenRouter",
   openrouterDesc: "200+ 模型",

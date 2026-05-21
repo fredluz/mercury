@@ -1,8 +1,5 @@
-import { ipcMain } from "electron";
-import {
-  getCredentialPool,
-  setCredentialPool,
-} from "../config";
+import { ipcMain, shell } from "electron";
+import { getCredentialPool, setCredentialPool } from "../config";
 import type { SavedModel, SavedModelUpdateFields } from "../models";
 import {
   addModelForConnection,
@@ -19,9 +16,43 @@ import {
   setGlobalModelRoleDefaultForConnection,
   setProfileModelRoleOverrideForConnection,
 } from "../services/model-roles-service";
-import type { ModelCapability, ModelRoleSelection } from "../../shared/model-roles";
+import type {
+  ModelCapability,
+  ModelRoleSelection,
+} from "../../shared/model-roles";
+import {
+  configureCodexAppServer,
+  getCodexAuthStatus,
+  pollCodexDeviceAuth,
+  startCodexDeviceAuth,
+} from "../services/codex-auth-service";
 
 export function registerModelsIpc(): void {
+  // Codex app-server OAuth
+  ipcMain.handle("get-codex-auth-status", (_event, profile?: string) =>
+    getCodexAuthStatus(profile),
+  );
+  ipcMain.handle("start-codex-device-auth", async () => {
+    const result = await startCodexDeviceAuth();
+    const verificationUrl = new URL(result.verificationUri);
+    if (
+      verificationUrl.protocol !== "https:" ||
+      verificationUrl.hostname !== "auth.openai.com"
+    ) {
+      throw new Error("Unexpected Codex verification URL.");
+    }
+    await shell.openExternal(verificationUrl.toString());
+    return result;
+  });
+  ipcMain.handle(
+    "poll-codex-device-auth",
+    (_event, sessionId: string, profile?: string) =>
+      pollCodexDeviceAuth(sessionId, profile),
+  );
+  ipcMain.handle("configure-codex-app-server", (_event, profile?: string) =>
+    configureCodexAppServer(profile),
+  );
+
   // Credential Pool
   ipcMain.handle("get-credential-pool", () => getCredentialPool());
   ipcMain.handle(
@@ -49,7 +80,9 @@ export function registerModelsIpc(): void {
       capabilities?: ModelCapability[],
     ) => addModelForConnection(name, provider, model, baseUrl, capabilities),
   );
-  ipcMain.handle("remove-model", (_event, id: string) => removeModelForConnection(id));
+  ipcMain.handle("remove-model", (_event, id: string) =>
+    removeModelForConnection(id),
+  );
   ipcMain.handle(
     "update-model",
     (_event, id: string, fields: SavedModelUpdateFields) =>
@@ -75,15 +108,25 @@ export function registerModelsIpc(): void {
       role: string,
       selection: Partial<ModelRoleSelection>,
       profile?: string,
-    ) => setProfileModelRoleOverrideForConnection(assertModelRole(role), selection, profile),
+    ) =>
+      setProfileModelRoleOverrideForConnection(
+        assertModelRole(role),
+        selection,
+        profile,
+      ),
   );
   ipcMain.handle(
     "clear-profile-model-role-override",
     (_event, role: string, profile?: string) =>
-      clearProfileModelRoleOverrideForConnection(assertModelRole(role), profile),
+      clearProfileModelRoleOverrideForConnection(
+        assertModelRole(role),
+        profile,
+      ),
   );
-  ipcMain.handle("resolve-model-for-role", (_event, role: string, profile?: string) =>
-    resolveModelForRoleForConnection(assertModelRole(role), profile),
+  ipcMain.handle(
+    "resolve-model-for-role",
+    (_event, role: string, profile?: string) =>
+      resolveModelForRoleForConnection(assertModelRole(role), profile),
   );
 }
 

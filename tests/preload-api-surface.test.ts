@@ -319,6 +319,11 @@ describe("Legacy APIs preserved (backward compat)", () => {
     "setProfileModelRoleOverride",
     "clearProfileModelRoleOverride",
     "resolveModelForRole",
+    // Codex app-server OAuth
+    "getCodexAuthStatus",
+    "startCodexDeviceAuth",
+    "pollCodexDeviceAuth",
+    "configureCodexAppServer",
     // Credential pool
     "getCredentialPool",
     "setCredentialPool",

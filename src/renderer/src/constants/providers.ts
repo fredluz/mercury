@@ -3,6 +3,7 @@
 export const PROVIDERS = {
   options: [
     { value: "auto", label: "constants.autoDetect" },
+    { value: "openai-codex", label: "constants.codexAppServerName" },
     { value: "openrouter", label: "constants.openrouterName" },
     { value: "anthropic", label: "constants.anthropicName" },
     { value: "openai", label: "constants.openaiName" },
@@ -16,6 +17,7 @@ export const PROVIDERS = {
   ],
 
   labels: {
+    "openai-codex": "constants.codexAppServerName",
     openrouter: "constants.openrouterName",
     anthropic: "constants.anthropicName",
     openai: "constants.openaiName",
@@ -29,6 +31,18 @@ export const PROVIDERS = {
   } as Record<string, string>,
 
   setup: [
+    {
+      id: "openai-codex",
+      name: "constants.codexAppServerName",
+      desc: "constants.codexAppServerDesc",
+      tag: "constants.codexAppServerTag",
+      envKey: "",
+      url: "https://auth.openai.com/codex/device",
+      placeholder: "",
+      configProvider: "openai-codex",
+      baseUrl: "",
+      needsKey: false,
+    },
     {
       id: "openrouter",
       name: "constants.openrouterName",
