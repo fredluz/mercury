@@ -1,5 +1,5 @@
 import { AlertTriangle, Bot, CheckCircle2, Wrench } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type React from "react";
 import type {
   RuntimeDebugAgent,
@@ -55,27 +55,36 @@ export function ChatRuntimeReadinessCard({
     "verify" | RuntimeDebugAgent | null
   >(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [verificationFailed, setVerificationFailed] = useState(false);
+
+  const selectedProfile = profile || diagnostic?.selectedProfile || "default";
+
+  useEffect(() => {
+    setVerificationFailed(false);
+  }, [diagnostic?.status, selectedProfile]);
 
   if (!shouldShowChatRuntimeReadiness(diagnostic)) return null;
 
-  const selectedProfile = profile || diagnostic?.selectedProfile || "default";
   const reason =
     diagnostic?.mismatchReason || t("chat.runtimeReadinessReasonFallback");
 
   async function handleVerify(): Promise<void> {
     if (busyAction) return;
     setBusyAction("verify");
+    setVerificationFailed(false);
     setStatusMessage(t("chat.runtimeVerifying"));
     try {
       const verified =
         diagnostic?.mode === "local"
           ? await repairLocalRuntime(selectedProfile)
           : await revalidateWithRetry(selectedProfile);
+      setVerificationFailed(!verified);
       setStatusMessage(
         verified ? t("chat.runtimeVerified") : t("chat.runtimeStillUnverified"),
       );
       onRuntimeDiagnosticRefresh?.();
     } catch (err) {
+      setVerificationFailed(true);
       setStatusMessage(
         `${t("chat.runtimeVerifyFailed")} ${(err as Error).message}`.trim(),
       );
@@ -135,25 +144,27 @@ export function ChatRuntimeReadinessCard({
               ? t("chat.runtimeVerifyingShort")
               : t("chat.runtimeVerify")}
           </button>
-          <div
-            className="chat-runtime-debug-actions"
-            aria-label={t("chat.runtimeDebugGroup")}
-          >
-            <span>{t("chat.runtimeDebugGroup")}</span>
-            {DEBUG_AGENTS.map(({ agent, labelKey }) => (
-              <button
-                key={agent}
-                className="btn-ghost chat-runtime-debug-btn"
-                disabled={Boolean(busyAction)}
-                onClick={() => void handleDebug(agent)}
-              >
-                <Bot size={14} />
-                {busyAction === agent
-                  ? t("chat.runtimeDebugLaunchingShort")
-                  : t(labelKey)}
-              </button>
-            ))}
-          </div>
+          {verificationFailed && (
+            <div
+              className="chat-runtime-debug-actions"
+              aria-label={t("chat.runtimeDebugGroup")}
+            >
+              <span>{t("chat.runtimeDebugGroup")}</span>
+              {DEBUG_AGENTS.map(({ agent, labelKey }) => (
+                <button
+                  key={agent}
+                  className="btn-ghost chat-runtime-debug-btn"
+                  disabled={Boolean(busyAction)}
+                  onClick={() => void handleDebug(agent)}
+                >
+                  <Bot size={14} />
+                  {busyAction === agent
+                    ? t("chat.runtimeDebugLaunchingShort")
+                    : t(labelKey)}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         {statusMessage && (
           <div className="chat-runtime-card-status">{statusMessage}</div>

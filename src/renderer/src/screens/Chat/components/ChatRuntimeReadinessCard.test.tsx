@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatRuntimeReadinessCard } from "./ChatRuntimeReadinessCard";
 import type { RuntimeDiagnostic } from "../../../../../shared/runtime";
@@ -55,6 +61,12 @@ const verifiedDiagnostic: RuntimeDiagnostic = {
   mismatchReason: undefined,
 };
 
+const remoteUnverifiedDiagnostic: RuntimeDiagnostic = {
+  ...unverifiedDiagnostic,
+  mode: "remote",
+  transport: "remote-api",
+};
+
 function installHermesApiMock(): void {
   (window as unknown as { hermesAPI: Partial<Window["hermesAPI"]> }).hermesAPI =
     {
@@ -86,7 +98,34 @@ describe("ChatRuntimeReadinessCard", () => {
     expect(
       screen.getByRole("button", { name: /Verify API runtime/i }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Codex/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows external debug agents after API verification fails", async () => {
+    vi.useFakeTimers();
+    installHermesApiMock();
+    vi.mocked(window.hermesAPI.revalidateRuntime).mockResolvedValue(false);
+
+    render(
+      <ChatRuntimeReadinessCard
+        diagnostic={remoteUnverifiedDiagnostic}
+        t={t}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Verify API runtime/i }),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(700);
+      await vi.advanceTimersByTimeAsync(1_400);
+    });
+
     expect(screen.getByRole("button", { name: /Codex/i })).toBeInTheDocument();
+    expect(screen.getByText("Debug with")).toBeInTheDocument();
   });
 
   it("does not render for verified diagnostics", () => {
@@ -110,7 +149,9 @@ describe("ChatRuntimeReadinessCard", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Verify API runtime/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Verify API runtime/i }),
+    );
 
     await waitFor(() =>
       expect(window.hermesAPI.startGateway).toHaveBeenCalledWith("default"),
@@ -136,7 +177,9 @@ describe("ChatRuntimeReadinessCard", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Verify API runtime/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Verify API runtime/i }),
+    );
 
     await Promise.resolve();
     expect(window.hermesAPI.startGateway).toHaveBeenCalledWith("default");
@@ -150,18 +193,35 @@ describe("ChatRuntimeReadinessCard", () => {
   });
 
   it("launches the selected external debug agent", async () => {
+    vi.useFakeTimers();
     installHermesApiMock();
+    vi.mocked(window.hermesAPI.revalidateRuntime).mockResolvedValue(false);
     render(
-      <ChatRuntimeReadinessCard diagnostic={unverifiedDiagnostic} t={t} />,
+      <ChatRuntimeReadinessCard
+        diagnostic={remoteUnverifiedDiagnostic}
+        t={t}
+      />,
     );
 
+    fireEvent.click(
+      screen.getByRole("button", { name: /Verify API runtime/i }),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(700);
+      await vi.advanceTimersByTimeAsync(1_400);
+    });
+
+    expect(screen.getByRole("button", { name: /Codex/i })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Codex/i }));
 
-    await waitFor(() =>
-      expect(window.hermesAPI.launchRuntimeDebugAgent).toHaveBeenCalledWith({
-        agent: "codex",
-        profile: "default",
-      }),
-    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(window.hermesAPI.launchRuntimeDebugAgent).toHaveBeenCalledWith({
+      agent: "codex",
+      profile: "default",
+    });
   });
 });
