@@ -85,9 +85,7 @@
   margin: 0 0 8px;
 }
 
-.model-role-summary,
-.model-role-meta,
-.model-role-state {
+.model-role-meta {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -96,15 +94,7 @@
   color: var(--text-secondary);
 }
 
-.model-role-summary strong {
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-weight: 600;
-}
-
-.model-role-summary span,
-.model-role-meta span,
-.model-role-state span {
+.model-role-meta span {
   background: var(--bg-tertiary);
   border-radius: 999px;
   padding: 2px 8px;
@@ -156,14 +146,6 @@
   flex-direction: column;
   gap: 7px;
   width: min(360px, 42%);
-}
-
-.model-role-selector-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .model-role-selector {

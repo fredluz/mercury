@@ -44,6 +44,8 @@ function sourceLabelKey(source: ModelRoleResolution["source"]): string {
       return "models.source.legacyChatConfig";
     case "provider-auto":
       return "models.source.providerAuto";
+    case "unassigned":
+      return "models.source.unassigned";
     case "missing-model":
       return "models.source.missingModel";
     case "image-capability":
@@ -51,19 +53,15 @@ function sourceLabelKey(source: ModelRoleResolution["source"]): string {
   }
 }
 
-function selectionLabel(
-  selection: ModelRoleSelection | undefined,
-  savedModels: SavedModel[],
-): string {
-  if (!selection) return "—";
-  const saved = selection.modelId
-    ? savedModels.find((model) => model.id === selection.modelId)
-    : undefined;
-  return saved?.name || selection.model || selection.modelId || "—";
-}
-
-function modelSummary(model: SavedModel): string {
-  return `${model.provider} · ${model.model}`;
+function shouldShowSourceBadge(source: ModelRoleResolution["source"]): boolean {
+  switch (source) {
+    case "profile-override":
+    case "missing-model":
+    case "legacy-chat-config":
+      return true;
+    default:
+      return false;
+  }
 }
 
 function buildSelection(role: ModelRoleId, model: SavedModel): Partial<ModelRoleSelection> {
@@ -132,7 +130,10 @@ function Models({ profile, onBack }: ModelsProps): React.JSX.Element {
         if (role.id === "image") continue;
         const resolved = role.resolved.kind === "text" ? role.resolved : null;
         nextSelections[role.id] =
-          resolved?.modelId || role.profileOverride?.modelId || role.global?.modelId || textModels[0]?.id;
+          (resolved?.ok ? resolved.modelId : undefined) ||
+          role.profileOverride?.modelId ||
+          role.global?.modelId ||
+          textModels[0]?.id;
       }
       setModels(result.savedModels);
       setRoles(result.roles);
@@ -401,37 +402,22 @@ function Models({ profile, onBack }: ModelsProps): React.JSX.Element {
                 <div className="model-role-main">
                   <div className="model-role-title-row">
                     <h3>{t(role.nameKey)}</h3>
-                    {resolved && (
+                    {resolved && shouldShowSourceBadge(resolved.source) && (
                       <span className={`model-role-source-badge source-${resolved.source}`}>
                         {t(sourceLabelKey(resolved.source))}
                       </span>
                     )}
                   </div>
                   <p className="model-role-description">{t(role.descriptionKey)}</p>
-                  {resolved && (
-                    <div className="model-role-summary">
-                      <strong>{resolved.model || t("models.providerAuto")}</strong>
-                      <span>{resolved.provider}</span>
-                      {resolved.baseUrl && <span>{resolved.baseUrl}</span>}
-                      <span>{t("models.contextWindow", { tokens: resolved.contextWindow.toLocaleString() })}</span>
-                    </div>
-                  )}
                   {isMissing && (
                     <div className="model-role-warning">
                       <Alert size={14} />
                       <span>{t("models.missingModelDescription")}</span>
                     </div>
                   )}
-                  <div className="model-role-state">
-                    <span>{t("models.globalDefault")}: {selectionLabel(role.global, models)}</span>
-                    <span>{t("models.profileOverride")}: {selectionLabel(role.profileOverride, models)}</span>
-                  </div>
                 </div>
 
                 <div className="model-role-actions">
-                  <label className="model-role-selector-label" htmlFor={`model-role-${role.id}`}>
-                    {t("models.changeModel")}
-                  </label>
                   <select
                     id={`model-role-${role.id}`}
                     className="input model-role-selector"
@@ -444,11 +430,24 @@ function Models({ profile, onBack }: ModelsProps): React.JSX.Element {
                     {textModels.length === 0 ? (
                       <option value="">{t("models.noTextModels")}</option>
                     ) : (
-                      textModels.map((model) => (
-                        <option key={model.id} value={model.id}>
-                          {model.name} — {modelSummary(model)}
-                        </option>
-                      ))
+                      Object.entries(
+                        textModels.reduce<Record<string, SavedModel[]>>((groups, model) => {
+                          const provider = model.provider || "Other";
+                          if (!groups[provider]) groups[provider] = [];
+                          groups[provider].push(model);
+                          return groups;
+                        }, {})
+                      )
+                        .sort(([a], [b]) => a.localeCompare(b))
+                        .map(([provider, providerModels]) => (
+                          <optgroup key={provider} label={t(providerLabelKey(provider))}>
+                            {providerModels.map((model) => (
+                              <option key={model.id} value={model.id}>
+                                {model.name.replace(new RegExp(`^${provider}\\s+`, "i"), "")}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))
                     )}
                   </select>
                   <div className="model-role-button-row">
