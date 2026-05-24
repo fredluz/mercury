@@ -7,11 +7,10 @@ import {
   readLogs,
 } from "../installer";
 import { getConnectionConfig } from "../config";
-import {
-  getRuntimeDiagnostic,
-  markRuntimeStale,
-  revalidateRuntime,
-} from "../hermes";
+import { getRuntimeDiagnostic, markRuntimeStale } from "../hermes";
+import { probeChatCompletionViaApi } from "../hermes/chat-api";
+import { resolveChatRuntimeModel } from "../hermes/chat-model";
+import { prepareChatBackend } from "./chat-service";
 import type { RuntimeDebugAgentResult } from "../../shared/runtime";
 import {
   sshRunDump,
@@ -25,8 +24,15 @@ export function getRuntimeDiagnosticForProfile(profile?: string) {
   return getRuntimeDiagnostic(profile);
 }
 
-export function revalidateRuntimeForProfile(profile?: string) {
-  return revalidateRuntime(profile);
+export async function revalidateRuntimeForProfile(profile?: string) {
+  const model = await resolveChatRuntimeModel(profile);
+  if (!model.provider || model.provider === "auto" || !model.model) {
+    return false;
+  }
+  const runtime = await prepareChatBackend(profile, "chat");
+  if (!runtime) return true;
+  const probe = await probeChatCompletionViaApi(profile, runtime);
+  return probe.success;
 }
 
 export function launchRuntimeDebugAgentForProfile(

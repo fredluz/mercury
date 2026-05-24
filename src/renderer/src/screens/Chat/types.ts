@@ -52,7 +52,11 @@ export interface ChatUsage {
   contextModel?: string;
 }
 
-export type ChatActivityGroupStatus = "running" | "completed" | "failed" | "aborted";
+export type ChatActivityGroupStatus =
+  | "running"
+  | "completed"
+  | "failed"
+  | "aborted";
 
 export interface ChatActivityGroup {
   id: string;
@@ -90,8 +94,6 @@ export interface ChatController {
   modelGroups: ModelGroup[];
   showModelPicker: boolean;
   setShowModelPicker: Dispatch<SetStateAction<boolean>>;
-  customModelInput: string;
-  setCustomModelInput: Dispatch<SetStateAction<string>>;
   displayModel: string;
   visibleMessages: ChatMessage[];
   lastMessageIsAgent: boolean;
@@ -104,7 +106,6 @@ export interface ChatController {
     contextWindow?: number,
     modelId?: string,
   ) => Promise<void>;
-  handleCustomModelSubmit: () => Promise<void>;
   handleSend: () => Promise<void>;
   handleQuickAsk: () => Promise<void>;
   handleKeyDown: (e: React.KeyboardEvent) => void;

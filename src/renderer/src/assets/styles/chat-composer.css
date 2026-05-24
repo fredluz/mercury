@@ -25,7 +25,8 @@
 
 .chat-input-wrapper:focus-within {
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-subtle) 82%, transparent);
+  box-shadow: 0 0 0 4px
+    color-mix(in srgb, var(--accent-subtle) 82%, transparent);
 }
 
 .chat-input {
@@ -246,10 +247,6 @@
   padding: 6px;
 }
 
-.chat-model-custom-input {
-  box-sizing: border-box;
-}
-
 .chat-model-group {
   margin-bottom: 4px;
 }
@@ -301,21 +298,32 @@
   white-space: nowrap;
 }
 
-.chat-model-custom {
-  padding: 4px 8px 6px;
+.chat-model-empty {
+  padding: 10px;
+  display: grid;
+  gap: 8px;
 }
 
-.chat-model-custom-input {
-  width: 100%;
-  padding: 5px 8px;
+.chat-model-empty-title {
   font-size: 12px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg-tertiary);
+  font-weight: 700;
   color: var(--text-primary);
 }
 
-.chat-model-custom-input:focus {
-  outline: none;
-  border-color: var(--border-focus);
+.chat-model-empty-copy {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.chat-model-empty-action {
+  justify-self: start;
+  padding: 6px 10px;
+  border: 1px solid var(--border-bright);
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
 }

@@ -3,17 +3,43 @@ import { existsSync, readFileSync, unlinkSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import { getConnectionConfig, readEnv } from "../../config";
-import { HERMES_HOME, HERMES_PYTHON, HERMES_REPO, HERMES_SCRIPT, getEnhancedPath } from "../../install/paths";
+import {
+  HERMES_HOME,
+  HERMES_PYTHON,
+  HERMES_REPO,
+  HERMES_SCRIPT,
+  getEnhancedPath,
+} from "../../install/paths";
 import { profileHome as defaultProfileHome } from "../../utils";
 import { getSshTunnelUrl } from "../../ssh-tunnel";
 import { sshVerifyProfileRuntime } from "../../ssh/runtime";
-import { ensureApiServerConfig, getLocalApiPort, getLocalApiUrl, isApiServerReady } from "../connection";
+import {
+  ensureApiServerConfig,
+  getLocalApiPort,
+  getLocalApiUrl,
+  isApiServerReady,
+} from "../connection";
 import type { RuntimeDiagnostic } from "../../../shared/runtime";
-import type { ProfileRuntimeHandle, ProfileRuntimeRequest, RuntimeIdentity } from "../types";
+import type {
+  ProfileRuntimeHandle,
+  ProfileRuntimeRequest,
+  RuntimeIdentity,
+} from "../types";
 import { ProfileRuntimeError } from "../types";
-import { assertNoLocalPortConflict, gatewayCommandArgs, localAuthHeaders, resolveLocalApiRuntimeAttempt, type LocalApiRuntimeFailure } from "./local-runtime";
+import {
+  assertNoLocalPortConflict,
+  gatewayCommandArgs,
+  localAuthHeaders,
+  resolveLocalApiRuntimeAttempt,
+  type LocalApiRuntimeFailure,
+} from "./local-runtime";
 import { buildRuntimeDiagnostic } from "./diagnostics";
-import { createDiagnosticIdentity, createLocalApiIdentity, createUnverifiedExternalIdentity, type RuntimeIdentityContext } from "./identity";
+import {
+  createDiagnosticIdentity,
+  createLocalApiIdentity,
+  createUnverifiedExternalIdentity,
+  type RuntimeIdentityContext,
+} from "./identity";
 import { normalizeProfile } from "./profile";
 import { createInitialRuntimeState, type RuntimeState } from "./state";
 import { resolveSshApiRuntime } from "./ssh-runtime";
@@ -85,7 +111,8 @@ export class ProfileRuntimeManager {
     this.spawn = deps.spawn ?? defaultSpawn;
     this.readEnv = deps.readEnv ?? readEnv;
     this.getConnectionConfig = deps.getConnectionConfig ?? getConnectionConfig;
-    this.ensureApiServerConfig = deps.ensureApiServerConfig ?? ensureApiServerConfig;
+    this.ensureApiServerConfig =
+      deps.ensureApiServerConfig ?? ensureApiServerConfig;
     this.isApiServerReady = deps.isApiServerReady ?? isApiServerReady;
     this.getLocalApiPort = deps.getLocalApiPort ?? getLocalApiPort;
     this.getLocalApiUrl = deps.getLocalApiUrl ?? getLocalApiUrl;
@@ -97,8 +124,10 @@ export class ProfileRuntimeManager {
     this.setIntervalFn = deps.setInterval ?? setInterval;
     this.clearIntervalFn = deps.clearInterval ?? clearInterval;
     this.verifySshRuntime = deps.verifySshRuntime ?? sshVerifyProfileRuntime;
-    this.apiStartupTimeoutMs = deps.apiStartupTimeoutMs ?? DEFAULT_API_STARTUP_TIMEOUT_MS;
-    this.apiStartupRetryIntervalMs = deps.apiStartupRetryIntervalMs ?? DEFAULT_API_STARTUP_RETRY_INTERVAL_MS;
+    this.apiStartupTimeoutMs =
+      deps.apiStartupTimeoutMs ?? DEFAULT_API_STARTUP_TIMEOUT_MS;
+    this.apiStartupRetryIntervalMs =
+      deps.apiStartupRetryIntervalMs ?? DEFAULT_API_STARTUP_RETRY_INTERVAL_MS;
   }
 
   normalizeProfile(profile?: string): string {
@@ -126,7 +155,10 @@ export class ProfileRuntimeManager {
     }
 
     if (mode === "remote") {
-      const identity = createUnverifiedExternalIdentity(this.identityContext(), normalizedRequest);
+      const identity = createUnverifiedExternalIdentity(
+        this.identityContext(),
+        normalizedRequest,
+      );
       throw new ProfileRuntimeError(
         "runtime-unsupported-remote-profile",
         "Pure remote HTTP runtimes must declare or verify their profile identity before execution.",
@@ -147,11 +179,14 @@ export class ProfileRuntimeManager {
     const normalizedProfile = normalizeProfile(profile);
     this.ensureInitialized(normalizedProfile);
     if (this.isGatewayRunning(normalizedProfile)) return false;
-    assertNoLocalPortConflict({
-      ...this.localRuntimeContext(),
-      profiles: () => this.states.keys(),
-      isGatewayRunning: (profile) => this.isGatewayRunning(profile),
-    }, normalizedProfile);
+    assertNoLocalPortConflict(
+      {
+        ...this.localRuntimeContext(),
+        profiles: () => this.states.keys(),
+        isGatewayRunning: (profile) => this.isGatewayRunning(profile),
+      },
+      normalizedProfile,
+    );
 
     const state = this.stateFor(normalizedProfile);
     const profileEnv = this.readEnv(normalizedProfile);
@@ -188,14 +223,19 @@ export class ProfileRuntimeManager {
     state.gatewayCommand = args;
     state.staleReason = undefined;
     state.staleAt = undefined;
-    state.lastIdentity = createLocalApiIdentity(this.identityContext(), normalizedProfile, {
-      pid: child.pid,
-      startedByMercury: true,
-      verified: false,
-      verificationSource: "managed-process",
-      command: args,
-      mismatchReason: "Gateway process has started but API readiness has not been verified yet.",
-    });
+    state.lastIdentity = createLocalApiIdentity(
+      this.identityContext(),
+      normalizedProfile,
+      {
+        pid: child.pid,
+        startedByMercury: true,
+        verified: false,
+        verificationSource: "managed-process",
+        command: args,
+        mismatchReason:
+          "Gateway process has started but API readiness has not been verified yet.",
+      },
+    );
 
     child.on("close", () => {
       state.gatewayProcess = null;
@@ -205,7 +245,8 @@ export class ProfileRuntimeManager {
     });
 
     this.setTimeoutFn(async () => {
-      state.apiServerAvailable = await this.checkLocalApiReady(normalizedProfile);
+      state.apiServerAvailable =
+        await this.checkLocalApiReady(normalizedProfile);
     }, API_STARTUP_CHECK_DELAY_MS);
 
     return true;
@@ -268,7 +309,11 @@ export class ProfileRuntimeManager {
 
   restartGateway(profile?: string): void {
     const normalizedProfile = normalizeProfile(profile);
-    if (!this.stateFor(normalizedProfile).gatewayStartedByApp && !this.isGatewayRunning(normalizedProfile)) return;
+    if (
+      !this.stateFor(normalizedProfile).gatewayStartedByApp &&
+      !this.isGatewayRunning(normalizedProfile)
+    )
+      return;
     this.stopGateway(true, normalizedProfile);
     this.setTimeoutFn(() => {
       this.startGateway(normalizedProfile);
@@ -309,7 +354,8 @@ export class ProfileRuntimeManager {
     const state = this.stateFor(normalizeProfile(profile));
     if (
       state.staleAt &&
-      (!state.lastIdentity?.verified || state.lastIdentity.verifiedAt <= state.staleAt)
+      (!state.lastIdentity?.verified ||
+        state.lastIdentity.verifiedAt <= state.staleAt)
     ) {
       return;
     }
@@ -317,7 +363,10 @@ export class ProfileRuntimeManager {
     state.staleAt = undefined;
   }
 
-  async revalidateRuntime(profile?: string, purpose: ProfileRuntimeRequest["purpose"] = "gateway"): Promise<boolean> {
+  async revalidateRuntime(
+    profile?: string,
+    purpose: ProfileRuntimeRequest["purpose"] = "gateway",
+  ): Promise<boolean> {
     const normalizedProfile = normalizeProfile(profile);
     const state = this.stateFor(normalizedProfile);
     const previousStaleReason = state.staleReason;
@@ -361,12 +410,18 @@ export class ProfileRuntimeManager {
     const state = this.stateFor(selectedProfile);
     const mode = this.getConnectionConfig().mode;
     const storedIdentity = state.lastIdentity;
-    const modeMismatchReason = storedIdentity && storedIdentity.mode !== mode
-      ? `Connection mode changed from ${storedIdentity.mode} to ${mode}; runtime identity must be revalidated.`
-      : undefined;
-    const identity = !modeMismatchReason && storedIdentity
-      ? storedIdentity
-      : createDiagnosticIdentity(this.identityContext(), selectedProfile, mode);
+    const modeMismatchReason =
+      storedIdentity && storedIdentity.mode !== mode
+        ? `Connection mode changed from ${storedIdentity.mode} to ${mode}; runtime identity must be revalidated.`
+        : undefined;
+    const identity =
+      !modeMismatchReason && storedIdentity
+        ? storedIdentity
+        : createDiagnosticIdentity(
+            this.identityContext(),
+            selectedProfile,
+            mode,
+          );
     return buildRuntimeDiagnostic({
       selectedProfile,
       state,
@@ -381,13 +436,17 @@ export class ProfileRuntimeManager {
   ): Promise<ProfileRuntimeHandle> {
     const intervalMs = Math.max(0, this.apiStartupRetryIntervalMs);
     const timeoutMs = Math.max(0, this.apiStartupTimeoutMs);
-    const maxAttempts = intervalMs === 0
-      ? 1
-      : Math.max(1, Math.floor(timeoutMs / intervalMs) + 1);
+    const maxAttempts =
+      intervalMs === 0
+        ? 1
+        : Math.max(1, Math.floor(timeoutMs / intervalMs) + 1);
     let lastRetryableFailure: LocalApiRuntimeFailure | undefined;
 
     for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
-      const attempt = await resolveLocalApiRuntimeAttempt(this.localRuntimeContext(), request);
+      const attempt = await resolveLocalApiRuntimeAttempt(
+        this.localRuntimeContext(),
+        request,
+      );
       if (attempt.ok) return attempt.handle;
 
       if (!attempt.failure.retryable) {
@@ -450,7 +509,11 @@ export class ProfileRuntimeManager {
   }
 
   private pidFor(profile: string): number | undefined {
-    return this.stateFor(profile).gatewayProcess?.pid ?? this.readPidFile(profile) ?? undefined;
+    return (
+      this.stateFor(profile).gatewayProcess?.pid ??
+      this.readPidFile(profile) ??
+      undefined
+    );
   }
 
   private readPidFile(profile: string): number | null {
@@ -458,14 +521,18 @@ export class ProfileRuntimeManager {
     if (!existsSync(pidFile)) return null;
     try {
       const raw = readFileSync(pidFile, "utf-8").trim();
-      const parsed = raw.startsWith("{") ? JSON.parse(raw).pid : parseInt(raw, 10);
+      const parsed = raw.startsWith("{")
+        ? JSON.parse(raw).pid
+        : parseInt(raw, 10);
       return typeof parsed === "number" && !isNaN(parsed) ? parsed : null;
     } catch {
       return null;
     }
   }
 
-  private localRuntimeContext(): Parameters<typeof resolveLocalApiRuntimeAttempt>[0] {
+  private localRuntimeContext(): Parameters<
+    typeof resolveLocalApiRuntimeAttempt
+  >[0] {
     return {
       hermesScript: this.hermesScript,
       readEnv: this.readEnv,
@@ -475,6 +542,7 @@ export class ProfileRuntimeManager {
       stateFor: (profile) => this.stateFor(profile),
       identityContext: this.identityContext(),
       pidFor: (profile) => this.pidFor(profile),
+      pidFileFor: (profile) => this.pidFileFor(profile),
       homeFor: (profile) => this.homeFor(profile),
       configPathFor: (profile) => this.configPathFor(profile),
       now: this.now,

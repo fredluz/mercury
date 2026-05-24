@@ -1,4 +1,4 @@
-import { getConnectionConfig, setModelConfig } from "../config";
+import { getConnectionConfig } from "../config";
 import {
   clearProfileModelRoleOverride,
   getModelRoleDefaults,
@@ -11,25 +11,11 @@ import {
   writeProfileModelRoleOverride,
 } from "../model-roles";
 import {
-  isGatewayRunning,
-  markAllRuntimesStale,
-  markRuntimeStale,
-  revalidateRuntime,
-  restartGateway,
-  setSshRemoteApiKey,
-} from "../hermes";
-import { startSshTunnel } from "../ssh-tunnel";
-import {
-  sshGatewayStatus,
   sshGetConfigValue,
   sshGetModelConfig,
   sshGetToolsets,
   sshHasCodexAuthCredential,
   sshReadModelRolesFile,
-  sshReadRemoteApiKey,
-  sshSetModelConfig,
-  sshStartGateway,
-  sshStopGateway,
   sshWriteModelRolesFile,
 } from "../ssh-remote";
 import { listModelsForConnection } from "./models-service";
@@ -102,7 +88,11 @@ function resolveSelection(
       provider: saved.provider,
       model: saved.model,
       baseUrl: saved.baseUrl,
-      contextWindow: inferContextWindow(saved.provider, saved.model, saved.contextWindow).tokens,
+      contextWindow: inferContextWindow(
+        saved.provider,
+        saved.model,
+        saved.contextWindow,
+      ).tokens,
       capabilities: normalizeModelCapabilities(saved.capabilities),
       modelId: saved.id,
     };
@@ -117,7 +107,11 @@ function resolveSelection(
       provider: selection.provider,
       model: selection.model,
       baseUrl: selection.baseUrl ?? "",
-      contextWindow: inferContextWindow(selection.provider, selection.model, selection.contextWindow).tokens,
+      contextWindow: inferContextWindow(
+        selection.provider,
+        selection.model,
+        selection.contextWindow,
+      ).tokens,
       capabilities: normalizeModelCapabilities(selection.capabilities),
       ...(selection.modelId ? { missingModelId: selection.modelId } : {}),
     };
@@ -164,7 +158,10 @@ function resolveTextRoleFromState(
     role,
     kind: "text",
     ok: true,
-    source: legacy.provider === "auto" && !legacy.model ? "provider-auto" : "legacy-chat-config",
+    source:
+      legacy.provider === "auto" && !legacy.model
+        ? "provider-auto"
+        : "legacy-chat-config",
     provider: legacy.provider,
     model: legacy.model,
     baseUrl: legacy.baseUrl,
@@ -173,69 +170,25 @@ function resolveTextRoleFromState(
   };
 }
 
-function modelsDiffer(a: ModelRoleResolution, b: ModelRoleResolution): boolean {
-  if (a.kind !== "text" || b.kind !== "text") return a.ok !== b.ok;
-  return a.provider !== b.provider || a.model !== b.model || a.baseUrl !== b.baseUrl;
-}
-
-async function restartSshGatewayAndRevalidate(profile?: string): Promise<void> {
-  const conn = getConnectionConfig();
-  if (conn.mode !== "ssh" || !conn.ssh) return;
-  await sshStopGateway(conn.ssh, profile);
-  await sshStartGateway(conn.ssh, profile);
-  await startSshTunnel(conn.ssh, profile);
-  const refreshedKey = await sshReadRemoteApiKey(conn.ssh, profile);
-  setSshRemoteApiKey(refreshedKey, profile);
-  await revalidateRuntime(profile);
-}
-
-async function applyChatLegacyCompatibility(
-  selection: { provider?: string; model?: string; baseUrl?: string },
+async function resolveSshImageCapability(
   profile?: string,
-): Promise<void> {
-  if (!selection.provider || !selection.model) return;
-  const conn = getConnectionConfig();
-  if (conn.mode === "ssh" && conn.ssh) {
-    await sshSetModelConfig(
-      conn.ssh,
-      selection.provider,
-      selection.model,
-      selection.baseUrl ?? "",
-      profile,
-    );
-    return;
-  }
-  setModelConfig(selection.provider, selection.model, selection.baseUrl ?? "", profile);
-}
-
-async function markChatChangeIfNeeded(
-  previous: ModelRoleResolution,
-  profile?: string,
-): Promise<void> {
-  const next = await resolveModelForRoleForConnection("chat", profile);
-  if (!modelsDiffer(previous, next)) return;
-
-  const conn = getConnectionConfig();
-  markRuntimeStale(profile, "Chat model role changed for profile runtime.");
-  if (conn.mode === "ssh" && conn.ssh) {
-    if (await sshGatewayStatus(conn.ssh, profile)) await restartSshGatewayAndRevalidate(profile);
-    return;
-  }
-  if (isGatewayRunning(profile)) restartGateway(profile);
-}
-
-async function resolveSshImageCapability(profile?: string): Promise<ResolvedImageModelRole> {
+): Promise<ResolvedImageModelRole> {
   const conn = getConnectionConfig();
   if (conn.mode !== "ssh" || !conn.ssh) {
     throw new Error("SSH image capability requested outside SSH mode");
   }
 
   const toolsets = await sshGetToolsets(conn.ssh, profile);
-  const toolsetEnabled = toolsets.some((toolset) => toolset.key === "image_gen" && toolset.enabled);
-  const providerValue = (await sshGetConfigValue(conn.ssh, "image_gen.provider", profile)) || "";
+  const toolsetEnabled = toolsets.some(
+    (toolset) => toolset.key === "image_gen" && toolset.enabled,
+  );
+  const providerValue =
+    (await sshGetConfigValue(conn.ssh, "image_gen.provider", profile)) || "";
   const providerConfigured = providerValue === "openai-codex";
   const credentialAvailable = await sshHasCodexAuthCredential(conn.ssh);
-  const model = (await sshGetConfigValue(conn.ssh, "image_gen.model", profile)) || DEFAULT_IMAGE_MODEL;
+  const model =
+    (await sshGetConfigValue(conn.ssh, "image_gen.model", profile)) ||
+    DEFAULT_IMAGE_MODEL;
 
   if (!toolsetEnabled) {
     return {
@@ -291,37 +244,65 @@ async function resolveSshImageCapability(profile?: string): Promise<ResolvedImag
 async function readSshRolesFile(profile?: string): Promise<ModelRolesFile> {
   const conn = getConnectionConfig();
   if (conn.mode !== "ssh" || !conn.ssh) return { version: 1, defaults: {} };
-  return normalizeModelRolesFile(await sshReadModelRolesFile(conn.ssh, profile));
+  return normalizeModelRolesFile(
+    await sshReadModelRolesFile(conn.ssh, profile),
+  );
 }
 
-async function writeSshRolesFile(file: ModelRolesFile, profile?: string): Promise<void> {
+async function writeSshRolesFile(
+  file: ModelRolesFile,
+  profile?: string,
+): Promise<void> {
   const conn = getConnectionConfig();
   if (conn.mode !== "ssh" || !conn.ssh) return;
-  await sshWriteModelRolesFile(conn.ssh, normalizeModelRolesFile(file), profile);
+  await sshWriteModelRolesFile(
+    conn.ssh,
+    normalizeModelRolesFile(file),
+    profile,
+  );
 }
 
-async function getSshModelRoleDefaults(profile?: string): Promise<ModelRoleDefaultsResult> {
+async function getSshModelRoleDefaults(
+  profile?: string,
+): Promise<ModelRoleDefaultsResult> {
   const savedModels = await listModelsForConnection();
   const globalFile = await readSshRolesFile();
   const profileFile = await readSshRolesFile(profile);
   const legacy = await sshGetModelConfig(getConnectionConfig().ssh, profile);
-  const result: ModelRoleDefaultsResult = { global: {}, profileOverrides: {}, resolved: {} };
+  const result: ModelRoleDefaultsResult = {
+    global: {},
+    profileOverrides: {},
+    resolved: {},
+  };
 
   for (const role of MODEL_ROLE_IDS) {
     const globalDefault = withScope(globalFile.defaults[role], "global");
-    const profileDefault = withScope(profileFile.defaults[role], "profile", profile);
+    const profileDefault = withScope(
+      profileFile.defaults[role],
+      "profile",
+      profile,
+    );
     if (globalDefault) result.global[role] = globalDefault;
     if (profileDefault) result.profileOverrides[role] = profileDefault;
     result.resolved[role] =
       role === "image"
         ? await resolveSshImageCapability(profile)
-        : resolveTextRoleFromState(role, profile, savedModels, globalFile, profileFile, legacy);
+        : resolveTextRoleFromState(
+            role,
+            profile,
+            savedModels,
+            globalFile,
+            profileFile,
+            legacy,
+          );
   }
 
   return result;
 }
 
-export async function listModelRolesForConnection(profile?: string): Promise<ModelRoleListResult> {
+export async function listModelRolesForConnection(
+  profile?: string,
+): Promise<ModelRoleListResult> {
   const conn = getConnectionConfig();
   if (conn.mode !== "ssh" || !conn.ssh) return listModelRoles(profile);
 
@@ -355,14 +336,22 @@ export async function resolveModelForRoleForConnection(
   profile?: string,
 ): Promise<ModelRoleResolution> {
   const conn = getConnectionConfig();
-  if (conn.mode !== "ssh" || !conn.ssh) return resolveModelForRole(role, profile);
+  if (conn.mode !== "ssh" || !conn.ssh)
+    return resolveModelForRole(role, profile);
   if (role === "image") return resolveSshImageCapability(profile);
 
   const savedModels = await listModelsForConnection();
   const globalFile = await readSshRolesFile();
   const profileFile = await readSshRolesFile(profile);
   const legacy = await sshGetModelConfig(conn.ssh, profile);
-  return resolveTextRoleFromState(role, profile, savedModels, globalFile, profileFile, legacy);
+  return resolveTextRoleFromState(
+    role,
+    profile,
+    savedModels,
+    globalFile,
+    profileFile,
+    legacy,
+  );
 }
 
 export async function setGlobalModelRoleDefaultForConnection(
@@ -380,9 +369,6 @@ export async function setGlobalModelRoleDefaultForConnection(
     writeGlobalModelRoleDefault(role, selection);
   }
 
-  if (role === "chat") {
-    markAllRuntimesStale("Global Chat model role default changed.");
-  }
   return true;
 }
 
@@ -393,7 +379,6 @@ export async function setProfileModelRoleOverrideForConnection(
 ): Promise<boolean> {
   const savedModels = await listModelsForConnection();
   const selection = selectionFromSavedOrDirect(role, input, savedModels);
-  const previous = role === "chat" ? await resolveModelForRoleForConnection("chat", profile) : undefined;
   const conn = getConnectionConfig();
 
   if (conn.mode === "ssh" && conn.ssh) {
@@ -404,10 +389,6 @@ export async function setProfileModelRoleOverrideForConnection(
     writeProfileModelRoleOverride(role, selection, profile);
   }
 
-  if (role === "chat") {
-    await applyChatLegacyCompatibility(selection, profile);
-    await markChatChangeIfNeeded(previous!, profile);
-  }
   return true;
 }
 
@@ -415,7 +396,6 @@ export async function clearProfileModelRoleOverrideForConnection(
   role: ModelRoleId,
   profile?: string,
 ): Promise<boolean> {
-  const previous = role === "chat" ? await resolveModelForRoleForConnection("chat", profile) : undefined;
   const conn = getConnectionConfig();
   let changed = false;
   if (conn.mode === "ssh" && conn.ssh) {
@@ -427,13 +407,6 @@ export async function clearProfileModelRoleOverrideForConnection(
     changed = clearProfileModelRoleOverride(role, profile);
   }
 
-  if (changed && role === "chat") {
-    const resolved = await resolveModelForRoleForConnection("chat", profile);
-    if (resolved.kind === "text") {
-      await applyChatLegacyCompatibility(resolved, profile);
-    }
-    await markChatChangeIfNeeded(previous!, profile);
-  }
   return changed;
 }
 

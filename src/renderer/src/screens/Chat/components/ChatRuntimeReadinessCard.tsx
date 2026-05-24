@@ -61,9 +61,11 @@ export function ChatRuntimeReadinessCard({
 
   useEffect(() => {
     setVerificationFailed(false);
-  }, [diagnostic?.status, selectedProfile]);
+  }, [selectedProfile]);
 
-  if (!shouldShowChatRuntimeReadiness(diagnostic)) return null;
+  if (!shouldShowChatRuntimeReadiness(diagnostic) && !verificationFailed) {
+    return null;
+  }
 
   const reason =
     diagnostic?.mismatchReason || t("chat.runtimeReadinessReasonFallback");

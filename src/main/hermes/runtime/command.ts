@@ -7,9 +7,10 @@ export function buildHermesProfileCommandArgs(
 ): string[] {
   const normalizedProfile = normalizeProfile(profile);
   const args = [hermesScript];
-  if (isNamedProfile(normalizedProfile)) {
-    args.push("-p", normalizedProfile);
-  }
+  args.push(
+    "-p",
+    isNamedProfile(normalizedProfile) ? normalizedProfile : "default",
+  );
   args.push(...commandArgs);
   return args;
 }

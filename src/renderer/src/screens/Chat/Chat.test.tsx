@@ -68,19 +68,18 @@ const unverifiedDiagnostic: RuntimeDiagnostic = {
 };
 
 function installHermesApiMock(): void {
-  (
-    window as unknown as { hermesAPI: Partial<Window["hermesAPI"]> }
-  ).hermesAPI = {
-    getConfig: vi.fn().mockResolvedValue(null),
-    setConfig: vi.fn().mockResolvedValue(true),
-    listCompletedScheduledRunsSince: vi.fn().mockResolvedValue([]),
-    startGateway: vi.fn().mockResolvedValue(true),
-    restartGateway: vi.fn().mockResolvedValue(true),
-    revalidateRuntime: vi.fn().mockResolvedValue(true),
-    launchRuntimeDebugAgent: vi
-      .fn()
-      .mockResolvedValue({ success: true, agent: "codex" }),
-  };
+  (window as unknown as { hermesAPI: Partial<Window["hermesAPI"]> }).hermesAPI =
+    {
+      getConfig: vi.fn().mockResolvedValue(null),
+      setConfig: vi.fn().mockResolvedValue(true),
+      listCompletedScheduledRunsSince: vi.fn().mockResolvedValue([]),
+      startGateway: vi.fn().mockResolvedValue(true),
+      restartGateway: vi.fn().mockResolvedValue(true),
+      revalidateRuntime: vi.fn().mockResolvedValue(true),
+      launchRuntimeDebugAgent: vi
+        .fn()
+        .mockResolvedValue({ success: true, agent: "codex" }),
+    };
 }
 
 function controllerFor(messages: ChatMessage[]): ChatController {
@@ -109,15 +108,12 @@ function controllerFor(messages: ChatMessage[]): ChatController {
     modelGroups: [],
     showModelPicker: false,
     setShowModelPicker: vi.fn(),
-    customModelInput: "",
-    setCustomModelInput: vi.fn(),
     displayModel: "Auto",
     visibleMessages: messages,
     lastMessageIsAgent: messages.at(-1)?.role === "agent",
     hermesSessionId: "session-from-controller",
     loadModelConfig: vi.fn(),
     selectModel: vi.fn(),
-    handleCustomModelSubmit: vi.fn(),
     handleSend: vi.fn(),
     handleQuickAsk: vi.fn(),
     handleKeyDown: vi.fn(),

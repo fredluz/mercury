@@ -397,21 +397,24 @@ describe("Layout trace routing", () => {
     expect(screen.getByText("Default session")).toBeInTheDocument();
   });
 
-  it("requires picking an agent before starting a new compact-sidebar chat", async () => {
+  it("shows a main-pane agent picker before starting a new compact-sidebar chat", async () => {
     render(<Layout />);
     await waitFor(() =>
       expect(window.hermesAPI.isRemoteOnlyMode).toHaveBeenCalled(),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "navigation.chat" }));
-    fireEvent.click(await screen.findByRole("button", { name: "chat.sidebarNewChat" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "chat.sidebarNewChat" }),
+    );
 
-    expect(screen.getByText("chat.sidebarPickAgent")).toBeInTheDocument();
+    expect(screen.getByText("chat.agentPickerTitle")).toBeInTheDocument();
     expect(window.hermesAPI.setActiveProfile).not.toHaveBeenCalled();
 
-    const workProfileOption = screen
-      .getAllByRole("button", { name: /work/i })
-      .find((button) => button.classList.contains("chat-sidebar-profile-option"));
+    await screen.findByText("chat.agentPickerTitle");
+    const workProfileOption = document.querySelector(
+      ".chat-agent-picker-card:not(.chat-agent-picker-card-active)",
+    );
     fireEvent.click(workProfileOption!);
 
     await waitFor(() =>
@@ -430,7 +433,9 @@ describe("Layout trace routing", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "navigation.chat" }));
-    const workRow = await screen.findByRole("button", { name: /Work session/i });
+    const workRow = await screen.findByRole("button", {
+      name: /Work session/i,
+    });
     fireEvent.click(workRow);
 
     await waitFor(() =>
@@ -440,7 +445,9 @@ describe("Layout trace routing", () => {
       ),
     );
     expect(
-      screen.getByText(/Chat mock profile:work session:session-work messages:\s*2/),
+      screen.getByText(
+        /Chat mock profile:work session:session-work messages:\s*2/,
+      ),
     ).toBeInTheDocument();
   });
 

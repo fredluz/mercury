@@ -35,6 +35,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   if (existsSync(TEST_HOME)) {
     rmSync(TEST_HOME, { recursive: true, force: true });
   }
@@ -76,6 +77,41 @@ describe("listProfiles", () => {
     expect(found).toBeDefined();
     expect(found?.model).toBe("gpt-4o");
     expect(found?.provider).toBe("openai");
+  });
+
+  it("parses nested Hermes model config blocks", async () => {
+    const dir = join(PROFILES_DIR, "nested-config");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "config.yaml"),
+      'model:\n  default: "gpt-5.5"\n  provider: "openai-codex"\n  base_url: "https://chatgpt.com/backend-api/codex"\n',
+    );
+
+    const profiles = await listProfiles();
+    const found = profiles.find((p) => p.name === "nested-config");
+    expect(found?.model).toBe("gpt-5.5");
+    expect(found?.provider).toBe("openai-codex");
+  });
+
+  it("recognizes JSON gateway pid files", async () => {
+    const dir = join(PROFILES_DIR, "json-pid");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "gateway.pid"),
+      JSON.stringify({ pid: 12345 }),
+      "utf-8",
+    );
+    const kill = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      expect(pid).toBe(12345);
+      expect(signal).toBe(0);
+      return true;
+    });
+
+    const profiles = await listProfiles();
+    expect(profiles.find((p) => p.name === "json-pid")?.gatewayRunning).toBe(
+      true,
+    );
+    expect(kill).toHaveBeenCalled();
   });
 
   it("ignores dotfiles like .DS_Store under the profiles directory", async () => {

@@ -1,14 +1,25 @@
+import { existsSync, readFileSync } from "fs";
 import { defaultLocalApiPortForProfile as selectDefaultLocalApiPortForProfile } from "../connection";
 import type { isApiServerReady } from "../connection";
 import type { readEnv } from "../../config";
-import type { ProfileRuntimeHandle, ProfileRuntimeRequest, RuntimeMode } from "../types";
+import type {
+  ProfileRuntimeHandle,
+  ProfileRuntimeRequest,
+  RuntimeMode,
+} from "../types";
 import { ProfileRuntimeError } from "../types";
 import { buildHermesProfileCommandArgs } from "./command";
-import { createLocalApiIdentity, type RuntimeIdentityContext } from "./identity";
+import {
+  createLocalApiIdentity,
+  type RuntimeIdentityContext,
+} from "./identity";
 import { isNamedProfile } from "./profile";
 import type { RuntimeState } from "./state";
 
-type NormalizedRuntimeRequest = ProfileRuntimeRequest & { profile: string; mode: RuntimeMode };
+type NormalizedRuntimeRequest = ProfileRuntimeRequest & {
+  profile: string;
+  mode: RuntimeMode;
+};
 
 interface LocalRuntimeContext {
   hermesScript: string;
@@ -19,6 +30,7 @@ interface LocalRuntimeContext {
   stateFor: (profile: string) => RuntimeState;
   identityContext: RuntimeIdentityContext;
   pidFor: (profile: string) => number | undefined;
+  pidFileFor: (profile: string) => string;
   homeFor: (profile: string) => string;
   configPathFor: (profile: string) => string;
   now: () => number;
@@ -47,13 +59,15 @@ export async function resolveLocalApiRuntimeAttempt(
 ): Promise<LocalApiRuntimeAttempt> {
   const state = ctx.stateFor(request.profile);
   if (state.staleReason) {
-    const identity = state.lastIdentity ?? createLocalApiIdentity(ctx.identityContext, request.profile, {
-      pid: ctx.pidFor(request.profile),
-      startedByMercury: false,
-      verified: false,
-      verificationSource: "unverified",
-      mismatchReason: state.staleReason,
-    });
+    const identity =
+      state.lastIdentity ??
+      createLocalApiIdentity(ctx.identityContext, request.profile, {
+        pid: ctx.pidFor(request.profile),
+        startedByMercury: false,
+        verified: false,
+        verificationSource: "unverified",
+        mismatchReason: state.staleReason,
+      });
     return {
       ok: false,
       failure: {
@@ -61,22 +75,34 @@ export async function resolveLocalApiRuntimeAttempt(
         retryable: false,
         code: "runtime-stale-after-profile-switch",
         message: `Local API runtime for profile ${request.profile} is stale: ${state.staleReason}`,
-        identity: { ...identity, verified: false, actualProfile: null, mismatchReason: state.staleReason },
+        identity: {
+          ...identity,
+          verified: false,
+          actualProfile: null,
+          mismatchReason: state.staleReason,
+        },
       },
     };
   }
 
-  const managedProcessEvidence = hasManagedProcessEvidence(ctx, request.profile);
+  const managedProcessEvidence = hasManagedProcessEvidence(
+    ctx,
+    request.profile,
+  );
   if (!managedProcessEvidence) {
     state.apiServerAvailable = false;
-    const identity = createLocalApiIdentity(ctx.identityContext, request.profile, {
-      pid: ctx.pidFor(request.profile),
-      startedByMercury: false,
-      verified: false,
-      verificationSource: "unverified",
-      command: state.gatewayCommand,
-      mismatchReason: `Mercury cannot prove the local API belongs to profile ${request.profile}; start or restart the gateway from Mercury before running ${request.purpose}.`,
-    });
+    const identity = createLocalApiIdentity(
+      ctx.identityContext,
+      request.profile,
+      {
+        pid: ctx.pidFor(request.profile),
+        startedByMercury: false,
+        verified: false,
+        verificationSource: "unverified",
+        command: state.gatewayCommand,
+        mismatchReason: `Mercury cannot prove the local API belongs to profile ${request.profile}; start or restart the gateway from Mercury before running ${request.purpose}.`,
+      },
+    );
     state.lastIdentity = identity;
     return {
       ok: false,
@@ -92,14 +118,22 @@ export async function resolveLocalApiRuntimeAttempt(
 
   state.apiServerAvailable = await checkLocalApiReady(ctx, request.profile);
   if (!state.apiServerAvailable) {
-    const identity = createLocalApiIdentity(ctx.identityContext, request.profile, {
-      pid: ctx.pidFor(request.profile),
-      startedByMercury: true,
-      verified: false,
-      verificationSource: "managed-process",
-      command: state.gatewayCommand ?? state.lastIdentity?.command ?? gatewayCommandArgs(ctx, request.profile),
-      mismatchReason: "Gateway process is managed by Mercury but the API is not ready yet.",
-    });
+    const identity = createLocalApiIdentity(
+      ctx.identityContext,
+      request.profile,
+      {
+        pid: ctx.pidFor(request.profile),
+        startedByMercury: true,
+        verified: false,
+        verificationSource: "managed-process",
+        command:
+          state.gatewayCommand ??
+          state.lastIdentity?.command ??
+          gatewayCommandArgs(ctx, request.profile),
+        mismatchReason:
+          "Gateway process is managed by Mercury but the API is not ready yet.",
+      },
+    );
     state.lastIdentity = identity;
     return {
       ok: false,
@@ -113,13 +147,20 @@ export async function resolveLocalApiRuntimeAttempt(
     };
   }
 
-  const identity = createLocalApiIdentity(ctx.identityContext, request.profile, {
-    pid: ctx.pidFor(request.profile),
-    startedByMercury: true,
-    verified: true,
-    verificationSource: "managed-process",
-    command: state.gatewayCommand ?? state.lastIdentity?.command ?? gatewayCommandArgs(ctx, request.profile),
-  });
+  const identity = createLocalApiIdentity(
+    ctx.identityContext,
+    request.profile,
+    {
+      pid: ctx.pidFor(request.profile),
+      startedByMercury: true,
+      verified: true,
+      verificationSource: "managed-process",
+      command:
+        state.gatewayCommand ??
+        state.lastIdentity?.command ??
+        gatewayCommandArgs(ctx, request.profile),
+    },
+  );
   state.lastIdentity = identity;
 
   return {
@@ -192,29 +233,66 @@ export function assertNoLocalPortConflict(
   }
 }
 
-export function localAuthHeaders(ctx: Pick<LocalRuntimeContext, "readEnv">, profile: string): Record<string, string> {
+export function localAuthHeaders(
+  ctx: Pick<LocalRuntimeContext, "readEnv">,
+  profile: string,
+): Record<string, string> {
   const apiKey = ctx.readEnv(profile).API_SERVER_KEY;
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 }
 
-export function gatewayCommandArgs(ctx: Pick<LocalRuntimeContext, "hermesScript">, profile: string): string[] {
+export function gatewayCommandArgs(
+  ctx: Pick<LocalRuntimeContext, "hermesScript">,
+  profile: string,
+): string[] {
   return buildHermesProfileCommandArgs(ctx.hermesScript, profile, ["gateway"]);
 }
 
-function hasManagedProcessEvidence(ctx: LocalRuntimeContext, profile: string): boolean {
+function hasManagedProcessEvidence(
+  ctx: LocalRuntimeContext,
+  profile: string,
+): boolean {
   const state = ctx.stateFor(profile);
   const expectedPort = ctx.getLocalApiPort(profile);
   const expectedCommand = gatewayCommandArgs(ctx, profile);
+  const expectedPid = state.gatewayProcess?.pid;
+  const pidFilePid = readGatewayPidFile(ctx.pidFileFor(profile));
   return Boolean(
     state.gatewayStartedByApp &&
-      state.gatewayProcess &&
-      !state.gatewayProcess.killed &&
-      state.managedApiHost === "127.0.0.1" &&
-      state.managedApiPort === expectedPort &&
-      JSON.stringify(state.gatewayCommand) === JSON.stringify(expectedCommand),
+    state.gatewayProcess &&
+    !state.gatewayProcess.killed &&
+    expectedPid &&
+    pidFilePid === expectedPid &&
+    state.managedApiHost === "127.0.0.1" &&
+    state.managedApiPort === expectedPort &&
+    JSON.stringify(state.gatewayCommand) === JSON.stringify(expectedCommand),
   );
 }
 
-function checkLocalApiReady(ctx: LocalRuntimeContext, profile: string): Promise<boolean> {
-  return ctx.isApiServerReady(ctx.getLocalApiUrl(profile), localAuthHeaders(ctx, profile));
+function readGatewayPidFile(path: string): number | null {
+  if (!existsSync(path)) return null;
+  try {
+    const raw = readFileSync(path, "utf-8").trim();
+    const parsed = raw.startsWith("{")
+      ? JSON.parse(raw).pid
+      : parseInt(raw, 10);
+    if (typeof parsed === "number" && Number.isFinite(parsed)) return parsed;
+    if (typeof parsed === "string") {
+      const pid = parseInt(parsed, 10);
+      return Number.isFinite(pid) ? pid : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function checkLocalApiReady(
+  ctx: LocalRuntimeContext,
+  profile: string,
+): Promise<boolean> {
+  return ctx.isApiServerReady(
+    ctx.getLocalApiUrl(profile),
+    localAuthHeaders(ctx, profile),
+  );
 }

@@ -5,6 +5,7 @@ import Chat, {
 } from "../Chat/Chat";
 import Sessions from "../Sessions/Sessions";
 import ChatListSidebar from "./ChatListSidebar";
+import ChatAgentPicker from "./ChatAgentPicker";
 import TraceLab from "../TraceLab/TraceLab";
 import Agents from "../Agents/Agents";
 import Settings from "../Settings/Settings";
@@ -113,6 +114,7 @@ function Layout(): React.JSX.Element {
   const [sessionsRefreshToken, setSessionsRefreshToken] = useState(0);
   const [conversationVersion, setConversationVersion] = useState(0);
   const [activeProfile, setActiveProfile] = useState("default");
+  const [showChatAgentPicker, setShowChatAgentPicker] = useState(false);
   const [traceLaunch, setTraceLaunch] = useState<TraceLaunchState>({
     mode: "all",
   });
@@ -292,14 +294,8 @@ function Layout(): React.JSX.Element {
 
   const handleNewChat = useCallback(() => {
     resumeRequestIdRef.current += 1;
-    // Abort any in-flight chat before clearing
-    void window.hermesAPI.abortChat().catch(() => undefined);
-    setMessages([]);
-    setCurrentSessionId(null);
-    setCurrentSessionTitle(null);
-    setCurrentSessionProfile(null);
-    setConversationVersion((value) => value + 1);
     goTo("chat");
+    setShowChatAgentPicker(true);
   }, [goTo]);
 
   const handleNewChatForProfile = useCallback(
@@ -333,6 +329,7 @@ function Layout(): React.JSX.Element {
       setCurrentSessionTitle(null);
       setCurrentSessionProfile(null);
       setConversationVersion((value) => value + 1);
+      setShowChatAgentPicker(false);
       goTo("chat");
       setSidebarMode("chatList");
     },
@@ -362,6 +359,7 @@ function Layout(): React.JSX.Element {
     setCurrentSessionTitle(null);
     setCurrentSessionProfile(null);
     setConversationVersion((value) => value + 1);
+    setShowChatAgentPicker(false);
   }, []);
 
   const handleOpenSessionTrace = useCallback(
@@ -467,6 +465,7 @@ function Layout(): React.JSX.Element {
       setCurrentSessionTitle(title?.trim() || null);
       setCurrentSessionProfile(nextProfile);
       setConversationVersion((value) => value + 1);
+      setShowChatAgentPicker(false);
       goTo("chat");
     },
     [activeProfile, goTo],
@@ -482,6 +481,7 @@ function Layout(): React.JSX.Element {
           refreshToken={sessionsRefreshToken}
           onBack={() => setSidebarMode("main")}
           onResumeSession={handleResumeSession}
+          onOpenNewChatPicker={handleNewChat}
           onStartNewChat={handleNewChatForProfile}
         />
       ) : (
@@ -517,7 +517,9 @@ function Layout(): React.JSX.Element {
 
           <div className="sidebar-footer">
             <div className="sidebar-footer-text">
-              {activeProfile === "default" ? t("common.appName") : activeProfile}
+              {activeProfile === "default"
+                ? t("common.appName")
+                : activeProfile}
               {runtimeDiagnostic && runtimeDiagnostic.status !== "verified"
                 ? ` · runtime ${runtimeDiagnostic.status}`
                 : ""}
@@ -529,36 +531,44 @@ function Layout(): React.JSX.Element {
       <main className="content">
         <RuntimeDiagnosticNotice diagnostic={showGlobalRuntimeDiagnostic} />
         <div style={paneStyle("chat")}>
-          <Chat
-            messages={messages}
-            setMessages={setMessages}
-            sessionId={currentSessionId}
-            sessionTitle={currentSessionTitle}
-            conversationVersion={conversationVersion}
-            profile={activeProfile}
-            runtimeDiagnostic={runtimeDiagnostic}
-            onRuntimeDiagnosticRefresh={refreshRuntimeDiagnostic}
-            onSessionResolved={(sessionId) => {
-              setCurrentSessionId(sessionId);
-              setCurrentSessionProfile(activeProfile);
-            }}
-            onSessionTitleChange={(title) => {
-              setCurrentSessionTitle(title);
-              setSessionsRefreshToken((value) => value + 1);
-            }}
-            onSessionReset={() => {
-              setCurrentSessionId(null);
-              setCurrentSessionTitle(null);
-              setCurrentSessionProfile(null);
-              setConversationVersion((value) => value + 1);
-            }}
-            onCreateScheduleFromConversation={
-              handleCreateScheduleFromConversation
-            }
-            onOpenTraceRun={openTraceRun}
-            onViewSchedules={() => goTo("schedules")}
-            onNewChat={handleNewChat}
-          />
+          {showChatAgentPicker ? (
+            <ChatAgentPicker
+              activeProfile={activeProfile}
+              onStartNewChat={handleNewChatForProfile}
+            />
+          ) : (
+            <Chat
+              messages={messages}
+              setMessages={setMessages}
+              sessionId={currentSessionId}
+              sessionTitle={currentSessionTitle}
+              conversationVersion={conversationVersion}
+              profile={activeProfile}
+              runtimeDiagnostic={runtimeDiagnostic}
+              onRuntimeDiagnosticRefresh={refreshRuntimeDiagnostic}
+              onSessionResolved={(sessionId) => {
+                setCurrentSessionId(sessionId);
+                setCurrentSessionProfile(activeProfile);
+              }}
+              onSessionTitleChange={(title) => {
+                setCurrentSessionTitle(title);
+                setSessionsRefreshToken((value) => value + 1);
+              }}
+              onSessionReset={() => {
+                setCurrentSessionId(null);
+                setCurrentSessionTitle(null);
+                setCurrentSessionProfile(null);
+                setConversationVersion((value) => value + 1);
+              }}
+              onCreateScheduleFromConversation={
+                handleCreateScheduleFromConversation
+              }
+              onOpenTraceRun={openTraceRun}
+              onViewSchedules={() => goTo("schedules")}
+              onNewChat={handleNewChat}
+              onOpenProviders={() => goTo("providers")}
+            />
+          )}
         </div>
 
         {visitedViews.has("sessions") && (

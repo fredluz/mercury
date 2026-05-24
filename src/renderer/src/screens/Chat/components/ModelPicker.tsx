@@ -9,10 +9,8 @@ interface ModelPickerProps {
   modelGroups: ModelGroup[];
   currentModel: string;
   currentProvider: string;
-  customModelInput: string;
   showModelPicker: boolean;
   setShowModelPicker: (value: boolean) => void;
-  setCustomModelInput: (value: string) => void;
   loadModelConfig: () => Promise<void>;
   selectModel: (
     provider: string,
@@ -21,7 +19,7 @@ interface ModelPickerProps {
     contextWindow?: number,
     modelId?: string,
   ) => void;
-  handleCustomModelSubmit: () => void;
+  onOpenProviders?: () => void;
   t: (key: string) => string;
 }
 
@@ -31,13 +29,11 @@ export function ModelPicker({
   modelGroups,
   currentModel,
   currentProvider,
-  customModelInput,
   showModelPicker,
   setShowModelPicker,
-  setCustomModelInput,
   loadModelConfig,
   selectModel,
-  handleCustomModelSubmit,
+  onOpenProviders,
   t,
 }: ModelPickerProps): React.JSX.Element {
   return (
@@ -55,37 +51,53 @@ export function ModelPicker({
 
       {showModelPicker && (
         <div className="chat-model-dropdown">
-          {modelGroups.map((group) => (
-            <div key={group.provider} className="chat-model-group">
-              <div className="chat-model-group-label">{t(group.providerLabel)}</div>
-              {group.models.map((m) => (
+          {modelGroups.length === 0 ? (
+            <div className="chat-model-empty">
+              <div className="chat-model-empty-title">
+                {t("chat.noModelsAvailable")}
+              </div>
+              <div className="chat-model-empty-copy">
+                {t("chat.noModelsAvailableHint")}
+              </div>
+              {onOpenProviders ? (
                 <button
-                  key={m.id ?? `${m.provider}:${m.baseUrl}:${m.model}`}
-                  className={`chat-model-option ${currentModel === m.model && currentProvider === m.provider ? "active" : ""}`}
-                  onClick={() => selectModel(m.provider, m.model, m.baseUrl, m.contextWindow, m.id)}
+                  className="chat-model-empty-action"
+                  onClick={() => {
+                    setShowModelPicker(false);
+                    onOpenProviders();
+                  }}
                 >
-                  <span className="chat-model-option-label">{m.label}</span>
-                  <span className="chat-model-option-id">{m.model}</span>
+                  {t("chat.openProviders")}
                 </button>
-              ))}
+              ) : null}
             </div>
-          ))}
-
-          <div className="chat-model-group">
-            <div className="chat-model-group-label">{t("chat.custom")}</div>
-            <div className="chat-model-custom">
-              <input
-                className="chat-model-custom-input"
-                type="text"
-                value={customModelInput}
-                onChange={(e) => setCustomModelInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleCustomModelSubmit();
-                }}
-                placeholder={t("chat.typeModelName")}
-              />
-            </div>
-          </div>
+          ) : (
+            modelGroups.map((group) => (
+              <div key={group.provider} className="chat-model-group">
+                <div className="chat-model-group-label">
+                  {t(group.providerLabel)}
+                </div>
+                {group.models.map((m) => (
+                  <button
+                    key={m.id ?? `${m.provider}:${m.baseUrl}:${m.model}`}
+                    className={`chat-model-option ${currentModel === m.model && currentProvider === m.provider ? "active" : ""}`}
+                    onClick={() =>
+                      selectModel(
+                        m.provider,
+                        m.model,
+                        m.baseUrl,
+                        m.contextWindow,
+                        m.id,
+                      )
+                    }
+                  >
+                    <span className="chat-model-option-label">{m.label}</span>
+                    <span className="chat-model-option-id">{m.model}</span>
+                  </button>
+                ))}
+              </div>
+            ))
+          )}
         </div>
       )}
     </div>

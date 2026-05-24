@@ -30,9 +30,11 @@ const mocks = vi.hoisted(() => {
     handlers,
     capturedCallbacks: undefined as ChatCallbacks | undefined,
     abort: vi.fn(),
-    ipcHandle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
-      handlers.set(channel, handler);
-    }),
+    ipcHandle: vi.fn(
+      (channel: string, handler: (...args: unknown[]) => unknown) => {
+        handlers.set(channel, handler);
+      },
+    ),
     notificationShow: vi.fn(),
     sendMessage: vi.fn(),
     startGateway: vi.fn(),
@@ -63,7 +65,9 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("electron", () => ({
   ipcMain: { handle: mocks.ipcHandle },
-  Notification: vi.fn().mockImplementation(() => ({ show: mocks.notificationShow })),
+  Notification: vi
+    .fn()
+    .mockImplementation(() => ({ show: mocks.notificationShow })),
 }));
 
 vi.mock("../src/main/hermes", () => ({
@@ -175,15 +179,17 @@ function resetMockState(): void {
     transport: "api",
     apiBaseUrl: "http://127.0.0.1:19001",
   });
-  mocks.sendMessage.mockReset().mockImplementation(
-    async (
-      _message: string,
-      callbacks: ChatCallbacks,
-    ): Promise<ChatHandle> => {
-      mocks.capturedCallbacks = callbacks;
-      return { abort: mocks.abort };
-    },
-  );
+  mocks.sendMessage
+    .mockReset()
+    .mockImplementation(
+      async (
+        _message: string,
+        callbacks: ChatCallbacks,
+      ): Promise<ChatHandle> => {
+        mocks.capturedCallbacks = callbacks;
+        return { abort: mocks.abort };
+      },
+    );
 }
 
 async function setupHandler(): Promise<IpcHandler> {
@@ -326,23 +332,82 @@ describe("chat IPC lifecycle hardening", () => {
     );
   });
 
+  it("blocks default chat when the local API runtime reports sticky story-scout", async () => {
+    const handler = await setupHandler();
+    const event = createEvent();
+    const runtimeError = Object.assign(
+      new Error(
+        "Selected profile default does not match Hermes runtime profile story-scout on the local API port.",
+      ),
+      {
+        code: "runtime-profile-mismatch",
+        identity: {
+          requestedProfile: "default",
+          actualProfile: "story-scout",
+          verified: false,
+          verificationSource: "unverified",
+          mode: "local",
+          transport: "api",
+          apiBaseUrl: "http://127.0.0.1:8642",
+          localPort: 8_642,
+          startedByMercury: false,
+          verifiedAt: 1,
+          mismatchReason:
+            "Hermes sticky active_profile is story-scout while Mercury selected default.",
+        },
+      },
+    );
+    mocks.profileRuntimeManager.resolveRuntime.mockRejectedValueOnce(
+      runtimeError,
+    );
+
+    const invokePromise = handler(event, "hello", "default", "session-default");
+
+    await expect(invokePromise).rejects.toBe(runtimeError);
+    expect(mocks.profileRuntimeManager.resolveRuntime).toHaveBeenCalledWith({
+      profile: "default",
+      purpose: "chat",
+      sessionId: "session-default",
+    });
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+    expect(mocks.capturedCallbacks).toBeUndefined();
+    expect(sentChannels(event.sender, "chat-error")).toEqual([
+      [
+        "chat-error",
+        "runtime-profile-mismatch: Selected profile default does not match Hermes runtime profile story-scout on the local API port.",
+      ],
+    ]);
+    expect(mocks.recordTraceEvent).toHaveBeenCalledWith(
+      "trace-1",
+      "transport.error",
+      "Transport error",
+      "runtime-profile-mismatch: Selected profile default does not match Hermes runtime profile story-scout on the local API port.",
+      { source: "chat-send", code: "runtime-profile-mismatch" },
+    );
+  });
+
   it("surfaces runtime setup failures through chat-error and rejects", async () => {
     const handler = await setupHandler();
     const event = createEvent();
-    const runtimeError = Object.assign(new Error("Local API runtime unavailable"), {
-      code: "runtime-unavailable",
-      identity: {
-        requestedProfile: "alpha",
-        actualProfile: null,
-        verified: false,
-        verificationSource: "managed-process",
-        mode: "local",
-        transport: "api",
-        startedByMercury: true,
-        verifiedAt: 1,
+    const runtimeError = Object.assign(
+      new Error("Local API runtime unavailable"),
+      {
+        code: "runtime-unavailable",
+        identity: {
+          requestedProfile: "alpha",
+          actualProfile: null,
+          verified: false,
+          verificationSource: "managed-process",
+          mode: "local",
+          transport: "api",
+          startedByMercury: true,
+          verifiedAt: 1,
+        },
       },
-    });
-    mocks.profileRuntimeManager.resolveRuntime.mockRejectedValueOnce(runtimeError);
+    );
+    mocks.profileRuntimeManager.resolveRuntime.mockRejectedValueOnce(
+      runtimeError,
+    );
 
     const invokePromise = handler(event, "hello", "alpha");
 
@@ -367,13 +432,9 @@ describe("chat IPC lifecycle hardening", () => {
       throw new Error("resume trace write failed");
     });
 
-    const invokePromise = handler(
-      event,
-      "hello",
-      "default",
-      "resume-session",
-      [{ role: "user", content: "previous" }],
-    );
+    const invokePromise = handler(event, "hello", "default", "resume-session", [
+      { role: "user", content: "previous" },
+    ]);
 
     const callbacks = await waitForTransportCallbacks();
     callbacks.onChunk("answer after setup failure");
@@ -419,11 +480,16 @@ describe("chat IPC lifecycle hardening", () => {
     expect(handler).toBeTypeOf("function");
 
     await expect(
-      handler!({}, {
-        profile: "default",
-        sessionId: "synthetic-session-title",
-        messages: [{ role: "user", content: "Distinct prompt should not be sent" }],
-      }),
+      handler!(
+        {},
+        {
+          profile: "default",
+          sessionId: "synthetic-session-title",
+          messages: [
+            { role: "user", content: "Distinct prompt should not be sent" },
+          ],
+        },
+      ),
     ).resolves.toBe("Synthetic chat benchmark");
 
     expect(mocks.generateChatTitle).not.toHaveBeenCalled();
@@ -445,11 +511,14 @@ describe("chat IPC lifecycle hardening", () => {
     mocks.generateChatTitle.mockResolvedValue("Profile Aware Title");
 
     await expect(
-      handler!({}, {
-        profile: " research-agent ",
-        sessionId: " session-title-1 ",
-        messages: [{ role: "user", content: "Summarize this session" }],
-      }),
+      handler!(
+        {},
+        {
+          profile: " research-agent ",
+          sessionId: " session-title-1 ",
+          messages: [{ role: "user", content: "Summarize this session" }],
+        },
+      ),
     ).resolves.toBe("Profile Aware Title");
 
     expect(mocks.generateChatTitle).toHaveBeenCalledWith(

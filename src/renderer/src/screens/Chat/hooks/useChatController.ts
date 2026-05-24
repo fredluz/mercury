@@ -61,7 +61,9 @@ export function useChatController({
   const sessionTitleRef = useRef<string | null>(sessionTitle ?? null);
 
   const activity = useChatActivityGroups();
-  const runState = useChatRunState({ markActiveActivityGroup: activity.markActiveActivityGroup });
+  const runState = useChatRunState({
+    markActiveActivityGroup: activity.markActiveActivityGroup,
+  });
   const perf = useChatPerfTracker();
   const modelConfig = useChatModelConfig({ profile });
   const scroll = useChatScroll({
@@ -114,7 +116,12 @@ export function useChatController({
       activity.resetActivityGroups();
       titleGeneration.resetTitleGeneration(true);
     }
-  }, [activity.resetActivityGroups, messages, sessionId, titleGeneration.resetTitleGeneration]);
+  }, [
+    activity.resetActivityGroups,
+    messages,
+    sessionId,
+    titleGeneration.resetTitleGeneration,
+  ]);
 
   useEffect(() => {
     window.hermesAPI.getConfig("agent.service_tier", profile).then((val) => {
@@ -135,14 +142,25 @@ export function useChatController({
   });
 
   const getResumeSessionId = useCallback(
-    (): string | undefined => hermesSessionId || sessionIdRef.current || undefined,
+    (): string | undefined =>
+      hermesSessionId || sessionIdRef.current || undefined,
     [hermesSessionId],
   );
 
   const appendFallbackSendError = useCallback(
     (error: unknown): void => {
-      const message = error instanceof Error ? error.message : String(error || "Unknown error");
-      setMessages((prev) => [...prev, { id: `error-${Date.now()}`, role: "agent", content: `Error: ${message}` }]);
+      const message =
+        error instanceof Error
+          ? error.message
+          : String(error || "Unknown error");
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `error-${Date.now()}`,
+          role: "agent",
+          content: `Error: ${message}`,
+        },
+      ]);
     },
     [setMessages],
   );
@@ -189,7 +207,10 @@ export function useChatController({
       const cmd = text.split(/\s+/)[0].toLowerCase();
       if (isLocalSlashCommand(cmd)) {
         if (cmd !== "/new" && cmd !== "/clear") {
-          setMessages((prev) => [...prev, { id: `user-${Date.now()}`, role: "user", content: text }]);
+          setMessages((prev) => [
+            ...prev,
+            { id: `user-${Date.now()}`, role: "user", content: text },
+          ]);
         }
         await runLocalCommand(text);
         return;
@@ -274,7 +295,10 @@ export function useChatController({
       slash.resetInputHeight();
       if (cmd.local || ["info"].includes(cmd.category)) {
         if (cmd.name !== "/new" && cmd.name !== "/clear") {
-          setMessages((prev) => [...prev, { id: `user-${Date.now()}`, role: "user", content: cmd.name }]);
+          setMessages((prev) => [
+            ...prev,
+            { id: `user-${Date.now()}`, role: "user", content: cmd.name },
+          ]);
         }
         void runLocalCommand(cmd.name);
         return;
@@ -317,7 +341,17 @@ export function useChatController({
       getResumeSessionId,
       appendFallbackSendError,
     });
-  }, [activity.beginActivityGroup, appendFallbackSendError, getResumeSessionId, messages, perf.reset, profile, runState.beginChatRun, runState.finalizeChatRun, setMessages]);
+  }, [
+    activity.beginActivityGroup,
+    appendFallbackSendError,
+    getResumeSessionId,
+    messages,
+    perf.reset,
+    profile,
+    runState.beginChatRun,
+    runState.finalizeChatRun,
+    setMessages,
+  ]);
 
   const handleDeny = useCallback((): void => {
     setInput("");
@@ -333,20 +367,40 @@ export function useChatController({
       getResumeSessionId,
       appendFallbackSendError,
     });
-  }, [activity.beginActivityGroup, appendFallbackSendError, getResumeSessionId, messages, perf.reset, profile, runState.beginChatRun, runState.finalizeChatRun, setMessages]);
+  }, [
+    activity.beginActivityGroup,
+    appendFallbackSendError,
+    getResumeSessionId,
+    messages,
+    perf.reset,
+    profile,
+    runState.beginChatRun,
+    runState.finalizeChatRun,
+    setMessages,
+  ]);
 
   const contextUsage = useMemo(() => {
     const usedTokens = usage?.lastTotalTokens ?? 0;
-    const contextWindow = usage?.contextWindow ?? modelConfig.currentContextInfo.tokens;
+    const contextWindow =
+      usage?.contextWindow ?? modelConfig.currentContextInfo.tokens;
     if (!usedTokens || !contextWindow) return null;
     return {
       usedTokens,
       contextWindow,
       percent: calculateContextUsage(usedTokens, contextWindow),
-      source: usage?.contextWindowSource ?? modelConfig.currentContextInfo.source,
-      model: usage?.contextModel || modelConfig.currentModel || modelConfig.currentProvider,
+      source:
+        usage?.contextWindowSource ?? modelConfig.currentContextInfo.source,
+      model:
+        usage?.contextModel ||
+        modelConfig.currentModel ||
+        modelConfig.currentProvider,
     };
-  }, [usage, modelConfig.currentContextInfo, modelConfig.currentModel, modelConfig.currentProvider]);
+  }, [
+    usage,
+    modelConfig.currentContextInfo,
+    modelConfig.currentModel,
+    modelConfig.currentProvider,
+  ]);
 
   return {
     input,
@@ -373,19 +427,17 @@ export function useChatController({
     modelGroups: modelConfig.modelGroups,
     showModelPicker: modelConfig.showModelPicker,
     setShowModelPicker: modelConfig.setShowModelPicker,
-    customModelInput: modelConfig.customModelInput,
-    setCustomModelInput: modelConfig.setCustomModelInput,
     displayModel: modelConfig.currentModel
       ? modelConfig.currentModel.split("/").pop() || modelConfig.currentModel
       : modelConfig.currentProvider === "auto"
         ? t("chat.auto")
         : t("chat.noModel"),
     visibleMessages: messages.filter((m) => (m.content || "").trim()),
-    lastMessageIsAgent: messages.length > 0 && messages[messages.length - 1].role === "agent",
+    lastMessageIsAgent:
+      messages.length > 0 && messages[messages.length - 1].role === "agent",
     hermesSessionId,
     loadModelConfig: modelConfig.loadModelConfig,
     selectModel: modelConfig.selectModel,
-    handleCustomModelSubmit: modelConfig.handleCustomModelSubmit,
     handleSend,
     handleQuickAsk,
     handleKeyDown,

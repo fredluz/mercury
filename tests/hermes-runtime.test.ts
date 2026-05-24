@@ -1,5 +1,11 @@
 import { EventEmitter } from "events";
-import { mkdtempSync, readFileSync, rmSync } from "fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import type { ChildProcess } from "child_process";
@@ -34,6 +40,22 @@ function noOpTimers(): Pick<
   };
 }
 
+function profileHomeFor(root: string, profile?: string): string {
+  return profile && profile !== "default"
+    ? join(root, "profiles", profile)
+    : root;
+}
+
+function writeGatewayPid(
+  root: string,
+  profile: string | undefined,
+  pid: number,
+): void {
+  const home = profileHomeFor(root, profile);
+  mkdirSync(home, { recursive: true });
+  writeFileSync(join(home, "gateway.pid"), JSON.stringify({ pid }), "utf-8");
+}
+
 describe("ProfileRuntimeManager contract", () => {
   it("creates profile API config for fresh named profiles", async () => {
     const root = mkdtempSync(join(tmpdir(), "mercury-profile-runtime-"));
@@ -45,13 +67,17 @@ describe("ProfileRuntimeManager contract", () => {
           : root,
     }));
     try {
-      const { ensureApiServerConfig, defaultLocalApiPortForProfile } = await import(
-        "../src/main/hermes/connection"
-      );
+      const { ensureApiServerConfig, defaultLocalApiPortForProfile } =
+        await import("../src/main/hermes/connection");
       ensureApiServerConfig("alpha");
-      const config = readFileSync(join(root, "profiles", "alpha", "config.yaml"), "utf-8");
+      const config = readFileSync(
+        join(root, "profiles", "alpha", "config.yaml"),
+        "utf-8",
+      );
       expect(config).toContain("api_server:");
-      expect(config).toContain(`port: ${defaultLocalApiPortForProfile("alpha")}`);
+      expect(config).toContain(
+        `port: ${defaultLocalApiPortForProfile("alpha")}`,
+      );
       expect(config).toContain('host: "127.0.0.1"');
     } finally {
       vi.doUnmock("../src/main/utils");
@@ -59,21 +85,19 @@ describe("ProfileRuntimeManager contract", () => {
     }
   });
 
-  it("constructs Hermes commands with -p before the subcommand for named profiles", () => {
+  it("constructs Hermes commands with explicit -p before the subcommand", () => {
     expect(buildHermesProfileCommandArgs("hermes", "alpha", ["chat"])).toEqual([
       "hermes",
       "-p",
       "alpha",
       "chat",
     ]);
-    expect(buildHermesProfileCommandArgs("hermes", "default", ["chat"])).toEqual([
-      "hermes",
-      "chat",
-    ]);
-    expect(buildHermesProfileCommandArgs("hermes", undefined, ["gateway"])).toEqual([
-      "hermes",
-      "gateway",
-    ]);
+    expect(
+      buildHermesProfileCommandArgs("hermes", "default", ["chat"]),
+    ).toEqual(["hermes", "-p", "default", "chat"]);
+    expect(
+      buildHermesProfileCommandArgs("hermes", undefined, ["gateway"]),
+    ).toEqual(["hermes", "-p", "default", "gateway"]);
   });
 
   it("fails closed for local profiles without managed API evidence", async () => {
@@ -113,13 +137,14 @@ describe("ProfileRuntimeManager contract", () => {
   });
 
   it("keeps local gateway process and API readiness state keyed by profile", async () => {
+    const root = mkdtempSync(join(tmpdir(), "mercury-profile-runtime-"));
     const child = fakeChildProcess(4_321);
     const spawn = vi.fn().mockReturnValue(child);
     const isApiServerReady = vi.fn().mockResolvedValue(true);
     const manager = new ProfileRuntimeManager({
-      baseHermesHome: "/tmp/hermes",
+      baseHermesHome: root,
       hermesPython: "python",
-      hermesRepo: "/tmp/hermes/hermes-agent",
+      hermesRepo: join(root, "hermes-agent"),
       hermesScript: "hermes",
       spawn,
       readEnv: vi.fn((profile?: string) =>
@@ -129,10 +154,7 @@ describe("ProfileRuntimeManager contract", () => {
       ensureApiServerConfig: vi.fn(),
       isApiServerReady,
       getEnhancedPath: vi.fn().mockReturnValue("/usr/bin"),
-      profileHome: (profile?: string) =>
-        profile && profile !== "default"
-          ? `/tmp/hermes/profiles/${profile}`
-          : "/tmp/hermes",
+      profileHome: (profile?: string) => profileHomeFor(root, profile),
       getLocalApiPort: vi.fn((profile?: string) =>
         profile === "alpha" ? 19_001 : 19_002,
       ),
@@ -150,10 +172,10 @@ describe("ProfileRuntimeManager contract", () => {
       "python",
       ["hermes", "-p", "alpha", "gateway"],
       expect.objectContaining({
-        cwd: "/tmp/hermes/hermes-agent",
+        cwd: join(root, "hermes-agent"),
         detached: true,
         env: expect.objectContaining({
-          HERMES_HOME: "/tmp/hermes",
+          HERMES_HOME: root,
           API_SERVER_ENABLED: "true",
           API_SERVER_HOST: "127.0.0.1",
           API_SERVER_PORT: "19001",
@@ -167,9 +189,11 @@ describe("ProfileRuntimeManager contract", () => {
       selectedProfile: "alpha",
       verified: false,
       status: "unverified",
-      mismatchReason: "Gateway process has started but API readiness has not been verified yet.",
+      mismatchReason:
+        "Gateway process has started but API readiness has not been verified yet.",
     });
 
+    writeGatewayPid(root, "alpha", 4_321);
     const runtime = await manager.resolveRuntime({
       profile: "alpha",
       mode: "local",
@@ -179,7 +203,9 @@ describe("ProfileRuntimeManager contract", () => {
 
     expect(runtime.transport).toBe("api");
     expect(runtime.apiBaseUrl).toBe("http://127.0.0.1:19001");
-    expect(runtime.authHeaders).toEqual({ Authorization: "Bearer alpha-secret" });
+    expect(runtime.authHeaders).toEqual({
+      Authorization: "Bearer alpha-secret",
+    });
     expect(runtime.identity).toMatchObject({
       requestedProfile: "alpha",
       actualProfile: "alpha",
@@ -191,13 +217,13 @@ describe("ProfileRuntimeManager contract", () => {
       startedByMercury: true,
       command: ["hermes", "-p", "alpha", "gateway"],
     });
-    expect(isApiServerReady).toHaveBeenCalledWith(
-      "http://127.0.0.1:19001",
-      { Authorization: "Bearer alpha-secret" },
-    );
+    expect(isApiServerReady).toHaveBeenCalledWith("http://127.0.0.1:19001", {
+      Authorization: "Bearer alpha-secret",
+    });
   });
 
   it("waits briefly for a managed local API runtime to become ready", async () => {
+    const root = mkdtempSync(join(tmpdir(), "mercury-profile-runtime-"));
     const child = fakeChildProcess(4_321);
     const setTimeoutFn = vi.fn((callback: () => void, ms?: number) => {
       if (ms !== 3_000) callback();
@@ -208,9 +234,9 @@ describe("ProfileRuntimeManager contract", () => {
       .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(true);
     const manager = new ProfileRuntimeManager({
-      baseHermesHome: "/tmp/hermes",
+      baseHermesHome: root,
       hermesPython: "python",
-      hermesRepo: "/tmp/hermes/hermes-agent",
+      hermesRepo: join(root, "hermes-agent"),
       hermesScript: "hermes",
       spawn: vi.fn().mockReturnValue(child),
       readEnv: vi.fn().mockReturnValue({}),
@@ -218,10 +244,7 @@ describe("ProfileRuntimeManager contract", () => {
       ensureApiServerConfig: vi.fn(),
       isApiServerReady,
       getEnhancedPath: vi.fn().mockReturnValue("/usr/bin"),
-      profileHome: (profile?: string) =>
-        profile && profile !== "default"
-          ? `/tmp/hermes/profiles/${profile}`
-          : "/tmp/hermes",
+      profileHome: (profile?: string) => profileHomeFor(root, profile),
       getLocalApiPort: vi.fn().mockReturnValue(19_001),
       getLocalApiUrl: vi.fn().mockReturnValue("http://127.0.0.1:19001"),
       apiStartupTimeoutMs: 10,
@@ -231,17 +254,26 @@ describe("ProfileRuntimeManager contract", () => {
     });
 
     manager.startGateway("alpha");
+    writeGatewayPid(root, "alpha", 4_321);
     await expect(
-      manager.resolveRuntime({ profile: "alpha", mode: "local", purpose: "chat" }),
+      manager.resolveRuntime({
+        profile: "alpha",
+        mode: "local",
+        purpose: "chat",
+      }),
     ).resolves.toMatchObject({
       transport: "api",
       apiBaseUrl: "http://127.0.0.1:19001",
-      identity: expect.objectContaining({ verified: true, actualProfile: "alpha" }),
+      identity: expect.objectContaining({
+        verified: true,
+        actualProfile: "alpha",
+      }),
     });
     expect(isApiServerReady).toHaveBeenCalledTimes(2);
   });
 
   it("fails loudly when a managed local API runtime never becomes ready", async () => {
+    const root = mkdtempSync(join(tmpdir(), "mercury-profile-runtime-"));
     const child = fakeChildProcess(4_321);
     const setTimeoutFn = vi.fn((callback: () => void, ms?: number) => {
       if (ms !== 3_000) callback();
@@ -249,9 +281,9 @@ describe("ProfileRuntimeManager contract", () => {
     }) as unknown as typeof setTimeout;
     const isApiServerReady = vi.fn().mockResolvedValue(false);
     const manager = new ProfileRuntimeManager({
-      baseHermesHome: "/tmp/hermes",
+      baseHermesHome: root,
       hermesPython: "python",
-      hermesRepo: "/tmp/hermes/hermes-agent",
+      hermesRepo: join(root, "hermes-agent"),
       hermesScript: "hermes",
       spawn: vi.fn().mockReturnValue(child),
       readEnv: vi.fn().mockReturnValue({}),
@@ -259,10 +291,7 @@ describe("ProfileRuntimeManager contract", () => {
       ensureApiServerConfig: vi.fn(),
       isApiServerReady,
       getEnhancedPath: vi.fn().mockReturnValue("/usr/bin"),
-      profileHome: (profile?: string) =>
-        profile && profile !== "default"
-          ? `/tmp/hermes/profiles/${profile}`
-          : "/tmp/hermes",
+      profileHome: (profile?: string) => profileHomeFor(root, profile),
       getLocalApiPort: vi.fn().mockReturnValue(19_001),
       getLocalApiUrl: vi.fn().mockReturnValue("http://127.0.0.1:19001"),
       apiStartupTimeoutMs: 2,
@@ -272,26 +301,33 @@ describe("ProfileRuntimeManager contract", () => {
     });
 
     manager.startGateway("alpha");
+    writeGatewayPid(root, "alpha", 4_321);
     await expect(
-      manager.resolveRuntime({ profile: "alpha", mode: "local", purpose: "chat" }),
+      manager.resolveRuntime({
+        profile: "alpha",
+        mode: "local",
+        purpose: "chat",
+      }),
     ).rejects.toMatchObject({
       code: "runtime-unavailable",
       identity: expect.objectContaining({
         requestedProfile: "alpha",
         verified: false,
         transport: "api",
-        mismatchReason: "Gateway process is managed by Mercury but the API is not ready yet.",
+        mismatchReason:
+          "Gateway process is managed by Mercury but the API is not ready yet.",
       }),
     });
     expect(isApiServerReady).toHaveBeenCalledTimes(3);
   });
 
   it("reports verified diagnostics and stale invalidation for profile runtimes", async () => {
+    const root = mkdtempSync(join(tmpdir(), "mercury-profile-runtime-"));
     const child = fakeChildProcess(4_321);
     const manager = new ProfileRuntimeManager({
-      baseHermesHome: "/tmp/hermes",
+      baseHermesHome: root,
       hermesPython: "python",
-      hermesRepo: "/tmp/hermes/hermes-agent",
+      hermesRepo: join(root, "hermes-agent"),
       hermesScript: "hermes",
       spawn: vi.fn().mockReturnValue(child),
       readEnv: vi.fn((profile?: string) =>
@@ -301,10 +337,7 @@ describe("ProfileRuntimeManager contract", () => {
       ensureApiServerConfig: vi.fn(),
       isApiServerReady: vi.fn().mockResolvedValue(true),
       getEnhancedPath: vi.fn().mockReturnValue("/usr/bin"),
-      profileHome: (profile?: string) =>
-        profile && profile !== "default"
-          ? `/tmp/hermes/profiles/${profile}`
-          : "/tmp/hermes",
+      profileHome: (profile?: string) => profileHomeFor(root, profile),
       getLocalApiPort: vi.fn().mockReturnValue(19_001),
       getLocalApiUrl: vi.fn().mockReturnValue("http://127.0.0.1:19001"),
       now: () => 1_778_921_600_000,
@@ -312,6 +345,7 @@ describe("ProfileRuntimeManager contract", () => {
     });
 
     manager.startGateway("alpha");
+    writeGatewayPid(root, "alpha", 4_321);
     await manager.resolveRuntime({
       profile: "alpha",
       mode: "local",
@@ -334,7 +368,10 @@ describe("ProfileRuntimeManager contract", () => {
       stale: false,
     });
 
-    manager.markRuntimeStale("alpha", "Config key provider changed for profile runtime.");
+    manager.markRuntimeStale(
+      "alpha",
+      "Config key provider changed for profile runtime.",
+    );
     expect(manager.getRuntimeDiagnostic("alpha")).toMatchObject({
       selectedProfile: "alpha",
       verified: false,
@@ -345,11 +382,12 @@ describe("ProfileRuntimeManager contract", () => {
   });
 
   it("does not clear stale markers until runtime identity is revalidated", async () => {
+    const root = mkdtempSync(join(tmpdir(), "mercury-profile-runtime-"));
     const child = fakeChildProcess(4_321);
     const manager = new ProfileRuntimeManager({
-      baseHermesHome: "/tmp/hermes",
+      baseHermesHome: root,
       hermesPython: "python",
-      hermesRepo: "/tmp/hermes/hermes-agent",
+      hermesRepo: join(root, "hermes-agent"),
       hermesScript: "hermes",
       spawn: vi.fn().mockReturnValue(child),
       readEnv: vi.fn().mockReturnValue({}),
@@ -357,10 +395,7 @@ describe("ProfileRuntimeManager contract", () => {
       ensureApiServerConfig: vi.fn(),
       isApiServerReady: vi.fn().mockResolvedValue(true),
       getEnhancedPath: vi.fn().mockReturnValue("/usr/bin"),
-      profileHome: (profile?: string) =>
-        profile && profile !== "default"
-          ? `/tmp/hermes/profiles/${profile}`
-          : "/tmp/hermes",
+      profileHome: (profile?: string) => profileHomeFor(root, profile),
       getLocalApiPort: vi.fn().mockReturnValue(19_001),
       getLocalApiUrl: vi.fn().mockReturnValue("http://127.0.0.1:19001"),
       now: vi
@@ -372,6 +407,7 @@ describe("ProfileRuntimeManager contract", () => {
     });
 
     manager.startGateway("alpha");
+    writeGatewayPid(root, "alpha", 4_321);
     await manager.resolveRuntime({
       profile: "alpha",
       mode: "local",
@@ -386,7 +422,9 @@ describe("ProfileRuntimeManager contract", () => {
       staleReason: "Profile config changed.",
     });
 
-    await expect(manager.revalidateRuntime("alpha", "chat")).resolves.toBe(true);
+    await expect(manager.revalidateRuntime("alpha", "chat")).resolves.toBe(
+      true,
+    );
     expect(manager.getRuntimeDiagnostic("alpha")).toMatchObject({
       status: "verified",
       stale: false,
@@ -529,7 +567,8 @@ describe("ProfileRuntimeManager contract", () => {
         apiBaseUrl: "http://127.0.0.1:29001",
         remotePort: 19_001,
         configPath: "~/.hermes/profiles/alpha/config.yaml",
-        mismatchReason: "Remote profile config does not declare the tunnel port.",
+        mismatchReason:
+          "Remote profile config does not declare the tunnel port.",
       }),
     });
     expect(manager.getRuntimeDiagnostic("alpha")).toMatchObject({

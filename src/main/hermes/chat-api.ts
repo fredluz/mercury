@@ -2,7 +2,10 @@ import http from "http";
 import https from "https";
 import type { ChatCallbacks, ChatHandle, ProfileRuntimeHandle } from "./types";
 import { resolveChatRuntimeModel } from "./chat-model";
-import { assertVerifiedApiRuntimeHandle, type VerifiedApiRuntimeHandle } from "./runtime/api-runtime";
+import {
+  assertVerifiedApiRuntimeHandle,
+  type VerifiedApiRuntimeHandle,
+} from "./runtime/api-runtime";
 import {
   normalizeHermesStreamEvent,
   splitLegacyToolProgressContent,
@@ -16,9 +19,107 @@ export function sendMessageViaApi(
   history: Array<{ role: string; content: string }> | undefined,
   runtime: ProfileRuntimeHandle,
 ): Promise<ChatHandle> {
-  const expectedProfile = profile?.trim() || runtime?.request.profile || "default";
+  const expectedProfile =
+    profile?.trim() || runtime?.request.profile || "default";
   assertVerifiedApiRuntimeHandle(runtime, expectedProfile, "chat");
-  return sendMessageViaVerifiedApi(message, cb, expectedProfile, _resumeSessionId, history, runtime);
+  return sendMessageViaVerifiedApi(
+    message,
+    cb,
+    expectedProfile,
+    _resumeSessionId,
+    history,
+    runtime,
+  );
+}
+
+export interface ChatCompletionProbeResult {
+  success: boolean;
+  error?: string;
+}
+
+export async function probeChatCompletionViaApi(
+  profile: string | undefined,
+  runtime: ProfileRuntimeHandle,
+): Promise<ChatCompletionProbeResult> {
+  const expectedProfile =
+    profile?.trim() || runtime.request.profile || "default";
+  assertVerifiedApiRuntimeHandle(runtime, expectedProfile, "chat");
+  const mc = await resolveChatRuntimeModel(expectedProfile);
+  const provider = mc.provider?.trim();
+  const model = mc.model?.trim();
+  if (!provider || provider === "auto" || !model) {
+    return {
+      success: false,
+      error:
+        "No inference provider configured. Choose a Chat model and provider before starting chat.",
+    };
+  }
+
+  return new Promise((resolve) => {
+    const probeUrl = `${runtime.apiBaseUrl}/v1/chat/completions`;
+    const probeMod = probeUrl.startsWith("https") ? https : http;
+    const probeReq = probeMod.request(
+      probeUrl,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(runtime.authHeaders ?? {}),
+        },
+        timeout: 20_000,
+      },
+      (res) => {
+        let raw = "";
+        res.on("data", (d) => {
+          raw += d.toString();
+        });
+        res.on("end", () => {
+          const error = parseChatError(raw);
+          if (res.statusCode && res.statusCode >= 400) {
+            resolve({
+              success: false,
+              error: error || `API error ${res.statusCode}`,
+            });
+            return;
+          }
+          resolve(error ? { success: false, error } : { success: true });
+        });
+      },
+    );
+    probeReq.on("error", (error) => {
+      resolve({
+        success: false,
+        error: `API request failed: ${error.message}`,
+      });
+    });
+    probeReq.on("timeout", () => {
+      probeReq.destroy();
+      resolve({ success: false, error: "API readiness probe timed out." });
+    });
+    probeReq.write(
+      JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "user",
+            content: "Mercury readiness check. Reply OK.",
+          },
+        ],
+        stream: false,
+        max_tokens: 1,
+      }),
+    );
+    probeReq.end();
+  });
+}
+
+function parseChatError(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed.error?.message || "";
+  } catch {
+    return "";
+  }
 }
 
 async function sendMessageViaVerifiedApi(
@@ -176,7 +277,9 @@ async function sendMessageViaVerifiedApi(
       }
 
       if (delta?.content) {
-        const { prose, progressLabels } = splitLegacyToolProgressContent(delta.content);
+        const { prose, progressLabels } = splitLegacyToolProgressContent(
+          delta.content,
+        );
         if (progressLabels.length > 0) hasStreamSignal = true;
         for (const label of progressLabels) {
           cb.onToolProgress?.(label);

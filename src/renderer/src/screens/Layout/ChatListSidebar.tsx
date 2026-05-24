@@ -28,6 +28,7 @@ interface ChatListSidebarProps {
     title?: string | null,
     profile?: string,
   ) => Promise<void> | void;
+  onOpenNewChatPicker: () => void;
   onStartNewChat: (profile: string) => Promise<void> | void;
 }
 
@@ -120,6 +121,7 @@ function ChatListSidebar({
   refreshToken,
   onBack,
   onResumeSession,
+  onOpenNewChatPicker,
   onStartNewChat,
 }: ChatListSidebarProps): React.JSX.Element {
   const { t } = useI18n();
@@ -128,7 +130,6 @@ function ChatListSidebar({
     fallbackProfile(activeProfile),
   ]);
   const [profilesError, setProfilesError] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [startingProfile, setStartingProfile] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
   const { sessions, loading, error, reload } = useCachedSessions({
@@ -183,7 +184,6 @@ function ChatListSidebar({
     setStartError(null);
     try {
       await onStartNewChat(cleanProfile);
-      setPickerOpen(false);
     } catch {
       setStartError(t("chat.sidebarStartFailed"));
     } finally {
@@ -203,18 +203,27 @@ function ChatListSidebar({
       <button
         key={sessionRowKey(session.id, session.profile)}
         className={`chat-sidebar-row ${active ? "chat-sidebar-row--active" : ""}`}
-        onClick={() => onResumeSession(session.id, session.title, session.profile)}
+        onClick={() =>
+          onResumeSession(session.id, session.title, session.profile)
+        }
       >
         <span className="chat-sidebar-row-title">{title}</span>
         <span className="chat-sidebar-row-meta">
           {formatSessionFullDate(session.startedAt)}
         </span>
         <span className="chat-sidebar-row-tags">
-          <span>{formatSessionProfile(session.profile, t("chat.sidebarUnknownAgent"))}</span>
+          <span>
+            {formatSessionProfile(
+              session.profile,
+              t("chat.sidebarUnknownAgent"),
+            )}
+          </span>
           <span>
             {session.messageCount} {session.messageCount === 1 ? "msg" : "msgs"}
           </span>
-          {session.model ? <span>{formatSessionModel(session.model)}</span> : null}
+          {session.model ? (
+            <span>{formatSessionModel(session.model)}</span>
+          ) : null}
         </span>
       </button>
     );
@@ -239,7 +248,9 @@ function ChatListSidebar({
       return (
         <div className="chat-sidebar-error">
           <p>{t("chat.sidebarLoadError")}</p>
-          <button onClick={() => void reload()}>{t("chat.sidebarRetry")}</button>
+          <button onClick={() => void reload()}>
+            {t("chat.sidebarRetry")}
+          </button>
         </div>
       );
     }
@@ -253,7 +264,9 @@ function ChatListSidebar({
           </div>
         );
       }
-      return <div className="chat-sidebar-list">{sortedSessions.map(renderRow)}</div>;
+      return (
+        <div className="chat-sidebar-list">{sortedSessions.map(renderRow)}</div>
+      );
     }
 
     if (agentGroups.length === 0) {
@@ -313,8 +326,8 @@ function ChatListSidebar({
         <button
           className="chat-sidebar-new"
           onClick={() => {
-            setPickerOpen((value) => !value);
             setStartError(null);
+            onOpenNewChatPicker();
           }}
         >
           <Plus size={15} />
@@ -322,11 +335,8 @@ function ChatListSidebar({
         </button>
       </div>
 
-      {pickerOpen ? (
+      {profilesError || startError ? (
         <div className="chat-sidebar-profile-picker">
-          <div className="chat-sidebar-profile-title">
-            {t("chat.sidebarPickAgent")}
-          </div>
           {profilesError ? (
             <div className="chat-sidebar-profile-warning">
               {t("chat.sidebarProfilesUnavailable")}
@@ -335,26 +345,6 @@ function ChatListSidebar({
           {startError ? (
             <div className="chat-sidebar-profile-warning">{startError}</div>
           ) : null}
-          <div className="chat-sidebar-profile-options">
-            {sortedProfiles.map((profile) => {
-              const name = profile.name.trim() || "default";
-              return (
-                <button
-                  key={name}
-                  className="chat-sidebar-profile-option"
-                  onClick={() => void startNewChat(name)}
-                  disabled={startingProfile !== null}
-                >
-                  <span>{name}</span>
-                  {startingProfile === name ? (
-                    <span>{t("common.loading")}</span>
-                  ) : profile.model ? (
-                    <span>{formatSessionModel(profile.model)}</span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
         </div>
       ) : null}
 

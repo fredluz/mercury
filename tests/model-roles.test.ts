@@ -1,4 +1,10 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,16 +35,19 @@ describe("model role taxonomy", () => {
       "design",
       "image",
     ]);
-    expect(getModelRoleFallbackChain("explore")).toEqual(["explore", "code", "chat"]);
+    expect(getModelRoleFallbackChain("explore")).toEqual([
+      "explore",
+      "code",
+      "chat",
+    ]);
     expect(getModelRoleFallbackChain("image")).toEqual(["image"]);
   });
 
   it("defaults saved model capabilities to text without inferring image generation", () => {
     expect(normalizeModelCapabilities(undefined)).toEqual(["text"]);
-    expect(normalizeModelCapabilities(["image_input", "codex_image_gen", "bad"])).toEqual([
-      "image_input",
-      "codex_image_gen",
-    ]);
+    expect(
+      normalizeModelCapabilities(["image_input", "codex_image_gen", "bad"]),
+    ).toEqual(["image_input", "codex_image_gen"]);
   });
 });
 
@@ -82,7 +91,11 @@ describe("local model role storage and resolution", () => {
   });
 
   it("resolves deleted saved model references from their snapshot", async () => {
-    writeFileSync(join(home, "models.json"), JSON.stringify([], null, 2), "utf-8");
+    writeFileSync(
+      join(home, "models.json"),
+      JSON.stringify([], null, 2),
+      "utf-8",
+    );
     const roles = await loadModelRoles(home);
     roles.writeProfileModelRoleOverride("review", {
       modelId: "missing-id",
@@ -184,6 +197,38 @@ describe("local model role storage and resolution", () => {
       { provider: "openai", model: "gpt-4.1", baseUrl: "" },
       "alpha",
     );
-    expect(roles.readModelRolesFile("alpha").defaults.research?.provider).toBe("openai");
+    expect(roles.readModelRolesFile("alpha").defaults.research?.provider).toBe(
+      "openai",
+    );
+  });
+
+  it("keeps Chat role selection separate from profile runtime config", async () => {
+    const profileHome = join(home, "profiles", "alpha");
+    mkdirSync(profileHome, { recursive: true });
+    const originalConfig =
+      'platforms:\n  api_server:\n    enabled: true\n    extra:\n      port: 21992\n      host: "127.0.0.1"\n';
+    writeFileSync(join(profileHome, "config.yaml"), originalConfig, "utf-8");
+
+    await loadModelRoles(home);
+    const service = await import("../src/main/services/model-roles-service");
+    await service.setProfileModelRoleOverrideForConnection(
+      "chat",
+      {
+        provider: "openai-codex",
+        model: "gpt-5.5",
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+      },
+      "alpha",
+    );
+
+    expect(
+      service.readLocalModelRolesForTests("alpha").defaults.chat,
+    ).toMatchObject({
+      provider: "openai-codex",
+      model: "gpt-5.5",
+    });
+    expect(readFileSync(join(profileHome, "config.yaml"), "utf-8")).toBe(
+      originalConfig,
+    );
   });
 });

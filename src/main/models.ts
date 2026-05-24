@@ -3,9 +3,11 @@ import { join } from "path";
 import { randomUUID } from "crypto";
 import { HERMES_HOME } from "./installer";
 import { safeWriteFile } from "./utils";
-import DEFAULT_MODELS from "./default-models";
 import { inferContextWindow } from "../shared/chat-metadata";
-import { normalizeModelCapabilities, type ModelCapability } from "../shared/model-roles";
+import {
+  normalizeModelCapabilities,
+  type ModelCapability,
+} from "../shared/model-roles";
 
 const MODELS_FILE = join(HERMES_HOME, "models.json");
 
@@ -21,7 +23,10 @@ export interface SavedModel {
 }
 
 export type SavedModelUpdateFields = Partial<
-  Pick<SavedModel, "name" | "provider" | "model" | "baseUrl" | "contextWindow" | "capabilities">
+  Pick<
+    SavedModel,
+    "name" | "provider" | "model" | "baseUrl" | "contextWindow" | "capabilities"
+  >
 >;
 
 export function normalizeSavedModel(model: SavedModel): SavedModel {
@@ -55,26 +60,8 @@ function writeModels(models: SavedModel[]): void {
   safeWriteFile(MODELS_FILE, JSON.stringify(models, null, 2));
 }
 
-function seedDefaults(): SavedModel[] {
-  const models: SavedModel[] = DEFAULT_MODELS.map((m) => ({
-    id: randomUUID(),
-    name: m.name,
-    provider: m.provider,
-    model: m.model,
-    baseUrl: m.baseUrl,
-    createdAt: Date.now(),
-    contextWindow: m.contextWindow,
-    capabilities: normalizeModelCapabilities(m.capabilities),
-  }));
-  writeModels(models);
-  return models;
-}
-
 export function listModels(): SavedModel[] {
-  if (!existsSync(MODELS_FILE)) {
-    return seedDefaults();
-  }
-  return readModels();
+  return readModels().map(normalizeModel);
 }
 
 export function addModel(
@@ -122,7 +109,8 @@ export function updateModel(
   const models = readModels();
   const idx = models.findIndex((m) => m.id === id);
   if (idx === -1) return false;
-  const modelChanged = fields.provider !== undefined || fields.model !== undefined;
+  const modelChanged =
+    fields.provider !== undefined || fields.model !== undefined;
   const contextWindowProvided = Object.prototype.hasOwnProperty.call(
     fields,
     "contextWindow",

@@ -32,17 +32,41 @@ async function readProfileConfig(profilePath: string): Promise<{
   const configFile = join(profilePath, "config.yaml");
   try {
     const content = await fs.readFile(configFile, "utf-8");
+    const nested = parseModelConfigBlock(content);
     const modelMatch = content.match(/^\s*default:\s*["']?([^"'\n#]+)["']?/m);
     const providerMatch = content.match(
       /^\s*provider:\s*["']?([^"'\n#]+)["']?/m,
     );
     return {
-      model: modelMatch ? modelMatch[1].trim() : "",
-      provider: providerMatch ? providerMatch[1].trim() : "auto",
+      model: nested.model ?? (modelMatch ? modelMatch[1].trim() : ""),
+      provider:
+        nested.provider ?? (providerMatch ? providerMatch[1].trim() : "auto"),
     };
   } catch {
     return { model: "", provider: "" };
   }
+}
+
+function parseModelConfigBlock(content: string): {
+  model?: string;
+  provider?: string;
+} {
+  const result: { model?: string; provider?: string } = {};
+  const lines = content.split("\n");
+  const modelBlockIndex = lines.findIndex((line) =>
+    /^model:\s*(?:#.*)?$/.test(line),
+  );
+  if (modelBlockIndex < 0) return result;
+
+  for (let i = modelBlockIndex + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\S/.test(line) && line.trim() !== "") break;
+    const match = line.match(/^\s+(default|provider):\s*["']?([^"'\n#]*)["']?/);
+    if (!match) continue;
+    if (match[1] === "default") result.model = match[2].trim();
+    if (match[1] === "provider") result.provider = match[2].trim();
+  }
+  return result;
 }
 
 async function countSkills(profilePath: string): Promise<number> {
@@ -75,13 +99,25 @@ async function isGatewayRunning(profilePath: string): Promise<boolean> {
   const pidFile = join(profilePath, "gateway.pid");
   try {
     const raw = await fs.readFile(pidFile, "utf-8");
-    const pid = parseInt(raw.trim(), 10);
+    const pid = parseGatewayPid(raw);
     if (isNaN(pid)) return false;
     process.kill(pid, 0);
     return true;
   } catch {
     return false;
   }
+}
+
+function parseGatewayPid(raw: string): number {
+  const trimmed = raw.trim();
+  try {
+    const parsed = JSON.parse(trimmed) as { pid?: unknown };
+    if (typeof parsed.pid === "number") return parsed.pid;
+    if (typeof parsed.pid === "string") return parseInt(parsed.pid, 10);
+  } catch {
+    // plain pid file
+  }
+  return parseInt(trimmed, 10);
 }
 
 async function getActiveProfileName(): Promise<string> {
@@ -108,14 +144,19 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
   const profiles: ProfileInfo[] = [];
 
   // Default profile is HERMES_HOME itself
-  const [defaultConfig, defaultHasEnv, defaultHasSoul, defaultSkills, defaultGw] =
-    await Promise.all([
-      readProfileConfig(HERMES_HOME),
-      fileExists(join(HERMES_HOME, ".env")),
-      fileExists(join(HERMES_HOME, "SOUL.md")),
-      countSkills(HERMES_HOME),
-      isGatewayRunning(HERMES_HOME),
-    ]);
+  const [
+    defaultConfig,
+    defaultHasEnv,
+    defaultHasSoul,
+    defaultSkills,
+    defaultGw,
+  ] = await Promise.all([
+    readProfileConfig(HERMES_HOME),
+    fileExists(join(HERMES_HOME, ".env")),
+    fileExists(join(HERMES_HOME, "SOUL.md")),
+    countSkills(HERMES_HOME),
+    isGatewayRunning(HERMES_HOME),
+  ]);
 
   profiles.push({
     name: "default",

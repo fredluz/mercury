@@ -193,7 +193,9 @@ function parseNestedConfigValue(content: string, key: string): string | null {
   let inSection = false;
   for (const line of lines) {
     if (!inSection) {
-      inSection = new RegExp(`^${escapeRegex(section)}:\\s*(?:#.*)?$`).test(line.trimEnd());
+      inSection = new RegExp(`^${escapeRegex(section)}:\\s*(?:#.*)?$`).test(
+        line.trimEnd(),
+      );
       continue;
     }
     if (/^\S/.test(line) && line.trim() !== "") return null;
@@ -210,7 +212,9 @@ export function getConfigValue(key: string, profile?: string): string | null {
   if (!existsSync(configFile)) return null;
 
   const content = readFileSync(configFile, "utf-8");
-  return parseScalarConfigValue(content, key) ?? parseNestedConfigValue(content, key);
+  return (
+    parseScalarConfigValue(content, key) ?? parseNestedConfigValue(content, key)
+  );
 }
 
 export function setConfigValue(
@@ -240,7 +244,11 @@ export function getModelConfig(profile?: string): {
   baseUrl: string;
 } {
   const cacheKey = `mc:${profile || "default"}`;
-  const cached = getCached<{ provider: string; model: string; baseUrl: string }>(cacheKey);
+  const cached = getCached<{
+    provider: string;
+    model: string;
+    baseUrl: string;
+  }>(cacheKey);
   if (cached) return cached;
 
   const { configFile } = profilePaths(profile);
@@ -249,14 +257,19 @@ export function getModelConfig(profile?: string): {
 
   const content = readFileSync(configFile, "utf-8");
 
+  const nested = parseModelConfigBlock(content);
   const providerMatch = content.match(/^\s*provider:\s*["']?([^"'\n#]+)["']?/m);
   const modelMatch = content.match(/^\s*default:\s*["']?([^"'\n#]+)["']?/m);
   const baseUrlMatch = content.match(/^\s*base_url:\s*["']?([^"'\n#]+)["']?/m);
 
   const result = {
-    provider: providerMatch ? providerMatch[1].trim() : defaults.provider,
-    model: modelMatch ? modelMatch[1].trim() : defaults.model,
-    baseUrl: baseUrlMatch ? baseUrlMatch[1].trim() : defaults.baseUrl,
+    provider:
+      nested.provider ??
+      (providerMatch ? providerMatch[1].trim() : defaults.provider),
+    model: nested.model ?? (modelMatch ? modelMatch[1].trim() : defaults.model),
+    baseUrl:
+      nested.baseUrl ??
+      (baseUrlMatch ? baseUrlMatch[1].trim() : defaults.baseUrl),
   };
 
   setCache(cacheKey, result);
@@ -270,25 +283,19 @@ export function setModelConfig(
   profile?: string,
 ): void {
   invalidateCache(`mc:${profile || "default"}`);
-  const { configFile } = profilePaths(profile);
-  if (!existsSync(configFile)) return;
+  const { configFile, home } = profilePaths(profile);
+  if (!existsSync(configFile)) {
+    mkdirSync(home, { recursive: true });
+    safeWriteFile(
+      configFile,
+      upsertModelConfigBlock("", provider, model, baseUrl),
+    );
+    return;
+  }
 
   let content = readFileSync(configFile, "utf-8");
 
-  const providerRegex = /^(\s*provider:\s*)["']?[^"'\n#]*["']?/m;
-  if (providerRegex.test(content)) {
-    content = content.replace(providerRegex, `$1"${provider}"`);
-  }
-
-  const modelRegex = /^(\s*default:\s*)["']?[^"'\n#]*["']?/m;
-  if (modelRegex.test(content)) {
-    content = content.replace(modelRegex, `$1"${model}"`);
-  }
-
-  const baseUrlRegex = /^(\s*base_url:\s*)["']?[^"'\n#]*["']?/m;
-  if (baseUrlRegex.test(content)) {
-    content = content.replace(baseUrlRegex, `$1"${baseUrl}"`);
-  }
+  content = upsertModelConfigBlock(content, provider, model, baseUrl);
 
   // Disable smart_model_routing
   const lines = content.split("\n");
@@ -312,13 +319,119 @@ export function setModelConfig(
   safeWriteFile(configFile, content);
 }
 
+function parseModelConfigBlock(content: string): {
+  provider?: string;
+  model?: string;
+  baseUrl?: string;
+} {
+  const result: { provider?: string; model?: string; baseUrl?: string } = {};
+  const lines = content.split("\n");
+  const modelBlockIndex = lines.findIndex((line) =>
+    /^model:\s*(?:#.*)?$/.test(line),
+  );
+  if (modelBlockIndex < 0) return result;
+
+  for (let i = modelBlockIndex + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\S/.test(line) && line.trim() !== "") break;
+    const match = line.match(
+      /^\s+(default|provider|base_url):\s*["']?([^"'\n#]*)["']?/,
+    );
+    if (!match) continue;
+    const value = match[2].trim();
+    if (match[1] === "default") result.model = value;
+    if (match[1] === "provider") result.provider = value;
+    if (match[1] === "base_url") result.baseUrl = value;
+  }
+  return result;
+}
+
+function upsertModelConfigBlock(
+  content: string,
+  provider: string,
+  model: string,
+  baseUrl: string,
+): string {
+  const lines = content.split("\n");
+  const modelBlockIndex = lines.findIndex((line) =>
+    /^model:\s*(?:#.*)?$/.test(line),
+  );
+
+  if (modelBlockIndex >= 0) {
+    let blockEnd = lines.length;
+    for (let i = modelBlockIndex + 1; i < lines.length; i++) {
+      if (/^\S/.test(lines[i]) && lines[i].trim() !== "") {
+        blockEnd = i;
+        break;
+      }
+    }
+
+    const upsertChild = (key: string, value: string): void => {
+      const existingIndex = lines.findIndex(
+        (line, index) =>
+          index > modelBlockIndex &&
+          index < blockEnd &&
+          new RegExp(`^\\s+${escapeRegex(key)}:\\s*`).test(line),
+      );
+      const rendered = `  ${key}: "${value}"`;
+      if (existingIndex >= 0) {
+        lines[existingIndex] = rendered;
+        return;
+      }
+      lines.splice(blockEnd, 0, rendered);
+      blockEnd += 1;
+    };
+
+    upsertChild("default", model);
+    upsertChild("provider", provider);
+    upsertChild("base_url", baseUrl);
+    return lines.join("\n");
+  }
+
+  const providerRegex = /^(\s*provider:\s*)["']?[^"'\n#]*["']?/m;
+  const modelRegex = /^(\s*default:\s*)["']?[^"'\n#]*["']?/m;
+  const baseUrlRegex = /^(\s*base_url:\s*)["']?[^"'\n#]*["']?/m;
+  if (
+    providerRegex.test(content) ||
+    modelRegex.test(content) ||
+    baseUrlRegex.test(content)
+  ) {
+    let next = content;
+    next = providerRegex.test(next)
+      ? next.replace(providerRegex, `$1"${provider}"`)
+      : `provider: "${provider}"\n${next}`;
+    next = modelRegex.test(next)
+      ? next.replace(modelRegex, `$1"${model}"`)
+      : `default: "${model}"\n${next}`;
+    next = baseUrlRegex.test(next)
+      ? next.replace(baseUrlRegex, `$1"${baseUrl}"`)
+      : `base_url: "${baseUrl}"\n${next}`;
+    return next;
+  }
+
+  const modelBlock = [
+    "model:",
+    `  default: "${model}"`,
+    `  provider: "${provider}"`,
+    `  base_url: "${baseUrl}"`,
+    "",
+  ].join("\n");
+  return content.trim() ? `${modelBlock}${content}` : modelBlock.trimEnd();
+}
+
 export function getHermesHome(profile?: string): string {
   return profilePaths(profile).home;
 }
 
 // ── Platform enabled/disabled in config.yaml ────────────
 
-const SUPPORTED_PLATFORMS = ["telegram", "discord", "slack", "whatsapp", "signal"];
+const SUPPORTED_PLATFORMS = [
+  "telegram",
+  "discord",
+  "slack",
+  "whatsapp",
+  "signal",
+];
 
 export function getPlatformEnabled(profile?: string): Record<string, boolean> {
   const { configFile } = profilePaths(profile);

@@ -42,6 +42,7 @@ export interface ChatProps {
   onOpenTraceRun?: (runId: string) => void;
   onViewSchedules?: () => void;
   onNewChat?: () => void;
+  onOpenProviders?: () => void;
 }
 
 function Chat({
@@ -61,6 +62,7 @@ function Chat({
   onOpenTraceRun,
   onViewSchedules,
   onNewChat,
+  onOpenProviders,
 }: ChatProps): React.JSX.Element {
   const { t } = useI18n();
   const chat = useChatController({
@@ -209,13 +211,11 @@ function Chat({
           modelGroups={chat.modelGroups}
           currentModel={chat.currentModel}
           currentProvider={chat.currentProvider}
-          customModelInput={chat.customModelInput}
           showModelPicker={chat.showModelPicker}
           setShowModelPicker={chat.setShowModelPicker}
-          setCustomModelInput={chat.setCustomModelInput}
           loadModelConfig={chat.loadModelConfig}
           selectModel={chat.selectModel}
-          handleCustomModelSubmit={chat.handleCustomModelSubmit}
+          onOpenProviders={onOpenProviders}
           t={t}
         />
       </div>

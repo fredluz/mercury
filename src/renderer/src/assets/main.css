@@ -11,6 +11,7 @@
 @import "./styles/setup.css";
 @import "./styles/layout.css";
 @import "./styles/chat.css";
+@import "./styles/chat-agent-picker.css";
 @import "./styles/chat-rich-content.css";
 @import "./styles/chat-composer.css";
 @import "./styles/settings.css";

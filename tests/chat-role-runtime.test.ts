@@ -1,11 +1,13 @@
 import { EventEmitter } from "events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-async function loadChatModelHelper(options: {
-  resolved?: unknown;
-  resolverError?: Error;
-  legacy?: { provider: string; model: string; baseUrl: string };
-} = {}) {
+async function loadChatModelHelper(
+  options: {
+    resolved?: unknown;
+    resolverError?: Error;
+    legacy?: { provider: string; model: string; baseUrl: string };
+  } = {},
+) {
   vi.resetModules();
   const resolveModelForRoleForConnection = vi.fn(async () => {
     if (options.resolverError) throw options.resolverError;
@@ -14,15 +16,24 @@ async function loadChatModelHelper(options: {
   vi.doMock("../src/main/services/model-roles-service", () => ({
     resolveModelForRoleForConnection,
   }));
-  const getModelConfig = vi.fn(() =>
-    options.legacy ?? { provider: "legacy", model: "legacy-model", baseUrl: "" },
+  const getModelConfig = vi.fn(
+    () =>
+      options.legacy ?? {
+        provider: "legacy",
+        model: "legacy-model",
+        baseUrl: "",
+      },
   );
   vi.doMock("../src/main/config", () => ({ getModelConfig }));
   const module = await import("../src/main/hermes/chat-model");
   return { ...module, resolveModelForRoleForConnection, getModelConfig };
 }
 
-async function loadChatApiWithModel(model: { provider: string; model: string; baseUrl: string }) {
+async function loadChatApiWithModel(model: {
+  provider: string;
+  model: string;
+  baseUrl: string;
+}) {
   vi.resetModules();
   const bodies: unknown[] = [];
   const request = vi.fn(() => {
@@ -41,44 +52,68 @@ async function loadChatApiWithModel(model: { provider: string; model: string; ba
   vi.doMock("http", () => ({ default: { request }, request }));
   vi.doMock("https", () => ({ default: { request }, request }));
   vi.doMock("../src/main/hermes/chat-model", () => ({
-    resolveChatRuntimeModel: vi.fn().mockResolvedValue({ ...model, source: "profile-override" }),
+    resolveChatRuntimeModel: vi
+      .fn()
+      .mockResolvedValue({ ...model, source: "profile-override" }),
   }));
   vi.doMock("../src/main/hermes/trace-events", () => ({
     normalizeHermesStreamEvent: () => [],
-    splitLegacyToolProgressContent: (content: string) => ({ prose: content, progressLabels: [] }),
+    splitLegacyToolProgressContent: (content: string) => ({
+      prose: content,
+      progressLabels: [],
+    }),
   }));
   const module = await import("../src/main/hermes/chat-api");
   return { ...module, request, bodies };
 }
 
-async function loadTitleWithModel(model: { provider: string; model: string; baseUrl: string }) {
+async function loadTitleWithModel(model: {
+  provider: string;
+  model: string;
+  baseUrl: string;
+}) {
   vi.resetModules();
   const bodies: unknown[] = [];
-  const request = vi.fn((_url: string, _options: unknown, callback: (res: EventEmitter & { statusCode: number }) => void) => {
-    const req = new EventEmitter() as EventEmitter & {
-      write: ReturnType<typeof vi.fn>;
-      end: ReturnType<typeof vi.fn>;
-      destroy: ReturnType<typeof vi.fn>;
-    };
-    req.write = vi.fn((body: string) => {
-      bodies.push(JSON.parse(body));
-    });
-    req.destroy = vi.fn();
-    req.end = vi.fn(() => {
-      const res = new EventEmitter() as EventEmitter & { statusCode: number };
-      res.statusCode = 200;
-      callback(res);
-      queueMicrotask(() => {
-        res.emit("data", Buffer.from(JSON.stringify({ choices: [{ message: { content: "Role Title" } }] })));
-        res.emit("end");
+  const request = vi.fn(
+    (
+      _url: string,
+      _options: unknown,
+      callback: (res: EventEmitter & { statusCode: number }) => void,
+    ) => {
+      const req = new EventEmitter() as EventEmitter & {
+        write: ReturnType<typeof vi.fn>;
+        end: ReturnType<typeof vi.fn>;
+        destroy: ReturnType<typeof vi.fn>;
+      };
+      req.write = vi.fn((body: string) => {
+        bodies.push(JSON.parse(body));
       });
-    });
-    return req;
-  });
+      req.destroy = vi.fn();
+      req.end = vi.fn(() => {
+        const res = new EventEmitter() as EventEmitter & { statusCode: number };
+        res.statusCode = 200;
+        callback(res);
+        queueMicrotask(() => {
+          res.emit(
+            "data",
+            Buffer.from(
+              JSON.stringify({
+                choices: [{ message: { content: "Role Title" } }],
+              }),
+            ),
+          );
+          res.emit("end");
+        });
+      });
+      return req;
+    },
+  );
   vi.doMock("http", () => ({ default: { request }, request }));
   vi.doMock("https", () => ({ default: { request }, request }));
   vi.doMock("../src/main/hermes/chat-model", () => ({
-    resolveChatRuntimeModel: vi.fn().mockResolvedValue({ ...model, source: "profile-override" }),
+    resolveChatRuntimeModel: vi
+      .fn()
+      .mockResolvedValue({ ...model, source: "profile-override" }),
   }));
   vi.doMock("../src/main/session-cache", () => ({
     generateTitle: (message: string) => `Fallback: ${message}`,
@@ -102,21 +137,24 @@ beforeEach(() => {
 
 describe("Chat role runtime model resolution", () => {
   it("uses the resolved Chat role when available", async () => {
-    const { resolveChatRuntimeModel, resolveModelForRoleForConnection, getModelConfig } =
-      await loadChatModelHelper({
-        resolved: {
-          role: "chat",
-          kind: "text",
-          ok: true,
-          source: "profile-override",
-          provider: "openai",
-          model: "gpt-4o",
-          baseUrl: "",
-          contextWindow: 128_000,
-          capabilities: ["text"],
-          modelId: "saved-chat",
-        },
-      });
+    const {
+      resolveChatRuntimeModel,
+      resolveModelForRoleForConnection,
+      getModelConfig,
+    } = await loadChatModelHelper({
+      resolved: {
+        role: "chat",
+        kind: "text",
+        ok: true,
+        source: "profile-override",
+        provider: "openai",
+        model: "gpt-4o",
+        baseUrl: "",
+        contextWindow: 128_000,
+        capabilities: ["text"],
+        modelId: "saved-chat",
+      },
+    });
 
     await expect(resolveChatRuntimeModel("work")).resolves.toMatchObject({
       provider: "openai",
@@ -124,15 +162,23 @@ describe("Chat role runtime model resolution", () => {
       source: "profile-override",
       modelId: "saved-chat",
     });
-    expect(resolveModelForRoleForConnection).toHaveBeenCalledWith("chat", "work");
+    expect(resolveModelForRoleForConnection).toHaveBeenCalledWith(
+      "chat",
+      "work",
+    );
     expect(getModelConfig).not.toHaveBeenCalled();
   });
 
   it("falls back to legacy model config if Chat role resolution fails", async () => {
-    const { resolveChatRuntimeModel, getModelConfig } = await loadChatModelHelper({
-      resolverError: new Error("role storage unavailable"),
-      legacy: { provider: "legacy-provider", model: "legacy-model", baseUrl: "https://legacy.test" },
-    });
+    const { resolveChatRuntimeModel, getModelConfig } =
+      await loadChatModelHelper({
+        resolverError: new Error("role storage unavailable"),
+        legacy: {
+          provider: "legacy-provider",
+          model: "legacy-model",
+          baseUrl: "https://legacy.test",
+        },
+      });
 
     await expect(resolveChatRuntimeModel("work")).resolves.toMatchObject({
       provider: "legacy-provider",
@@ -158,7 +204,16 @@ describe("Chat role runtime model resolution", () => {
       undefined,
       {
         request: { profile: "work", mode: "local", purpose: "chat" },
-        identity: { requestedProfile: "work", actualProfile: "work", verified: true, verificationSource: "managed-process", mode: "local", transport: "api", startedByMercury: true, verifiedAt: 1 },
+        identity: {
+          requestedProfile: "work",
+          actualProfile: "work",
+          verified: true,
+          verificationSource: "managed-process",
+          mode: "local",
+          transport: "api",
+          startedByMercury: true,
+          verifiedAt: 1,
+        },
         transport: "api",
         apiBaseUrl: "http://127.0.0.1:19001",
       },
@@ -176,16 +231,30 @@ describe("Chat role runtime model resolution", () => {
 
     await expect(
       generateChatTitle(
-        { profile: "work", messages: [{ role: "user", content: "Summarize this" }] },
+        {
+          profile: "work",
+          messages: [{ role: "user", content: "Summarize this" }],
+        },
         {
           request: { profile: "work", mode: "local", purpose: "title" },
-          identity: { requestedProfile: "work", actualProfile: "work", verified: true, verificationSource: "managed-process", mode: "local", transport: "api", startedByMercury: true, verifiedAt: 1 },
+          identity: {
+            requestedProfile: "work",
+            actualProfile: "work",
+            verified: true,
+            verificationSource: "managed-process",
+            mode: "local",
+            transport: "api",
+            startedByMercury: true,
+            verifiedAt: 1,
+          },
           transport: "api",
           apiBaseUrl: "http://127.0.0.1:19001",
         },
       ),
     ).resolves.toBe("Role Title");
-    expect(bodies[0]).toMatchObject({ model: "role-title-model", stream: false });
+    expect(bodies[0]).toMatchObject({
+      model: "role-title-model",
+      stream: false,
+    });
   });
-
 });

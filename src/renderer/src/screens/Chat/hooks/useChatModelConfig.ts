@@ -24,8 +24,6 @@ interface UseChatModelConfigResult {
   modelGroups: ModelGroup[];
   showModelPicker: boolean;
   setShowModelPicker: React.Dispatch<React.SetStateAction<boolean>>;
-  customModelInput: string;
-  setCustomModelInput: React.Dispatch<React.SetStateAction<string>>;
   pickerRef: MutableRefObject<HTMLDivElement | null>;
   loadModelConfig: () => Promise<void>;
   selectModel: (
@@ -35,19 +33,18 @@ interface UseChatModelConfigResult {
     contextWindow?: number,
     modelId?: string,
   ) => Promise<void>;
-  handleCustomModelSubmit: () => Promise<void>;
 }
 
-export function useChatModelConfig({ profile }: UseChatModelConfigArgs): UseChatModelConfigResult {
+export function useChatModelConfig({
+  profile,
+}: UseChatModelConfigArgs): UseChatModelConfigResult {
   const [currentModel, setCurrentModel] = useState("");
   const [currentProvider, setCurrentProvider] = useState("auto");
   const [currentBaseUrl, setCurrentBaseUrl] = useState("");
-  const [currentContextInfo, setCurrentContextInfo] = useState<ContextWindowInfo>(() =>
-    inferContextWindow("auto", ""),
-  );
+  const [currentContextInfo, setCurrentContextInfo] =
+    useState<ContextWindowInfo>(() => inferContextWindow("auto", ""));
   const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
   const [showModelPicker, setShowModelPicker] = useState(false);
-  const [customModelInput, setCustomModelInput] = useState("");
   const pickerRef = useRef<HTMLDivElement>(null);
   const currentContextInfoRef = useRef(currentContextInfo);
   const currentModelRef = useRef(currentModel);
@@ -59,10 +56,20 @@ export function useChatModelConfig({ profile }: UseChatModelConfigArgs): UseChat
 
   const loadModelConfig = useCallback(async (): Promise<void> => {
     const savedModels = await window.hermesAPI.listModels();
-    let mc: { provider: string; model: string; baseUrl: string; contextWindow?: number; modelId?: string };
+    let mc: {
+      provider: string;
+      model: string;
+      baseUrl: string;
+      contextWindow?: number;
+      modelId?: string;
+    };
     try {
-      const resolved = await window.hermesAPI.resolveModelForRole("chat", profile);
-      if (resolved.kind !== "text" || !resolved.ok) throw new Error("Chat role did not resolve to text");
+      const resolved = await window.hermesAPI.resolveModelForRole(
+        "chat",
+        profile,
+      );
+      if (resolved.kind !== "text" || !resolved.ok)
+        throw new Error("Chat role did not resolve to text");
       mc = {
         provider: resolved.provider,
         model: resolved.model,
@@ -79,10 +86,17 @@ export function useChatModelConfig({ profile }: UseChatModelConfigArgs): UseChat
     const selectedSavedModel = mc.modelId
       ? savedModels.find((m) => m.id === mc.modelId)
       : savedModels.find(
-          (m) => m.provider === mc.provider && m.model === mc.model && (m.baseUrl || "") === (mc.baseUrl || ""),
+          (m) =>
+            m.provider === mc.provider &&
+            m.model === mc.model &&
+            (m.baseUrl || "") === (mc.baseUrl || ""),
         );
     setCurrentContextInfo(
-      inferContextWindow(mc.provider, mc.model, selectedSavedModel?.contextWindow ?? mc.contextWindow),
+      inferContextWindow(
+        mc.provider,
+        mc.model,
+        selectedSavedModel?.contextWindow ?? mc.contextWindow,
+      ),
     );
 
     const groupMap = new Map<string, ModelGroup>();
@@ -134,15 +148,9 @@ export function useChatModelConfig({ profile }: UseChatModelConfigArgs): UseChat
       setCurrentBaseUrl(baseUrl);
       setCurrentContextInfo(inferContextWindow(provider, model, contextWindow));
       setShowModelPicker(false);
-      setCustomModelInput("");
     },
     [profile],
   );
-
-  const handleCustomModelSubmit = useCallback(async (): Promise<void> => {
-    const model = customModelInput.trim();
-    if (model) await selectModel(currentProvider === "auto" ? "auto" : currentProvider, model, currentBaseUrl);
-  }, [currentBaseUrl, currentProvider, customModelInput, selectModel]);
 
   useEffect(() => {
     loadModelConfig();
@@ -151,7 +159,8 @@ export function useChatModelConfig({ profile }: UseChatModelConfigArgs): UseChat
   useEffect(() => {
     if (!showModelPicker) return;
     function handleClickOutside(e: MouseEvent): void {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setShowModelPicker(false);
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node))
+        setShowModelPicker(false);
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -168,11 +177,8 @@ export function useChatModelConfig({ profile }: UseChatModelConfigArgs): UseChat
     modelGroups,
     showModelPicker,
     setShowModelPicker,
-    customModelInput,
-    setCustomModelInput,
     pickerRef,
     loadModelConfig,
     selectModel,
-    handleCustomModelSubmit,
   };
 }
