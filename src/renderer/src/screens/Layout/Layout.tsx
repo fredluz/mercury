@@ -570,7 +570,6 @@ function Layout(): React.JSX.Element {
               onOpenTraceRun={openTraceRun}
               onViewSchedules={() => goTo("schedules")}
               onNewChat={handleNewChat}
-              onOpenProviders={() => goTo("providers")}
             />
           )}
         </div>

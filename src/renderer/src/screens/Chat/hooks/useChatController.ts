@@ -428,7 +428,7 @@ export function useChatController({
     currentProvider: modelConfig.currentProvider,
     modelGroups: modelConfig.modelGroups,
     displayModel: modelConfig.currentModel
-      ? `${modelConfig.currentProvider || t("chat.providerUnknown")} · ${modelConfig.currentModel.split("/").pop() || modelConfig.currentModel}`
+      ? modelConfig.currentModel.split("/").pop() || modelConfig.currentModel
       : t("chat.agentModelNotConfigured"),
     visibleMessages: messages.filter((m) => (m.content || "").trim()),
     lastMessageIsAgent:

@@ -1,6 +1,7 @@
-import { Fragment, useCallback } from "react";
+import { Fragment, useCallback, useState } from "react";
 import type React from "react";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
+import { AgentModelConfigModal } from "../../components/AgentModelConfigModal";
 import { useI18n } from "../../components/useI18n";
 import { ChatActivityGroup } from "./components/ChatActivityGroup";
 import { ChatComposer } from "./components/ChatComposer";
@@ -42,7 +43,6 @@ export interface ChatProps {
   onOpenTraceRun?: (runId: string) => void;
   onViewSchedules?: () => void;
   onNewChat?: () => void;
-  onOpenProviders?: () => void;
 }
 
 function Chat({
@@ -62,9 +62,9 @@ function Chat({
   onOpenTraceRun,
   onViewSchedules,
   onNewChat,
-  onOpenProviders,
 }: ChatProps): React.JSX.Element {
   const { t } = useI18n();
+  const [showModelConfig, setShowModelConfig] = useState(false);
   const chat = useChatController({
     messages,
     setMessages,
@@ -206,13 +206,21 @@ function Chat({
         />
 
         <ModelPicker
-          pickerRef={chat.pickerRef}
           displayModel={chat.displayModel}
-          loadModelConfig={chat.loadModelConfig}
-          onOpenProviders={onOpenProviders}
-          t={t}
+          disabled={!profile}
+          onOpen={() => setShowModelConfig(true)}
         />
       </div>
+
+      <AgentModelConfigModal
+        profile={profile || "default"}
+        title={t("agents.configureModelFor", { name: profile || "default" })}
+        open={showModelConfig}
+        initialProvider={chat.currentProvider}
+        initialModel={chat.currentModel}
+        onClose={() => setShowModelConfig(false)}
+        onSaved={chat.loadModelConfig}
+      />
     </div>
   );
 }
