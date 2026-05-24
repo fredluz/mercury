@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { SETTINGS_SECTIONS } from "../constants";
+import type { FieldDef } from "../constants";
 import { useI18n } from "./useI18n";
 
 type InventoryModel = {
@@ -19,6 +21,34 @@ interface AgentModelConfigModalProps {
   onSaved?: () => Promise<void> | void;
 }
 
+const LLM_SECTION = SETTINGS_SECTIONS[0];
+const PROVIDER_BY_ENV_KEY: Record<string, string> = {
+  OPENROUTER_API_KEY: "openrouter",
+  OPENAI_API_KEY: "openai",
+  ANTHROPIC_API_KEY: "anthropic",
+  GROQ_API_KEY: "groq",
+  GLM_API_KEY: "zai",
+  KIMI_API_KEY: "kimi",
+  MINIMAX_API_KEY: "minimax",
+  MINIMAX_CN_API_KEY: "minimax-cn",
+  OPENCODE_ZEN_API_KEY: "opencode-zen",
+  OPENCODE_GO_API_KEY: "opencode-go",
+  HF_TOKEN: "huggingface",
+  DEEPSEEK_API_KEY: "deepseek",
+  TOGETHER_API_KEY: "together",
+  FIREWORKS_API_KEY: "fireworks",
+  CEREBRAS_API_KEY: "cerebras",
+  MISTRAL_API_KEY: "mistral",
+  PERPLEXITY_API_KEY: "perplexity",
+  CUSTOM_API_KEY: "custom",
+  GOOGLE_API_KEY: "google",
+  XAI_API_KEY: "xai",
+};
+
+function providerIdForField(field: FieldDef): string {
+  return PROVIDER_BY_ENV_KEY[field.key] || field.key.toLowerCase();
+}
+
 function dedupeModels(models: InventoryModel[]): InventoryModel[] {
   const seen = new Set<string>();
   const result: InventoryModel[] = [];
@@ -29,6 +59,27 @@ function dedupeModels(models: InventoryModel[]): InventoryModel[] {
     result.push(model);
   }
   return result;
+}
+
+function withCurrentModel(
+  models: InventoryModel[],
+  provider: string,
+  model: string,
+): InventoryModel[] {
+  if (!provider.trim() || !model.trim()) return models;
+  const hasCurrent = models.some(
+    (entry) => entry.provider === provider.trim() && entry.model === model.trim(),
+  );
+  if (hasCurrent) return models;
+  return dedupeModels([
+    ...models,
+    {
+      id: `current:${provider.trim()}:${model.trim()}`,
+      provider: provider.trim(),
+      model: model.trim(),
+      baseUrl: "",
+    },
+  ]);
 }
 
 export function AgentModelConfigModal({
@@ -53,44 +104,49 @@ export function AgentModelConfigModal({
     let cancelled = false;
     setLoading(true);
     setError("");
-    void window.hermesAPI
-      .listModels()
-      .then((models) => {
+
+    void Promise.all([
+      window.hermesAPI.listModels(),
+      window.hermesAPI.getEnv(profile),
+      window.hermesAPI.getCredentialPool(),
+      window.hermesAPI.getCodexAuthStatus(profile).catch(() => null),
+    ])
+      .then(([models, env, credPool, codexStatus]) => {
         if (cancelled) return;
+
+        const connectedProviders = new Set<string>();
+        for (const field of LLM_SECTION.items) {
+          const providerId = providerIdForField(field);
+          if ((env[field.key] || "").trim() || (credPool[providerId] || []).length > 0) {
+            connectedProviders.add(providerId);
+          }
+        }
+        if (codexStatus?.hasHermesAuth) {
+          connectedProviders.add("openai-codex");
+        }
+        if (initialProvider.trim()) {
+          connectedProviders.add(initialProvider.trim());
+        }
+
         const normalized = dedupeModels(
-          models.map((entry) => ({
-            id: entry.id,
-            provider: entry.provider,
-            model: entry.model,
-            baseUrl: entry.baseUrl,
-          })),
+          models
+            .map((entry) => ({
+              id: entry.id,
+              provider: entry.provider,
+              model: entry.model,
+              baseUrl: entry.baseUrl,
+            }))
+            .filter((entry) => connectedProviders.has(entry.provider)),
         );
-        const hasCurrent =
-          initialProvider.trim() &&
-          initialModel.trim() &&
-          normalized.some(
-            (entry) =>
-              entry.provider === initialProvider.trim() &&
-              entry.model === initialModel.trim(),
-          );
-        const withCurrent = hasCurrent
-          ? normalized
-          : dedupeModels([
-              ...normalized,
-              ...(initialProvider.trim() && initialModel.trim()
-                ? [
-                    {
-                      id: `current:${initialProvider.trim()}:${initialModel.trim()}`,
-                      provider: initialProvider.trim(),
-                      model: initialModel.trim(),
-                      baseUrl: "",
-                    },
-                  ]
-                : []),
-            ]);
-        setInventory(withCurrent);
-        const firstProvider = initialProvider.trim() || withCurrent[0]?.provider || "";
-        const providerModels = withCurrent.filter((entry) => entry.provider === firstProvider);
+        const filtered = withCurrentModel(
+          normalized,
+          initialProvider,
+          initialModel,
+        );
+
+        setInventory(filtered);
+        const firstProvider = initialProvider.trim() || filtered[0]?.provider || "";
+        const providerModels = filtered.filter((entry) => entry.provider === firstProvider);
         const firstModel =
           providerModels.find((entry) => entry.model === initialModel.trim())?.model ||
           providerModels[0]?.model ||
@@ -109,10 +165,11 @@ export function AgentModelConfigModal({
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+
     return () => {
       cancelled = true;
     };
-  }, [initialModel, initialProvider, open, t]);
+  }, [initialModel, initialProvider, open, profile, t]);
 
   const providers = useMemo(
     () => [...new Set(inventory.map((entry) => entry.provider).filter(Boolean))],
@@ -169,9 +226,7 @@ export function AgentModelConfigModal({
                 value={provider}
                 onChange={(e) => {
                   const nextProvider = e.target.value;
-                  const nextModels = inventory.filter(
-                    (entry) => entry.provider === nextProvider,
-                  );
+                  const nextModels = inventory.filter((entry) => entry.provider === nextProvider);
                   setProvider(nextProvider);
                   setModel(nextModels[0]?.model || "");
                 }}
