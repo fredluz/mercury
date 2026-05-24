@@ -56,12 +56,37 @@ export function ChatRuntimeReadinessCard({
   >(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [verificationFailed, setVerificationFailed] = useState(false);
+  const [autoVerifyProfile, setAutoVerifyProfile] = useState<string | null>(
+    null,
+  );
 
   const selectedProfile = profile || diagnostic?.selectedProfile || "default";
 
   useEffect(() => {
     setVerificationFailed(false);
+    setAutoVerifyProfile(null);
   }, [selectedProfile]);
+
+  useEffect(() => {
+    if (
+      diagnostic?.status !== "unverified" ||
+      diagnostic.mode !== "local" ||
+      verificationFailed ||
+      busyAction ||
+      autoVerifyProfile === selectedProfile
+    ) {
+      return;
+    }
+    setAutoVerifyProfile(selectedProfile);
+    void handleVerify();
+  }, [
+    autoVerifyProfile,
+    busyAction,
+    diagnostic?.mode,
+    diagnostic?.status,
+    selectedProfile,
+    verificationFailed,
+  ]);
 
   if (!shouldShowChatRuntimeReadiness(diagnostic) && !verificationFailed) {
     return null;

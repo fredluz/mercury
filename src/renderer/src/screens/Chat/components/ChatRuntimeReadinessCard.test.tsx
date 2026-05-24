@@ -96,7 +96,7 @@ describe("ChatRuntimeReadinessCard", () => {
       screen.getByText("Local runtime identity has not been verified yet."),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /Verify API runtime/i }),
+      screen.getByRole("button", { name: /Verifying/i }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /Codex/i }),
@@ -137,7 +137,7 @@ describe("ChatRuntimeReadinessCard", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("starts the gateway and revalidates when verifying", async () => {
+  it("starts the gateway and revalidates local diagnostics automatically", async () => {
     installHermesApiMock();
     const onRuntimeDiagnosticRefresh = vi.fn();
     render(
@@ -149,10 +149,6 @@ describe("ChatRuntimeReadinessCard", () => {
       />,
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: /Verify API runtime/i }),
-    );
-
     await waitFor(() =>
       expect(window.hermesAPI.startGateway).toHaveBeenCalledWith("default"),
     );
@@ -160,7 +156,7 @@ describe("ChatRuntimeReadinessCard", () => {
     await waitFor(() => expect(onRuntimeDiagnosticRefresh).toHaveBeenCalled());
   });
 
-  it("restarts a local gateway if start plus revalidation stays unverified", async () => {
+  it("restarts a local gateway automatically if start plus revalidation stays unverified", async () => {
     vi.useFakeTimers();
     installHermesApiMock();
     vi.mocked(window.hermesAPI.revalidateRuntime)
@@ -176,11 +172,6 @@ describe("ChatRuntimeReadinessCard", () => {
         t={t}
       />,
     );
-
-    fireEvent.click(
-      screen.getByRole("button", { name: /Verify API runtime/i }),
-    );
-
     await Promise.resolve();
     expect(window.hermesAPI.startGateway).toHaveBeenCalledWith("default");
 

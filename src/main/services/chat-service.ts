@@ -2,6 +2,8 @@ import {
   sendMessage,
   startGateway,
   isGatewayRunning,
+  stopGateway,
+  getRuntimeIdentity,
   ensureSshTunnelIfNeeded,
   setSshRemoteApiKey,
   isRemoteMode,
@@ -124,8 +126,16 @@ export async function prepareChatBackend(
   if (isSyntheticChatStreamEnabled()) return undefined;
 
   const normalizedProfile = profileRuntimeManager.normalizeProfile(profile);
-  if (!isRemoteMode() && !isGatewayRunning(normalizedProfile)) {
-    startGateway(normalizedProfile);
+  if (!isRemoteMode()) {
+    if (!isGatewayRunning(normalizedProfile)) {
+      startGateway(normalizedProfile);
+    } else {
+      const identity = getRuntimeIdentity(normalizedProfile);
+      if (!identity?.startedByMercury) {
+        stopGateway(true, normalizedProfile);
+        startGateway(normalizedProfile);
+      }
+    }
   }
 
   if (!isRemoteMode()) {

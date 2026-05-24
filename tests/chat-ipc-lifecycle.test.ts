@@ -38,6 +38,8 @@ const mocks = vi.hoisted(() => {
     notificationShow: vi.fn(),
     sendMessage: vi.fn(),
     startGateway: vi.fn(),
+    stopGateway: vi.fn(),
+    getRuntimeIdentity: vi.fn(),
     isGatewayRunning: vi.fn(),
     ensureSshTunnelIfNeeded: vi.fn(),
     setSshRemoteApiKey: vi.fn(),
@@ -74,6 +76,8 @@ vi.mock("../src/main/hermes", () => ({
   sendMessage: mocks.sendMessage,
   startGateway: mocks.startGateway,
   isGatewayRunning: mocks.isGatewayRunning,
+  stopGateway: mocks.stopGateway,
+  getRuntimeIdentity: mocks.getRuntimeIdentity,
   ensureSshTunnelIfNeeded: mocks.ensureSshTunnelIfNeeded,
   setSshRemoteApiKey: mocks.setSshRemoteApiKey,
   isRemoteMode: mocks.isRemoteMode,
@@ -125,6 +129,17 @@ function resetMockState(): void {
   mocks.ipcHandle.mockClear();
   mocks.notificationShow.mockReset();
   mocks.startGateway.mockReset();
+  mocks.stopGateway.mockReset();
+  mocks.getRuntimeIdentity.mockReset().mockReturnValue({
+    requestedProfile: "default",
+    actualProfile: "default",
+    verified: true,
+    verificationSource: "managed-process",
+    mode: "local",
+    transport: "api",
+    startedByMercury: true,
+    verifiedAt: 1,
+  });
   mocks.isGatewayRunning.mockReset().mockReturnValue(true);
   mocks.ensureSshTunnelIfNeeded.mockReset().mockResolvedValue(undefined);
   mocks.setSshRemoteApiKey.mockReset();
@@ -288,6 +303,28 @@ describe("chat IPC lifecycle hardening", () => {
     expect(settleCount).toBe(1);
   });
 
+  it("restarts an unmanaged local gateway before resolving chat runtime", async () => {
+    const handler = await setupHandler();
+    const event = createEvent();
+    mocks.getRuntimeIdentity.mockReturnValueOnce(undefined);
+
+    const invokePromise = handler(event, "hello", "default");
+    const callbacks = await waitForTransportCallbacks();
+    callbacks.onChunk("answer");
+    callbacks.onDone("session-managed");
+
+    await expect(invokePromise).resolves.toEqual({
+      response: "answer",
+      sessionId: "session-managed",
+    });
+    expect(mocks.stopGateway).toHaveBeenCalledWith(true, "default");
+    expect(mocks.startGateway).toHaveBeenCalledWith("default");
+    expect(
+      mocks.startGateway.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      mocks.profileRuntimeManager.resolveRuntime.mock.invocationCallOrder[0],
+    );
+  });
   it("resolves a runtime for the selected profile before starting chat transport", async () => {
     const handler = await setupHandler();
     const event = createEvent();
