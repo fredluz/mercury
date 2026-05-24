@@ -11,12 +11,12 @@ This document describes Mercury's current profile scoping, persistent files, ses
 - Session cache: `src/main/session-cache.ts`
 - Memory/user profile: `src/main/memory.ts`
 - Soul: `src/main/soul.ts`
-- Models: `src/main/models.ts`, `src/main/default-models.ts`, `src/shared/chat-metadata.ts`
+- Model config and inventory: `src/shared/models.ts`, `src/main/services/hermes-model-inventory-service.ts`, `src/main/services/models-service.ts`, `src/main/models.ts`, `src/shared/chat-metadata.ts`
 - IPC routing: `src/main/ipc/config.ts`, `src/main/ipc/sessions.ts`, `src/main/ipc/knowledge.ts`, `src/main/ipc/models.ts`, `src/main/ipc/system.ts`
 - Shared CLI/IPC services: `src/main/services/config-service.ts`, `src/main/services/sessions-service.ts`, `src/main/services/knowledge-service.ts`, `src/main/services/models-service.ts`, `src/main/services/system-service.ts`, `src/main/services/chat-service.ts`
 - Runtime identity and diagnostics: `src/main/hermes/runtime.ts`, `src/main/hermes/types.ts`, `src/shared/runtime.ts`
 - SSH implementations: `src/main/ssh/config.ts`, `src/main/ssh/sessions-profiles.ts`, `src/main/ssh/memory-soul.ts`, `src/main/ssh/runtime.ts`, `src/main/ssh/transport.ts`, `src/main/ssh-tunnel.ts`
-- Contract tests: `tests/profiles.test.ts`, `tests/chat-metadata.test.ts`, `tests/session-cache-sync.test.ts`, `tests/hermes-runtime.test.ts`, `tests/cron-runtime.test.ts`, `tests/ssh-remote.test.ts`, `tests/reliable-profile-runtime-contract.test.ts`
+- Contract tests: `tests/profiles.test.ts`, `tests/chat-metadata.test.ts`, `tests/session-cache-sync.test.ts`, `tests/hermes-model-inventory.test.ts`, `tests/hermes-runtime.test.ts`, `tests/cron-runtime.test.ts`, `tests/ssh-remote.test.ts`, `tests/reliable-profile-runtime-contract.test.ts`
 - CLI contract and parity tests: `docs/contracts/cli.md`, `tests/cli-chat-commands.test.ts`, `tests/cli-parity.test.ts`
 
 ## Profile scoping
@@ -56,7 +56,7 @@ Current local persistent files used by the documented subsystems include:
 | `<profileHome>/config.yaml` | `src/main/config.ts`, SSH config helpers | Hermes config values such as provider/default/base URL, streaming, platform/tool settings. |
 | `<HERMES_HOME>/auth.json` | `src/main/config.ts` | Credential pool under `credential_pool`. |
 | `<HERMES_HOME>/active_profile` | `src/main/profiles.ts` | Active profile name used by `listProfiles()` to mark `ProfileInfo.isActive`; missing/blank means `default`. |
-| `<HERMES_HOME>/models.json` | `src/main/models.ts` | Saved model library, including normalized context-window metadata. Seeded from defaults when missing. |
+| `<HERMES_HOME>/models.json` | `src/main/models.ts` | Legacy/manual saved model library. It is not seeded when missing and is not the canonical provider-served model catalog. |
 | `<profileHome>/state.db` | `src/main/sessions.ts`, `src/main/session-cache.ts`, `src/main/memory.ts` | Hermes SQLite session/message database read by desktop. |
 | `<HERMES_HOME>/desktop/sessions.json` | `src/main/session-cache.ts` | Desktop session cache with generated titles, row `profile` metadata, global `lastSync`, and per-profile `profileSync`. |
 | `<profileHome>/memories/MEMORY.md` | `src/main/memory.ts`, `src/main/ssh/memory-soul.ts` | Memory entries separated by `\n§\n`. |
@@ -131,9 +131,35 @@ Record<string, Array<{ key: string; label: string }>>
 
 Credential pool handlers in `src/main/ipc/models.ts` do not currently branch to SSH; they use local `auth.json`.
 
-## Models library
+## Models, role assignments, and provider inventory
 
-`src/main/models.ts` stores saved models in:
+Mercury now treats Hermes provider inventory as the source for concrete provider-served model availability. See [Agent model configuration and provider inventory](model-roles-and-provider-inventory.md) for the full runtime and UI contract.
+
+`src/main/services/hermes-model-inventory-service.ts` loads model availability from Hermes metadata:
+
+- verified runtime API `GET /api/model/options` when available;
+- local Hermes metadata code through Hermes venv Python when the runtime API is unavailable;
+- remote Hermes metadata over SSH in SSH mode.
+
+The direct local fallback sets `HERMES_HOME` to the requested profile home, sets `HERMES_AGENT_HOME` to the Hermes repo, uses the Hermes venv Python when present, and passes `MERCURY_HERMES_PROFILE` for named profiles. This prevents system-Python dependency failures and keeps inventory reads profile-scoped.
+
+`config.yaml` stores direct agent model configuration:
+
+```text
+config.yaml model.provider/model.default/model.base_url
+```
+
+Each profile has one direct provider/model/base URL binding. It does not store provider credentials.
+
+Text role resolution is explicit:
+
+1. profile override for the requested role;
+2. global default for the requested role;
+3. unresolved setup-required state.
+
+There are no cross-role fallbacks. Chat does not fall back to legacy `config.yaml`; Code does not fall back to Chat; Explore does not fall back to Code or Chat. Image remains a separate capability state for Codex-native `image_gen`.
+
+The legacy/manual saved model library remains in:
 
 ```text
 <HERMES_HOME>/models.json
@@ -149,14 +175,16 @@ Credential pool handlers in `src/main/ipc/models.ts` do not currently branch to 
 - `createdAt`
 - `contextWindow?: number`
 
-Current behavior:
+Current `models.json` behavior:
 
-- `listModels()` seeds `models.json` from `DEFAULT_MODELS` if the file is missing. Default models include explicit `contextWindow` values.
+- `listModels()` returns an empty list when the file is missing.
 - Loaded models are normalized with `inferContextWindow(provider, model, contextWindow)`, so an explicit saved value is preserved, known provider/model pairs get known token windows, and unknown models fall back to the shared metadata default.
 - `addModel(...)` returns an existing model when the same `model` and `provider` already exist; new entries store the inferred context window.
 - `removeModel(id)` removes by id and returns whether anything changed.
 - `updateModel(id, fields)` updates name/provider/model/baseUrl/contextWindow fields for an existing id. When provider or model changes and no explicit `contextWindow` field is supplied, the old context window is cleared and re-inferred from the new provider/model pair.
-- `src/main/ipc/models.ts` uses SSH `sshListModels(...)` for listing in SSH mode, but add/remove/update currently call local model functions.
+- `src/main/services/models-service.ts` uses Hermes inventory for `listModelsForConnection()` and `listModelInventoryForConnection(profile)`.
+- `listLegacyModelsForConnection()` exists for compatibility with the manual `models.json` library.
+- Add/remove/update still mutate the manual library locally or through SSH helpers, but agent model selection is inventory-backed rather than `models.json`-backed.
 
 ## Sessions and SQLite state
 
@@ -203,6 +231,7 @@ interface CacheData {
 - `messageCount`
 - `model`
 - `profile` — normalized profile identity (`"default"` for the default DB, otherwise the named profile)
+- No per-session model selector state is stored; chat uses the profile direct model config
 
 Current sync behavior:
 
@@ -216,6 +245,7 @@ Current sync behavior:
 - `listCachedSessions(limit, offset, profile?)` filters by profile only when one is supplied; otherwise it returns the global cross-profile cache.
 - `updateSessionTitle(sessionId, title, profile?)` and generated-title chat IPC side effects pass profile so the profile DB row and matching cache row are updated together.
 - `updateSessionProfile(sessionId, profile?)` treats profile as session identity and inserts/updates the matching cache row with profile metadata after chat completion returns a session id.
+- `updateSessionSelectedRole(sessionId, role, profile?)` persists the role used by the chat picker so reopened conversations continue using that role.
 
 `tests/session-cache-sync.test.ts` verifies first sync, incremental updates, no duplicate sessions, append behavior, named-profile cache metadata/backfill, duplicate ids across profiles, title/profile updates, and the large-cache performance regression case.
 

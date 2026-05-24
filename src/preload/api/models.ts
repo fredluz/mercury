@@ -1,12 +1,5 @@
 import { ipcRenderer } from "electron";
-import type {
-  ModelCapability,
-  ModelRoleDefaultsResult,
-  ModelRoleId,
-  ModelRoleListResult,
-  ModelRoleResolution,
-  ModelRoleSelection,
-} from "../../shared/model-roles";
+import type { ModelCapability } from "../../shared/models";
 
 type SavedModelApiRecord = {
   id: string;
@@ -160,39 +153,5 @@ export const modelsApi = {
     }>,
   ): Promise<boolean> => ipcRenderer.invoke("update-model", id, fields),
 
-  listModelRoles: (profile?: string): Promise<ModelRoleListResult> =>
-    ipcRenderer.invoke("list-model-roles", profile),
 
-  getModelRoleDefaults: (profile?: string): Promise<ModelRoleDefaultsResult> =>
-    ipcRenderer.invoke("get-model-role-defaults", profile),
-
-  setGlobalModelRoleDefault: (
-    role: ModelRoleId,
-    selection: Partial<ModelRoleSelection>,
-  ): Promise<boolean> =>
-    ipcRenderer.invoke("set-global-model-role-default", role, selection),
-
-  setProfileModelRoleOverride: (
-    role: ModelRoleId,
-    selection: Partial<ModelRoleSelection>,
-    profile?: string,
-  ): Promise<boolean> =>
-    ipcRenderer.invoke(
-      "set-profile-model-role-override",
-      role,
-      selection,
-      profile,
-    ),
-
-  clearProfileModelRoleOverride: (
-    role: ModelRoleId,
-    profile?: string,
-  ): Promise<boolean> =>
-    ipcRenderer.invoke("clear-profile-model-role-override", role, profile),
-
-  resolveModelForRole: (
-    role: ModelRoleId,
-    profile?: string,
-  ): Promise<ModelRoleResolution> =>
-    ipcRenderer.invoke("resolve-model-for-role", role, profile),
 };

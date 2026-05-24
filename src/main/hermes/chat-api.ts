@@ -44,14 +44,25 @@ export async function probeChatCompletionViaApi(
   const expectedProfile =
     profile?.trim() || runtime.request.profile || "default";
   assertVerifiedApiRuntimeHandle(runtime, expectedProfile, "chat");
-  const mc = await resolveChatRuntimeModel(expectedProfile);
+  let mc: Awaited<ReturnType<typeof resolveChatRuntimeModel>>;
+  try {
+    mc = await resolveChatRuntimeModel(expectedProfile);
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "No model is configured for this agent. Configure the agent model before starting chat.",
+    };
+  }
   const provider = mc.provider?.trim();
   const model = mc.model?.trim();
   if (!provider || provider === "auto" || !model) {
     return {
       success: false,
       error:
-        "No inference provider configured. Choose a Chat model and provider before starting chat.",
+        "No inference provider configured. Configure the agent model before starting chat.",
     };
   }
 
@@ -130,7 +141,17 @@ async function sendMessageViaVerifiedApi(
   history: Array<{ role: string; content: string }> | undefined,
   runtime: VerifiedApiRuntimeHandle,
 ): Promise<ChatHandle> {
-  const mc = await resolveChatRuntimeModel(profile);
+  let mc: Awaited<ReturnType<typeof resolveChatRuntimeModel>>;
+  try {
+    mc = await resolveChatRuntimeModel(profile);
+  } catch (error) {
+    cb.onError(
+      error instanceof Error
+        ? error.message
+        : "No model is configured for this agent. Configure the agent model before sending messages.",
+    );
+    return { abort: () => {} };
+  }
   const controller = new AbortController();
 
   // Build full conversation from history + current message (standard OpenAI format)

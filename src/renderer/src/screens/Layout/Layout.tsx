@@ -441,7 +441,11 @@ function Layout(): React.JSX.Element {
       : null;
 
   const handleResumeSession = useCallback(
-    async (sessionId: string, title?: string | null, profile?: string) => {
+    async (
+      sessionId: string,
+      title?: string | null,
+      profile?: string,
+    ) => {
       const rowProfile = profile?.trim() || undefined;
       const nextProfile = rowProfile || activeProfile;
       const requestId = resumeRequestIdRef.current + 1;
@@ -558,7 +562,7 @@ function Layout(): React.JSX.Element {
                 setCurrentSessionId(null);
                 setCurrentSessionTitle(null);
                 setCurrentSessionProfile(null);
-                setConversationVersion((value) => value + 1);
+                          setConversationVersion((value) => value + 1);
               }}
               onCreateScheduleFromConversation={
                 handleCreateScheduleFromConversation

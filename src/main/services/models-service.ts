@@ -11,9 +11,28 @@ import {
 } from "../models";
 import { sshListModels, sshSaveModels } from "../ssh-remote";
 import { inferContextWindow } from "../../shared/chat-metadata";
-import { normalizeModelCapabilities, type ModelCapability } from "../../shared/model-roles";
+import { normalizeModelCapabilities, type ModelCapability } from "../../shared/models";
+import {
+  getHermesModelInventory,
+  type HermesModelInventoryResult,
+} from "./hermes-model-inventory-service";
 
 export async function listModelsForConnection(): Promise<SavedModel[]> {
+  const inventory = await getHermesModelInventory();
+  return inventory.models.map((model) => normalizeSavedModel(model));
+}
+
+export async function listModelInventoryForConnection(
+  profile?: string,
+): Promise<HermesModelInventoryResult> {
+  const inventory = await getHermesModelInventory(profile);
+  return {
+    ...inventory,
+    models: inventory.models.map((model) => normalizeSavedModel(model)),
+  };
+}
+
+export async function listLegacyModelsForConnection(): Promise<SavedModel[]> {
   const conn = getConnectionConfig();
   if (conn.mode === "ssh" && conn.ssh) {
     const models = await sshListModels(conn.ssh);

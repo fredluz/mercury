@@ -1,50 +1,48 @@
-import { getModelConfig } from "../config";
-import type {
-  ModelRoleResolutionSource,
-  ResolvedTextModelRole,
-} from "../../shared/model-roles";
+import { inferContextWindow } from "../../shared/chat-metadata";
+import { getModelConfigForProfile } from "../services/config-service";
 
 export interface ChatRuntimeModelConfig {
   provider: string;
   model: string;
   baseUrl: string;
   contextWindow?: number;
-  source: ModelRoleResolutionSource;
-  modelId?: string;
-  missingModelId?: string;
+  source: "agent-config";
 }
 
-function fromResolvedChatRole(resolved: ResolvedTextModelRole): ChatRuntimeModelConfig {
-  return {
-    provider: resolved.provider,
-    model: resolved.model,
-    baseUrl: resolved.baseUrl,
-    contextWindow: resolved.contextWindow,
-    source: resolved.source,
-    ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
-    ...(resolved.missingModelId ? { missingModelId: resolved.missingModelId } : {}),
-  };
-}
-
-function legacyChatModel(profile?: string): ChatRuntimeModelConfig {
-  const legacy = getModelConfig(profile);
-  return {
-    provider: legacy.provider,
-    model: legacy.model,
-    baseUrl: legacy.baseUrl,
-    source: legacy.provider === "auto" && !legacy.model ? "provider-auto" : "legacy-chat-config",
-  };
-}
-
-export async function resolveChatRuntimeModel(profile?: string): Promise<ChatRuntimeModelConfig> {
-  try {
-    const { resolveModelForRoleForConnection } = await import("../services/model-roles-service");
-    const resolved = await resolveModelForRoleForConnection("chat", profile);
-    if (resolved.kind === "text" && resolved.ok) {
-      return fromResolvedChatRole(resolved);
-    }
-  } catch (error) {
-    console.warn("[chat-model] Falling back to legacy chat model config", error);
+export class ChatRuntimeModelResolutionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ChatRuntimeModelResolutionError";
   }
-  return legacyChatModel(profile);
+}
+
+export async function resolveChatRuntimeModel(
+  profile?: string,
+): Promise<ChatRuntimeModelConfig> {
+  try {
+    const config = await getModelConfigForProfile(profile);
+    const provider = config.provider?.trim() ?? "";
+    const model = config.model?.trim() ?? "";
+    const baseUrl = config.baseUrl?.trim() ?? "";
+
+    if (!provider || provider === "auto" || !model) {
+      throw new ChatRuntimeModelResolutionError(
+        "No model is configured for this agent. Configure the agent model from the Agents screen or complete provider setup before sending messages.",
+      );
+    }
+
+    return {
+      provider,
+      model,
+      baseUrl,
+      contextWindow: inferContextWindow(provider, model).tokens,
+      source: "agent-config",
+    };
+  } catch (error) {
+    if (error instanceof ChatRuntimeModelResolutionError) throw error;
+    console.warn("[chat-model] Agent model config resolution failed", error);
+    throw new ChatRuntimeModelResolutionError(
+      "Agent model configuration is unavailable. Configure the agent model from the Agents screen or Providers setup before sending messages.",
+    );
+  }
 }

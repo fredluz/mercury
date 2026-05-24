@@ -7,19 +7,7 @@ import {
   removeModelForConnection,
   updateModelForConnection,
 } from "../services/models-service";
-import {
-  assertModelRole,
-  clearProfileModelRoleOverrideForConnection,
-  getModelRoleDefaultsForConnection,
-  listModelRolesForConnection,
-  resolveModelForRoleForConnection,
-  setGlobalModelRoleDefaultForConnection,
-  setProfileModelRoleOverrideForConnection,
-} from "../services/model-roles-service";
-import type {
-  ModelCapability,
-  ModelRoleSelection,
-} from "../../shared/model-roles";
+import type { ModelCapability } from "../../shared/models";
 import {
   configureCodexAppServer,
   getCodexAuthStatus,
@@ -89,45 +77,7 @@ export function registerModelsIpc(): void {
       updateModelForConnection(id, fields),
   );
 
-  // Role-based model defaults
-  ipcMain.handle("list-model-roles", (_event, profile?: string) =>
-    listModelRolesForConnection(profile),
-  );
-  ipcMain.handle("get-model-role-defaults", (_event, profile?: string) =>
-    getModelRoleDefaultsForConnection(profile),
-  );
-  ipcMain.handle(
-    "set-global-model-role-default",
-    (_event, role: string, selection: Partial<ModelRoleSelection>) =>
-      setGlobalModelRoleDefaultForConnection(assertModelRole(role), selection),
-  );
-  ipcMain.handle(
-    "set-profile-model-role-override",
-    (
-      _event,
-      role: string,
-      selection: Partial<ModelRoleSelection>,
-      profile?: string,
-    ) =>
-      setProfileModelRoleOverrideForConnection(
-        assertModelRole(role),
-        selection,
-        profile,
-      ),
-  );
-  ipcMain.handle(
-    "clear-profile-model-role-override",
-    (_event, role: string, profile?: string) =>
-      clearProfileModelRoleOverrideForConnection(
-        assertModelRole(role),
-        profile,
-      ),
-  );
-  ipcMain.handle(
-    "resolve-model-for-role",
-    (_event, role: string, profile?: string) =>
-      resolveModelForRoleForConnection(assertModelRole(role), profile),
-  );
+
 }
 
 export type { SavedModel };

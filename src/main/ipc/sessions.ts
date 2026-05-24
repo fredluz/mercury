@@ -57,7 +57,6 @@ export function registerSessionsIpc(): void {
     (_event, sessionId: string, title: string, profile?: string) =>
       updateSessionTitleForProfile(sessionId, title, profile),
   );
-
   // Session search
   ipcMain.handle(
     "search-sessions",

@@ -1,6 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Settings from "./Settings";
+
+vi.mock("../../components/ThemeProvider", () => ({
+  useTheme: () => ({ theme: "system", setTheme: vi.fn() }),
+}));
 
 vi.mock("../../components/useI18n", () => ({
   useI18n: () => ({
@@ -8,19 +12,6 @@ vi.mock("../../components/useI18n", () => ({
     locale: "en",
     setLocale: vi.fn(),
   }),
-}));
-
-vi.mock("../../components/ThemeProvider", () => ({
-  useTheme: () => ({ theme: "system", setTheme: vi.fn() }),
-}));
-
-vi.mock("../Models/Models", () => ({
-  default: ({ onBack }: { onBack?: () => void }) => (
-    <div>
-      <h1>Models settings mock</h1>
-      <button onClick={onBack}>Back from models</button>
-    </div>
-  ),
 }));
 
 function installLocalStorageMock(): void {
@@ -39,49 +30,40 @@ function installLocalStorageMock(): void {
 function installHermesApiMock(): void {
   (window as unknown as { hermesAPI: Partial<Window["hermesAPI"]> }).hermesAPI = {
     getHermesHome: vi.fn().mockResolvedValue("/tmp/hermes"),
-    getAppVersion: vi.fn().mockResolvedValue("1.0.0"),
+    getConfig: vi.fn().mockResolvedValue(null),
+    getAppVersion: vi.fn().mockResolvedValue("0.0.0-test"),
+    getHermesVersion: vi.fn().mockResolvedValue("1.0.0"),
+    refreshHermesVersion: vi.fn().mockResolvedValue("1.0.0"),
+    getHermesApprovedUpdate: vi.fn().mockResolvedValue(null),
+    checkOpenClaw: vi.fn().mockResolvedValue({ found: false, path: null }),
+    onInstallProgress: vi.fn().mockReturnValue(() => undefined),
+    getRuntimeDiagnostic: vi.fn().mockResolvedValue(null),
     getConnectionConfig: vi.fn().mockResolvedValue({
       mode: "local",
       remoteUrl: "",
       apiKey: "",
-      ssh: {},
+      ssh: { host: "", port: 22, username: "", keyPath: "", remotePort: 8642, localPort: 18642 },
     }),
-    getConfig: vi.fn().mockResolvedValue(null),
-    getHermesVersion: vi.fn().mockResolvedValue(null),
-    getHermesApprovedUpdate: vi.fn().mockResolvedValue({
-      currentVersion: null,
-      recommendedVersion: null,
-      summary: null,
-      notesUrl: null,
-      breakingChange: false,
-      canUpdate: false,
-      reason: "current",
-    }),
-    checkOpenClaw: vi.fn().mockResolvedValue({ found: false, path: null }),
+    isRemoteMode: vi.fn().mockResolvedValue(false),
+    isRemoteOnlyMode: vi.fn().mockResolvedValue(false),
+    discoverMemoryProviders: vi.fn().mockResolvedValue([]),
+    checkForUpdates: vi.fn().mockResolvedValue(null),
   };
 }
 
-describe("Settings Models entry", () => {
+describe("Settings model entry removal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     installLocalStorageMock();
-    window.localStorage.clear();
     installHermesApiMock();
   });
 
-  it("opens Models as a dedicated Settings view", async () => {
+  it("does not expose the removed Models settings view", async () => {
     render(<Settings profile="work" />);
 
-    await waitFor(() =>
-      expect(window.hermesAPI.getConnectionConfig).toHaveBeenCalled(),
-    );
+    await screen.findByText("settings.connectionSection");
 
-    fireEvent.click(screen.getByRole("button", { name: "settings.openModels" }));
-
-    expect(screen.getByText("Models settings mock")).toBeInTheDocument();
-    expect(screen.queryByText("settings.connectionSection")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Back from models" }));
+    expect(screen.queryByRole("button", { name: "settings.openModels" })).not.toBeInTheDocument();
     expect(screen.getByText("settings.connectionSection")).toBeInTheDocument();
   });
 });

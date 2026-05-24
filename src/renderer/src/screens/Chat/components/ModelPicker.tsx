@@ -1,24 +1,9 @@
-import type React from "react";
-import { ChevronDown } from "lucide-react";
 import type { RefObject } from "react";
-import type { ModelGroup } from "../types";
 
 interface ModelPickerProps {
   pickerRef: RefObject<HTMLDivElement | null>;
   displayModel: string;
-  modelGroups: ModelGroup[];
-  currentModel: string;
-  currentProvider: string;
-  showModelPicker: boolean;
-  setShowModelPicker: (value: boolean) => void;
   loadModelConfig: () => Promise<void>;
-  selectModel: (
-    provider: string,
-    model: string,
-    baseUrl: string,
-    contextWindow?: number,
-    modelId?: string,
-  ) => void;
   onOpenProviders?: () => void;
   t: (key: string) => string;
 }
@@ -26,80 +11,26 @@ interface ModelPickerProps {
 export function ModelPicker({
   pickerRef,
   displayModel,
-  modelGroups,
-  currentModel,
-  currentProvider,
-  showModelPicker,
-  setShowModelPicker,
   loadModelConfig,
-  selectModel,
   onOpenProviders,
   t,
 }: ModelPickerProps): React.JSX.Element {
   return (
-    <div className="chat-model-bar" ref={pickerRef}>
+    <div className="model-picker-container" ref={pickerRef}>
+      <div className="model-picker-readonly" aria-label={t("chat.currentModel")}>
+        <span className="model-picker-label">{t("chat.currentModel")}</span>
+        <span className="model-picker-current">{displayModel}</span>
+      </div>
       <button
-        className="chat-model-trigger"
+        className="model-picker-configure"
+        type="button"
         onClick={() => {
-          if (!showModelPicker) loadModelConfig();
-          setShowModelPicker(!showModelPicker);
+          void loadModelConfig();
+          onOpenProviders?.();
         }}
       >
-        <span className="chat-model-name">{displayModel}</span>
-        <ChevronDown size={12} />
+        {t("chat.configureAgent")}
       </button>
-
-      {showModelPicker && (
-        <div className="chat-model-dropdown">
-          {modelGroups.length === 0 ? (
-            <div className="chat-model-empty">
-              <div className="chat-model-empty-title">
-                {t("chat.noModelsAvailable")}
-              </div>
-              <div className="chat-model-empty-copy">
-                {t("chat.noModelsAvailableHint")}
-              </div>
-              {onOpenProviders ? (
-                <button
-                  className="chat-model-empty-action"
-                  onClick={() => {
-                    setShowModelPicker(false);
-                    onOpenProviders();
-                  }}
-                >
-                  {t("chat.openProviders")}
-                </button>
-              ) : null}
-            </div>
-          ) : (
-            modelGroups.map((group) => (
-              <div key={group.provider} className="chat-model-group">
-                <div className="chat-model-group-label">
-                  {t(group.providerLabel)}
-                </div>
-                {group.models.map((m) => (
-                  <button
-                    key={m.id ?? `${m.provider}:${m.baseUrl}:${m.model}`}
-                    className={`chat-model-option ${currentModel === m.model && currentProvider === m.provider ? "active" : ""}`}
-                    onClick={() =>
-                      selectModel(
-                        m.provider,
-                        m.model,
-                        m.baseUrl,
-                        m.contextWindow,
-                        m.id,
-                      )
-                    }
-                  >
-                    <span className="chat-model-option-label">{m.label}</span>
-                    <span className="chat-model-option-id">{m.model}</span>
-                  </button>
-                ))}
-              </div>
-            ))
-          )}
-        </div>
-      )}
     </div>
   );
 }

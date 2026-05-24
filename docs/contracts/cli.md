@@ -701,7 +701,7 @@ mercury --json skills import --file ./my-skill.md --name my_skill --category cus
 
 ### `models`
 
-Source anchors: `src/main/services/models-service.ts`, `src/main/models.ts`, `src/main/ssh/runtime.ts` for SSH listing.
+Source anchors: `src/main/services/models-service.ts`, `src/main/services/hermes-model-inventory-service.ts`, `src/main/models.ts`, `src/main/ssh/runtime.ts` for legacy/manual SSH model storage.
 
 Implemented commands:
 
@@ -714,15 +714,16 @@ mercury models remove <modelId>
 
 Output:
 
-- `models list`: array of configured model entries.
+- `models list`: array of Hermes inventory-backed provider model entries. If no provider inventory exists, this returns `[]`; it does not seed default models.
 - `models add`: created model entry with generated `id`.
 - `models update`: `{ success: true, id, fields }`.
 - `models remove`: `{ success: true, id }`.
 
 Mode notes:
 
-- Listing goes through `models-service.ts`, which can branch by connection mode.
-- Mutations currently import `src/main/models` directly and write local model storage, matching current IPC behavior for model CRUD.
+- Listing goes through `models-service.ts`, which uses Hermes provider inventory for the active connection. Local fallback runs Hermes metadata through Hermes venv Python; SSH mode uses remote metadata when available.
+- Mutations currently import `src/main/models` directly and write local legacy/manual model storage, matching current IPC behavior for model CRUD.
+- Role assignment APIs have been removed. CLI model commands manage provider inventory/manual model records only.
 - `--context-window` is accepted only by `models update` and must be a positive integer.
 
 Examples:
@@ -1375,7 +1376,7 @@ This matrix maps major `window.hermesAPI` domains to CLI coverage. Rows are inte
 | `soul` | `readSoul`, `writeSoul`, `resetSoul` | `soul read/write/reset` | `knowledge-service.ts` | Local/SSH support; mutations mark runtime stale. |
 | `tools` | `getToolsets`, `setToolsetEnabled` | `tools list/set` | `knowledge-service.ts` | Boolean strings accepted for `set`. |
 | `skills` | `listInstalledSkills`, `listBundledSkills`, `getSkillContent`, `getSkillMetadata`, `installSkill`, `uninstallSkill`, `importSkillMarkdown` | `skills installed/bundled/content/metadata/install/uninstall/import` | `knowledge-service.ts` | Pure remote Markdown import rejected; SSH supported. |
-| `models` | `listModels`, `addModel`, `removeModel`, `updateModel` | `models list/add/remove/update` | `models-service.ts`, `src/main/models.ts` | Listing uses service; mutations currently use local model storage. |
+| `models` | `listModels`, `addModel`, `removeModel`, `updateModel` | `models list/add/remove/update` | `models-service.ts`, `hermes-model-inventory-service.ts`, `src/main/models.ts` | Listing uses Hermes inventory; mutations currently use legacy/manual model storage. |
 | `credentials` | `getCredentialPool`, `setCredentialPool` | `credentials get/set` | `models-service.ts`, `src/main/config.ts` | Set expects a JSON array in `--entries-file`. |
 | `cron` | `listCronJobs`, `createCronJob`, `removeCronJob`, `pauseCronJob`, `resumeCronJob`, `triggerCronJob` | `cron list/create/remove/pause/resume/run` | `cron-service.ts` | `--active-only` flips include-disabled behavior. |
 | `traces` | `listTraceRuns`, `getTraceRun`, `listSkillTrainingRuns`, `recordLocalChatTrace` | `traces list/get/skill-runs` | `trace-store.ts` | Local trace recording is renderer-only/deferred for CLI. |

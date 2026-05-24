@@ -7,7 +7,7 @@ import { inferContextWindow } from "../shared/chat-metadata";
 import {
   normalizeModelCapabilities,
   type ModelCapability,
-} from "../shared/model-roles";
+} from "../shared/models";
 
 const MODELS_FILE = join(HERMES_HOME, "models.json");
 

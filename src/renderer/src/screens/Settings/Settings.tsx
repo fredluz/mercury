@@ -3,7 +3,6 @@ import { useTheme } from "../../components/ThemeProvider";
 import { useI18n } from "../../components/useI18n";
 import { SettingsCoreSections } from "./components/SettingsCoreSections";
 import { SettingsPreferenceSections } from "./components/SettingsPreferenceSections";
-import Models from "../Models/Models";
 import type { RuntimeDiagnostic } from "../../../../shared/runtime";
 
 // Read cached values from localStorage for instant display
@@ -32,7 +31,6 @@ function Settings({
   runtimeDiagnostic?: RuntimeDiagnostic | null;
 }): React.JSX.Element {
   const { t, locale, setLocale } = useI18n();
-  const [settingsView, setSettingsView] = useState<"main" | "models">("main");
   const [hermesHome, setHermesHome] = useState("");
   const { theme, setTheme } = useTheme();
 
@@ -432,12 +430,7 @@ function Settings({
         handleUpdateHermes,
         profile,
         runtimeDiagnostic,
-        onOpenModels: () => setSettingsView("models"),
       };
-
-  if (settingsView === "models") {
-    return <Models profile={profile} onBack={() => setSettingsView("main")} />;
-  }
 
   return (
     <div className="settings-container">

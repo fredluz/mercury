@@ -8,6 +8,7 @@ This document maps Mercury's current contract tests and deterministic contract c
 - Preload API surface: `tests/preload-api-surface.test.ts`
 - Local perf telemetry safety: `tests/perf-telemetry.test.ts`
 - Chat IPC lifecycle: `tests/chat-ipc-lifecycle.test.ts`
+- Model configuration and Hermes inventory: `tests/model-roles.test.ts`, `tests/hermes-model-inventory.test.ts`, `tests/chat-role-runtime.test.ts`
 - Chat metadata helpers: `tests/chat-metadata.test.ts`
 - Chat title generation: `tests/hermes-title.test.ts`
 - Hermes trace-event normalization: `tests/hermes-trace-events.test.ts`
@@ -32,6 +33,7 @@ Run contract tests when a change touches any of these areas:
 - Shared cross-process types under `src/shared/*`.
 - Local performance telemetry helpers under `src/main/perf/**`, `src/renderer/src/perf.ts`, and `src/shared/perf.ts`.
 - Chat IPC lifecycle, generated-title persistence, stream completion/error delivery, or trace side effects.
+- Model role schema, role resolution, Hermes provider inventory, or chat runtime model selection.
 - Chat metadata helpers, context-window inference, context usage display inputs, or generated-title request validation.
 - Hermes stream trace event normalization, artifact extraction, or legacy progress parsing.
 - Trace persistence, trace event schema, skill-training derivation, or real-app Trace Lab harness expectations.
@@ -149,13 +151,79 @@ Current assertions:
 - `generate-chat-title` trims request fields, calls the title generator, and persists generated titles with the selected profile.
 - Error side-effect failures still deliver a single `chat-error` and reject the handler once.
 - Runtime setup failures before transport dispatch surface a visible `chat-error`, reject with the original structured runtime error, and do not install an active chat run.
+- Chat sends forward the selected text role into the shared chat service; missing or invalid role inputs normalize to Chat.
 
 Run this test when changing:
 
 - `src/main/ipc/chat.ts`
 - `src/main/hermes/title.ts`
+- `src/main/services/chat-service.ts`
 - Chat trace setup/finalization behavior in `src/main/trace-store.ts`
 - Session title/profile update behavior in `src/main/session-cache.ts`
+
+### `tests/model-roles.test.ts`
+
+Protects the model capability helpers and direct model no-fallback behavior.
+
+Current assertions:
+
+- The stable role set is Chat, Plan, Code, Explore, Research, Review, Design, and Image.
+- Every role's resolution chain is self-only.
+- Saved model capabilities default to text and do not infer image generation from generic metadata.
+- Malformed `config.yaml` returns empty role state instead of throwing.
+- Profile overrides shadow global defaults for the same role.
+- Missing saved model references can still resolve from their stored provider/model snapshot.
+- Chat remains unresolved without a Chat assignment even when legacy `config.yaml` has provider/default fields.
+- Code does not resolve from Chat when Code is unassigned.
+- Explore does not resolve from Code or Chat when Explore is unassigned.
+- Image does not resolve through a text fallback and only reports Codex image capability state.
+
+Run this test when changing:
+
+- `src/shared/models.ts`
+- `src/main/hermes/chat-model.ts`
+- `src/main/services/config-service.ts`
+- `src/main/models.ts`
+- Role storage paths, normalization, or fallback semantics
+
+### `tests/hermes-model-inventory.test.ts`
+
+Protects Hermes-backed provider model inventory and the integration between inventory and role listing.
+
+Current assertions:
+
+- Hermes provider/model option payloads map into stable selectable descriptors.
+- Providers without models do not create selectable entries.
+- Local metadata fallback is configured with Hermes venv Python, Hermes repo cwd, enhanced PATH, `HERMES_HOME`, and `HERMES_AGENT_HOME`.
+- When the runtime API is unavailable, local inventory fallback runs through the Hermes venv and selected profile home.
+- provider inventory returns Hermes models without reading `models.json` as the catalog.
+- Inventory failures return structured unavailable state and do not seed defaults.
+- SSH role listing can load model availability from remote Hermes metadata.
+
+Run this test when changing:
+
+- `src/main/services/hermes-model-inventory-service.ts`
+- `src/main/services/models-service.ts`
+- `src/main/hermes/connection.ts`
+- `src/main/install/paths.ts`
+- SSH metadata/inventory helpers
+
+### `tests/chat-role-runtime.test.ts`
+
+Protects runtime use of direct agent model config.
+
+Current assertions:
+
+- Direct profile config resolves to provider/model.
+- Missing direct model config fails with setup guidance before transport.
+- API chat and title requests use the direct agent model.
+- 
+Run this test when changing:
+
+- `src/main/hermes/chat-model.ts`
+- `src/main/hermes/chat-api.ts`
+- `src/main/hermes/gateway.ts`
+- Chat runtime model resolution and direct model dispatch
 
 ### `tests/chat-metadata.test.ts`
 

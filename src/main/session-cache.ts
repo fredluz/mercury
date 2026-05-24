@@ -386,17 +386,17 @@ export function updateSessionTitle(
   let cacheUpdated = false;
   if (requestedProfile) {
     const idx = matchingCacheIndex(cache.sessions, cleanSessionId, requestedProfile);
-    if (idx >= 0) {
-      cache.sessions[idx].title = cleanTitle;
-      cache.sessions[idx].profile = requestedProfile;
-      cacheUpdated = true;
-    }
+      if (idx >= 0) {
+        cache.sessions[idx].title = cleanTitle;
+        cache.sessions[idx].profile = requestedProfile;
+        cacheUpdated = true;
+      }
   } else {
     for (const session of cache.sessions) {
       if (session.id !== cleanSessionId) continue;
       session.title = cleanTitle;
       session.profile = normalizeCachedSessionProfile(session);
-      cacheUpdated = true;
+        cacheUpdated = true;
     }
   }
 

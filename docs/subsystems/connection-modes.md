@@ -13,6 +13,7 @@ Mercury supports three connection modes: local, pure remote HTTP, and SSH. This 
 - SSH domain implementations: `src/main/ssh/*`
 - IPC handlers that branch by mode: `src/main/ipc/config.ts`, `src/main/ipc/gateway.ts`, `src/main/ipc/install.ts`, `src/main/ipc/chat.ts`, `src/main/ipc/knowledge.ts`, `src/main/ipc/sessions.ts`, `src/main/ipc/models.ts`, `src/main/ipc/system.ts`
 - Shared services used by IPC and CLI mode routing: `src/main/services/config-service.ts`, `src/main/services/chat-service.ts`, `src/main/services/gateway-service.ts`, `src/main/services/install-service.ts`, `src/main/services/knowledge-service.ts`, `src/main/services/sessions-service.ts`, `src/main/services/system-service.ts`
+- Model inventory services: `src/main/services/hermes-model-inventory-service.ts`, `src/main/services/models-service.ts`
 - Renderer startup/gating/status checks: `src/renderer/src/App.tsx`, `src/renderer/src/screens/Layout/Layout.tsx`, `src/renderer/src/screens/Gateway/Gateway.tsx`
 - Contract tests: `tests/reliable-profile-runtime-contract.test.ts`, `tests/chat-ipc-lifecycle.test.ts`
 - CLI parity: `src/cli/*`, `src/main/services/chat-service.ts`, `docs/contracts/cli.md`, `tests/cli-chat-commands.test.ts`, `tests/cli-parity.test.ts`
@@ -99,6 +100,7 @@ Current behavior:
 - `ensureApiServerConfig(profile)` appends a profile-specific API server config block to the selected profile's `config.yaml` if no `api_server` text is present. It is called during local initialization, not in remote modes.
 - Local gateway startup runs Hermes via `HERMES_PYTHON` and `HERMES_SCRIPT`, with `HERMES_HOME`, enhanced `PATH`, `HOME`, `API_SERVER_ENABLED=true`, profile-specific `API_SERVER_HOST`/`API_SERVER_PORT`, and profile API keys from `.env` injected into the child process environment.
 - Local config/env/model/storage functions operate under `profileHome(profile)` for profile-aware files.
+- Local model inventory prefers the verified runtime API `GET /api/model/options`. If that endpoint is unavailable, Mercury invokes Hermes metadata locally through Hermes venv Python with profile-scoped `HERMES_HOME`.
 
 Local persistent storage is covered in [Storage and profiles](storage-and-profiles.md).
 
@@ -127,6 +129,7 @@ Important current limitations and differences:
 - Pure remote HTTP can validate basic remote reachability, but profile-scoped execution fails closed until a future remote profile identity declaration/verification path exists.
 - Some main IPC handlers still call local services unless they have an SSH branch. For example, manual Markdown skill import explicitly rejects pure remote mode because it writes to the selected profile filesystem.
 - Pure remote HTTP mode does not use SSH filesystem/command helpers.
+- Provider model inventory in pure remote HTTP mode depends on the verified runtime API. If remote runtime inventory is unavailable, Mercury returns a structured unavailable model-inventory state rather than using local metadata or seeded defaults.
 
 ### CLI notes
 
@@ -150,6 +153,7 @@ Current behavior:
 - `send-message` ensures the selected profile's SSH tunnel and remote gateway are healthy before dispatching chat. If gateway or tunnel health fails, it starts the remote gateway, starts the tunnel, reads the remote API key, and caches it.
 - `ProfileRuntimeManager.resolveRuntime(...)` then verifies the SSH runtime through `sshVerifyProfileRuntime(...)`. Named SSH profiles cannot be verified through the default remote API port; they require a profile-specific SSH remote port.
 - Verified SSH chat dispatch uses the API path via transport `ssh-api`, passing `runtime.apiBaseUrl` and `runtime.authHeaders` into `sendMessageViaApi(...)`.
+- SSH model inventory prefers the verified runtime API through the tunnel. If the runtime API is unavailable, Mercury executes the remote Hermes metadata path over SSH instead of falling back to local metadata.
 
 ### CLI notes
 

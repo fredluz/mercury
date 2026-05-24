@@ -56,7 +56,6 @@ export function SettingsCoreSections({ values }: SettingsCoreSectionsProps): Rea
   handleTestConnection,
   handleDismissMigration,
   handleMigrate,
-  onOpenModels,
   } = values;
   return (
     <>
@@ -212,20 +211,6 @@ export function SettingsCoreSections({ values }: SettingsCoreSectionsProps): Rea
           {dumpOutput && (
             <pre className="settings-hermes-doctor">{dumpOutput}</pre>
           )}
-        </div>
-      </div>
-
-      <div className="settings-section settings-models-entry-section">
-        <div className="settings-entry-row">
-          <div>
-            <div className="settings-entry-title">{t("settings.modelsEntryTitle")}</div>
-            <div className="settings-entry-description">
-              {t("settings.modelsEntryDescription")}
-            </div>
-          </div>
-          <button className="btn btn-secondary" onClick={onOpenModels}>
-            {t("settings.openModels")}
-          </button>
         </div>
       </div>
 

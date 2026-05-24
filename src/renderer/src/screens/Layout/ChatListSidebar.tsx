@@ -204,7 +204,11 @@ function ChatListSidebar({
         key={sessionRowKey(session.id, session.profile)}
         className={`chat-sidebar-row ${active ? "chat-sidebar-row--active" : ""}`}
         onClick={() =>
-          onResumeSession(session.id, session.title, session.profile)
+          onResumeSession(
+            session.id,
+            session.title,
+            session.profile,
+          )
         }
       >
         <span className="chat-sidebar-row-title">{title}</span>

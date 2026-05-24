@@ -41,7 +41,7 @@ Current fragments in `src/preload/api/index.ts` are:
 | `chatApi` | `src/preload/api/chat.ts` | send/abort chat, generated chat titles, local trace recording, chat stream listeners, and live activity trace events |
 | `navigationApi` | `src/preload/api/navigation.ts` | traces, gateway lifecycle/restart, platform toggles, sessions, profiles |
 | `knowledgeApi` | `src/preload/api/knowledge.ts` | memory, user profile, soul, tools, skills, skill content/metadata, Markdown skill import |
-| `modelsApi` | `src/preload/api/models.ts` | session cache/search, credential pool, models |
+| `modelsApi` | `src/preload/api/models.ts` | session cache/search, credential pool, provider model inventory, direct agent model config, provider inventory, legacy/manual models |
 | `appApi` | `src/preload/api/app.ts` | runtime diagnostics, updates, menu events, cron jobs, shell, backup/import, dump/log/system helpers, local perf telemetry |
 
 ## IPC composition and handler ownership
@@ -73,7 +73,7 @@ Examples by domain:
 
 - Install/version/update: `check-install`, `verify-install`, `start-install`, `get-hermes-version`, `refresh-hermes-version`, `run-hermes-doctor`, `run-hermes-update`, `migration-inventory`, `migration-prompt`, `check-openclaw`, `run-claw-migrate`, `get-locale`, `set-locale`, `get-app-version`, `check-for-updates`, `download-update`, `install-update`.
 - Config/connection: `get-env`, `set-env`, `get-config`, `set-config`, `get-hermes-home`, `get-model-config`, `set-model-config`, `is-remote-mode`, `is-remote-only-mode`, `get-connection-config`, `set-connection-config`, `set-ssh-config`, `test-remote-connection`, `test-ssh-connection`, `is-ssh-tunnel-active`, `start-ssh-tunnel`, `stop-ssh-tunnel`.
-- Chat: `send-message`, `generate-chat-title`, `abort-chat`.
+- Chat: `send-message`, `generate-chat-title`, `abort-chat`. `send-message` uses the selected profile direct model config.
 - Trace Lab: `list-trace-runs`, `get-trace-run`, `list-skill-training-runs`, `record-local-chat-trace`.
 - Gateway/platform: `start-gateway`, `stop-gateway`, `gateway-status`, `restart-gateway`, `get-platform-enabled`, `set-platform-enabled`.
 - Sessions/profiles/cache/search: `list-sessions`, `get-session-messages`, `list-profiles`, `create-profile`, `delete-profile`, `set-active-profile`, `list-cached-sessions`, `sync-session-cache`, `update-session-title`, `search-sessions`.
@@ -88,7 +88,7 @@ Examples by domain:
 
 | Preload method | IPC channel | Notes |
 | --- | --- | --- |
-| `sendMessage(message, profile?, resumeSessionId?, history?)` | `send-message` | Starts or resumes a Hermes chat run and streams renderer events while the returned promise settles with `{ response, sessionId? }`. |
+| `sendMessage(message, profile?, resumeSessionId?, history?)` | `send-message` | Starts or resumes a Hermes chat run using the selected profile direct model config and streams renderer events while the returned promise settles with `{ response, sessionId? }`. Missing or invalid roles default to Chat. |
 | `abortChat()` | `abort-chat` | Aborts the active run, if any, and finalizes the active trace as aborted. |
 | `generateChatTitle(request)` | `generate-chat-title` | Validates and normalizes a `GenerateChatTitleRequest`, prepares the chat backend, generates or falls back to a sanitized title, and persists it with `updateSessionTitle(sessionId, title, profile)` when a session id is supplied. |
 | `recordLocalChatTrace(request)` | `record-local-chat-trace` | Records local slash-command telemetry without calling Hermes. |
@@ -108,6 +108,17 @@ Every listener API returns a cleanup function that removes its `ipcRenderer` lis
 - `messages: Array<{ role: "user" | "agent" | "assistant"; content: string }>`
 
 The main handler rejects invalid request shapes before normalization. Title generation is best-effort from the renderer perspective: `useChatController` keeps the conversation usable when IPC/model title generation fails.
+
+### Model role and provider inventory API
+
+`window.hermesAPI` exposes model inventory methods from `src/preload/api/models.ts` and `src/preload/index.d.ts`:
+
+| Preload method | IPC channel | Notes |
+| --- | --- | --- |
+| `listModels()` | `list-models` | Returns Hermes inventory-backed provider models for the active connection. This is not a hardcoded Mercury catalog. |
+| `addModel(...)` | `add-model` | Adds a manual/legacy saved model entry locally or through SSH helpers. |
+| `removeModel(id)` | `remove-model` | Removes a manual/legacy saved model entry. |
+| `updateModel(id, fields)` | `update-model` | Updates a manual/legacy saved model entry. |
 
 ### Trace Lab local trace API
 

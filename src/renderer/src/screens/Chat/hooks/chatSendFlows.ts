@@ -64,7 +64,7 @@ export async function sendNormalMessage(ctx: NormalSendFlowContext): Promise<voi
       ctx.text,
       ctx.profile,
       resumeSessionId,
-      historyMessages,
+      historyMessages
     );
     ctx.perf.markIpcResolved({
       runSeq,
@@ -122,7 +122,7 @@ export async function sendQuickAskMessage(ctx: QuickAskSendFlowContext): Promise
       `/btw ${ctx.text}`,
       ctx.profile,
       resumeSessionId,
-      historyMessages,
+      historyMessages
     );
     ctx.perf.markIpcResolved({
       runSeq,
@@ -156,7 +156,12 @@ export function sendApprovalCommand(ctx: ApprovalSendFlowContext): void {
   ctx.setMessages((prev) => [...prev, userMessage]);
   ctx.beginActivityGroup(userMessage.id);
   window.hermesAPI
-    .sendMessage(ctx.command, ctx.profile, ctx.getResumeSessionId(), historyFrom(ctx.messages))
+    .sendMessage(
+      ctx.command,
+      ctx.profile,
+      ctx.getResumeSessionId(),
+      historyFrom(ctx.messages)
+    )
     .then(() => ctx.finalizeChatRun(runSeq, "completed"))
     .catch((error) => {
       if (ctx.finalizeChatRun(runSeq, "failed")) ctx.appendFallbackSendError(error);

@@ -285,6 +285,10 @@
   color: var(--accent-text);
 }
 
+.chat-model-option-unconfigured {
+  color: var(--text-muted);
+}
+
 .chat-model-option-label {
   font-weight: 500;
 }

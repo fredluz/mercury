@@ -22,7 +22,10 @@ import {
   sshStartGateway,
   sshReadRemoteApiKey,
 } from "../ssh-remote";
-import { updateSessionProfile, updateSessionTitle } from "../session-cache";
+import {
+  updateSessionProfile,
+  updateSessionTitle,
+} from "../session-cache";
 import { generateChatTitle as resolveChatTitle } from "../hermes/title";
 import { isSyntheticChatStreamEnabled } from "../hermes/synthetic-chat";
 import type { TraceEvent, TraceEventType, TraceUsage } from "../../shared/traces";

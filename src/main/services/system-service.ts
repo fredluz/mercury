@@ -25,7 +25,12 @@ export function getRuntimeDiagnosticForProfile(profile?: string) {
 }
 
 export async function revalidateRuntimeForProfile(profile?: string) {
-  const model = await resolveChatRuntimeModel(profile);
+  let model: Awaited<ReturnType<typeof resolveChatRuntimeModel>>;
+  try {
+    model = await resolveChatRuntimeModel(profile);
+  } catch {
+    return false;
+  }
   if (!model.provider || model.provider === "auto" || !model.model) {
     return false;
   }

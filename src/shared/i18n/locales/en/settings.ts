@@ -89,6 +89,6 @@ export default {
   switchedToLocal: "Switched to local mode",
   modelsEntryTitle: "Models",
   modelsEntryDescription:
-    "Configure role-based model defaults and manage the saved model library.",
-  openModels: "Open Models settings",
+    "Configure each agent model from the Agents screen and manage provider settings here.",
+  openModels: "Open agent settings",
 } as const;

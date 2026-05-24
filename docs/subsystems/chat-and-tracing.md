@@ -14,6 +14,7 @@ This document traces the current chat path from renderer input to preload, main 
 - CLI chat adapter: `src/cli/chat-commands.ts`, `src/cli/output.ts`, `src/cli/errors.ts`, [CLI contract](../contracts/cli.md)
 - Chat title generation: `src/main/hermes/title.ts`, `src/shared/chat-metadata.ts`
 - Hermes dispatch: `src/main/hermes/gateway.ts`
+- Agent model config resolution: `src/main/hermes/chat-model.ts`, `src/main/services/config-service.ts`, [Agent model configuration and provider inventory](model-roles-and-provider-inventory.md)
 - Profile runtime manager/identity contract: `src/main/hermes/runtime.ts`, `src/main/hermes/types.ts`, `src/shared/runtime.ts`
 - API transport: `src/main/hermes/chat-api.ts`
 - Stream trace normalization: `src/main/hermes/trace-events.ts`
@@ -22,7 +23,7 @@ This document traces the current chat path from renderer input to preload, main 
 - Connection helpers: `src/main/hermes/connection.ts`
 - Trace persistence: `src/main/trace-store.ts`
 - Trace schema: `src/shared/traces.ts`, [Trace schema contract](../contracts/trace-schema.md)
-- Contract tests: `tests/ipc-handlers.test.ts`, `tests/preload-api-surface.test.ts`, `tests/chat-ipc-lifecycle.test.ts`, `tests/reliable-profile-runtime-contract.test.ts`, `tests/chat-metadata.test.ts`, `tests/hermes-title.test.ts`, `tests/hermes-trace-events.test.ts`, `tests/trace-store.test.ts`
+- Contract tests: `tests/ipc-handlers.test.ts`, `tests/preload-api-surface.test.ts`, `tests/chat-ipc-lifecycle.test.ts`, `tests/chat-role-runtime.test.ts`, `tests/model-roles.test.ts`, `tests/reliable-profile-runtime-contract.test.ts`, `tests/chat-metadata.test.ts`, `tests/hermes-title.test.ts`, `tests/hermes-trace-events.test.ts`, `tests/trace-store.test.ts`
 
 ## Renderer flow
 
@@ -34,7 +35,7 @@ This document traces the current chat path from renderer input to preload, main 
 - `activityGroups`, each anchored to the user message that started a send.
 - accumulated usage and derived context usage.
 - generated title pending state.
-- current model/provider/base URL and inferred or saved context-window information.
+- current selected text role, its resolved model/provider summary, and inferred context-window information.
 - `fastMode`, backed by `agent.service_tier` config.
 - scroll/focus behavior.
 
@@ -86,9 +87,9 @@ A group becomes failed when a `transport.error` or `*.failed` event arrives. Com
 7. Requests a generated title once when the send produced the first eligible non-slash user message.
 8. Handles promise rejection only as a fallback, because visible errors usually arrive through `onChatError`.
 
-`handleQuickAsk()` sends `/btw <text>` through the same `sendMessage(...)` API, but displays the local user message as `💭 <text>` and does not request a generated title.
+`handleQuickAsk()` sends `/btw <text>` through the same `sendMessage(...)` API with the current selected role, but displays the local user message as `💭 <text>` and does not request a generated title.
 
-`handleApprove()` and `handleDeny()` send `/approve` and `/deny` respectively through `sendMessage(...)`, start their own activity groups, and reuse the current resume session id and history.
+`handleApprove()` and `handleDeny()` send `/approve` and `/deny` respectively through `sendMessage(...)`, start their own activity groups, and reuse the current selected role, resume session id, and history.
 
 `handleAbort()` calls `window.hermesAPI.abortChat()`, marks the active renderer group aborted, clears loading state, and refocuses input.
 
@@ -114,9 +115,13 @@ Generated titles are intentionally delayed until a real Hermes session id exists
 
 If the model title path fails, `src/main/hermes/title.ts` falls back to a sanitized heuristic title based on the first user message. If title IPC itself fails, the renderer keeps the visible untitled state and clears pending state.
 
-## Context usage and fast mode
+## Agent model display, context usage, and fast mode
 
-`useChatController` loads the active model config and saved model list with `getModelConfig(profile)` and `listModels()`. It derives context-window metadata through `inferContextWindow(provider, model, selectedSavedModel?.contextWindow)` from `src/shared/chat-metadata.ts`.
+`useChatController` delegates current model display state to `useChatModelConfig(...)`. That hook loads `window.hermesAPI.getModelConfig(profile)` and applies the configured provider/model to context-window metadata through `inferContextWindow(provider, model)` from `src/shared/chat-metadata.ts`.
+
+The chat composer shows a read-only current agent model display plus a Configure Agent action. Model edits happen on the Agents screen and write the profile's direct `config.yaml` model binding.
+
+Sending without a configured provider/model fails before transport with setup guidance from `src/main/hermes/chat-model.ts`. The runtime does not fall back to provider auto-detect or legacy storage.
 
 `onChatUsage(usage)` accumulates token/cost totals and stores the latest prompt/completion/total token counts alongside:
 
@@ -177,9 +182,10 @@ Pure remote HTTP profile execution still fails closed before dispatch. Local mod
 6. If another chat is active, abort it and finish the previous trace run as `aborted` with detail `Superseded by a new Hermes message.`
 7. Create a new trace run with `createTraceRun(message, profile)`.
 8. Record session resume and history metadata when supplied.
-9. Call `sendMessage(...)` from `src/main/hermes/gateway.ts`, passing the prepared runtime handle plus callbacks for chunks, done, error, trace events, tool progress, and usage.
-10. Store the returned chat handle and trace run metadata as `activeChatRun`.
-11. Return a promise that resolves with `{ response, sessionId }` on completion/abort or rejects on error.
+9. Resolve the direct agent model config through `getModelConfigForProfile(profile)`. If provider/model is missing, fail before transport with setup guidance.
+10. Call `sendMessage(...)` from `src/main/hermes/gateway.ts`, passing the prepared runtime handle, and callbacks for chunks, done, error, trace events, tool progress, and usage.
+11. Store the returned chat handle and trace run metadata as `activeChatRun`.
+12. Return a promise that resolves with `{ response, sessionId }` on completion/abort or rejects on error.
 
 The main handler tracks only one active chat at a time through `activeChatRun`.
 

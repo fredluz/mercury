@@ -1,7 +1,19 @@
 # Spec: Role-Based Model Defaults Settings
 
 Created: Tuesday, May 19, 2026
-Status: Draft
+Status: Superseded by `specs/hermes-inventory-role-chat-picker.md`
+
+## Supersession Note
+
+This May 19 draft captured the first role-defaults design. The May 24 implementation intentionally changed several decisions:
+
+- Provider-served model availability now comes from Hermes inventory, not from a Mercury saved-model library as the source of truth.
+- `models.json` remains legacy/manual storage, but it is not seeded and is not canonical for provider models.
+- Text role resolution has no cross-role fallback chains. A role resolves only from its own profile override, then its own global default, then unresolved setup-required state.
+- Chat role picker changes are per-chat/session role selection, not writes to the active profile's Chat override.
+- Legacy profile `config.yaml` provider/default/base URL does not silently satisfy unresolved role-based chat runtime.
+
+Current behavior is documented in [Model roles and provider inventory](../docs/subsystems/model-roles-and-provider-inventory.md). Keep this file as historical design context only.
 
 ## Problem Statement
 

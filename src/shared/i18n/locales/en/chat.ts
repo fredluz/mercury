@@ -11,6 +11,10 @@ export default {
   contextTooltipEstimated:
     "Estimated: {{used}} of {{limit}} tokens used in {{model}}'s context window.",
   noModel: "No model set",
+  currentModel: "Current model",
+  configureAgent: "Configure Agent",
+  providerUnknown: "Unknown provider",
+  agentModelNotConfigured: "No agent model configured",
   auto: "Auto",
   commandsTitle: "Commands",
   typeMessage: "Type a message... (Shift+Enter for new line)",
@@ -66,7 +70,7 @@ export default {
   agentPickerGatewayOff: "Gateway off",
   noModelsAvailable: "No connected models",
   noModelsAvailableHint:
-    "Connect a provider in Providers before choosing a chat model.",
+    "Connect a provider in Providers before choosing an agent model.",
   openProviders: "Open Providers",
   emptyTitle: "How can I help you today?",
   emptyHint: "Ask me to write code, answer questions, search the web, and more",
@@ -132,7 +136,7 @@ export default {
     help: "Show available commands and help",
     tools: "List available tools",
     skills: "List installed skills",
-    model: "Show or switch the current model",
+    model: "Show the current agent model",
     memory: "Show agent memory",
     persona: "Show current persona",
     version: "Show Hermes version",

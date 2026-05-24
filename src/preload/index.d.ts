@@ -30,14 +30,7 @@ import type {
   TraceRun,
   TraceScheduleRunSummary,
 } from "../shared/traces";
-import type {
-  ModelCapability,
-  ModelRoleDefaultsResult,
-  ModelRoleId,
-  ModelRoleListResult,
-  ModelRoleResolution,
-  ModelRoleSelection,
-} from "../shared/model-roles";
+import type { ModelCapability } from "../shared/models";
 
 interface InstallStatus {
   installed: boolean;
@@ -362,7 +355,6 @@ interface HermesAPI {
     title: string,
     profile?: string,
   ) => Promise<boolean>;
-
   // Session search
   searchSessions: (
     query: string,
@@ -460,25 +452,7 @@ interface HermesAPI {
       capabilities: ModelCapability[];
     }>,
   ) => Promise<boolean>;
-  listModelRoles: (profile?: string) => Promise<ModelRoleListResult>;
-  getModelRoleDefaults: (profile?: string) => Promise<ModelRoleDefaultsResult>;
-  setGlobalModelRoleDefault: (
-    role: ModelRoleId,
-    selection: Partial<ModelRoleSelection>,
-  ) => Promise<boolean>;
-  setProfileModelRoleOverride: (
-    role: ModelRoleId,
-    selection: Partial<ModelRoleSelection>,
-    profile?: string,
-  ) => Promise<boolean>;
-  clearProfileModelRoleOverride: (
-    role: ModelRoleId,
-    profile?: string,
-  ) => Promise<boolean>;
-  resolveModelForRole: (
-    role: ModelRoleId,
-    profile?: string,
-  ) => Promise<ModelRoleResolution>;
+
 
   // Updates
   checkForUpdates: () => Promise<string | null>;

@@ -208,13 +208,7 @@ function Chat({
         <ModelPicker
           pickerRef={chat.pickerRef}
           displayModel={chat.displayModel}
-          modelGroups={chat.modelGroups}
-          currentModel={chat.currentModel}
-          currentProvider={chat.currentProvider}
-          showModelPicker={chat.showModelPicker}
-          setShowModelPicker={chat.setShowModelPicker}
           loadModelConfig={chat.loadModelConfig}
-          selectModel={chat.selectModel}
           onOpenProviders={onOpenProviders}
           t={t}
         />

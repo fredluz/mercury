@@ -21,6 +21,7 @@ Use evergreen docs first when you need to understand or change Mercury. These pa
 
 - [Connection modes](subsystems/connection-modes.md) — local, remote HTTP, SSH, gateway, tunnel, and capability-gating behavior.
 - [Chat and tracing](subsystems/chat-and-tracing.md) — renderer chat flow, streaming events, Hermes dispatch, abort/completion handling, and trace persistence.
+- [Agent model configuration and provider inventory](subsystems/model-roles-and-provider-inventory.md) — Hermes-backed provider model inventory, direct agent model configuration, provider inventory, and no-fallback runtime resolution.
 - [Codex image generation](subsystems/codex-image-generation.md) — `image_gen` toolset, `openai-codex` provider config, Codex OAuth, `$imagegen` built-in behavior, image artifacts, and Trace Lab validation.
 - [Storage and profiles](subsystems/storage-and-profiles.md) — `HERMES_HOME`, profile scoping, persistent files, sessions, memory, soul, models, and backups/imports.
 - [Memory](memory.md) — built-in and provider memory behavior, profile isolation, autonomous agent memory writes, and verification recipes.

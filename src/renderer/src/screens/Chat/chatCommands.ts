@@ -49,24 +49,14 @@ export async function executeLocalCommand(
       ctx.handleClear();
       return true;
     case "/model": {
-      let mc: { provider: string; model: string; baseUrl: string; source?: string };
-      try {
-        const resolved = await window.hermesAPI.resolveModelForRole("chat", ctx.profile);
-        if (resolved.kind !== "text" || !resolved.ok) throw new Error("Chat role did not resolve to text");
-        mc = {
-          provider: resolved.provider,
-          model: resolved.model,
-          baseUrl: resolved.baseUrl,
-          source: resolved.source,
-        };
-      } catch {
-        const legacy = await window.hermesAPI.getModelConfig(ctx.profile);
-        mc = { ...legacy, source: "legacy-chat-config" };
-      }
+      const mc = await window.hermesAPI.getModelConfig(ctx.profile);
       const display = mc.model || "Not set";
       const prov = mc.provider || "auto";
       pushLocalResponse(
-        `**Current Chat model:** \`${display}\`\n**Provider:** ${prov}${mc.baseUrl ? `\n**Base URL:** ${mc.baseUrl}` : ""}${mc.source ? `\n**Source:** ${mc.source}` : ""}`,
+        `**Current agent model:** \`${display}\`
+**Provider:** ${prov}${mc.baseUrl ? `
+**Base URL:** ${mc.baseUrl}` : ""}
+**Source:** agent config`,
       );
       return true;
     }

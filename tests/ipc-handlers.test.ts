@@ -169,12 +169,6 @@ describe("New IPC handlers from v0.8/v0.9 features", () => {
     "record-local-chat-trace",
     "get-perf-telemetry-config",
     "record-perf-event",
-    "list-model-roles",
-    "get-model-role-defaults",
-    "set-global-model-role-default",
-    "set-profile-model-role-override",
-    "clear-profile-model-role-override",
-    "resolve-model-for-role",
     "create-schedule-job",
     "update-cron-job",
   ];

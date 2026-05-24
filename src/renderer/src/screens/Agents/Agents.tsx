@@ -74,6 +74,11 @@ function Agents({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [modelProfile, setModelProfile] = useState<ProfileInfo | null>(null);
+  const [modelProvider, setModelProvider] = useState("");
+  const [modelName, setModelName] = useState("");
+  const [modelBaseUrl, setModelBaseUrl] = useState("");
+  const [modelSaving, setModelSaving] = useState(false);
 
   const loadProfiles = useCallback(async (): Promise<void> => {
     const list = await window.hermesAPI.listProfiles();
@@ -96,11 +101,54 @@ function Agents({
     const result = await window.hermesAPI.createProfile(name, cloneConfig);
     setCreating(false);
     if (result.success) {
+      const provider = modelProvider.trim();
+      const model = modelName.trim();
+      if (provider && model) {
+        await window.hermesAPI.setModelConfig(provider, model, modelBaseUrl.trim(), name);
+      }
       setShowCreate(false);
       setNewName("");
+      setModelProvider("");
+      setModelName("");
+      setModelBaseUrl("");
       void loadProfiles();
     } else {
       setError(result.error || t("agents.createFailed"));
+    }
+  }
+
+
+  function openModelConfig(profile: ProfileInfo): void {
+    setModelProfile(profile);
+    setModelProvider(profile.provider && profile.provider !== "auto" ? profile.provider : "");
+    setModelName(profile.model || "");
+    setModelBaseUrl("");
+    setError("");
+  }
+
+  async function saveModelConfig(): Promise<void> {
+    if (!modelProfile) return;
+    const provider = modelProvider.trim();
+    const model = modelName.trim();
+    if (!provider || !model) {
+      setError(t("agents.modelRequired"));
+      return;
+    }
+    setModelSaving(true);
+    setError("");
+    try {
+      await window.hermesAPI.setModelConfig(
+        provider,
+        model,
+        modelBaseUrl.trim(),
+        modelProfile.name,
+      );
+      setModelProfile(null);
+      await loadProfiles();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("agents.modelSaveFailed"));
+    } finally {
+      setModelSaving(false);
     }
   }
 
@@ -194,6 +242,24 @@ function Agents({
             />
             <span>{t("agents.cloneConfig")}</span>
           </label>
+          <input
+            className="input"
+            placeholder={t("agents.modelProviderPlaceholder")}
+            value={modelProvider}
+            onChange={(e) => setModelProvider(e.target.value)}
+          />
+          <input
+            className="input"
+            placeholder={t("agents.modelNamePlaceholder")}
+            value={modelName}
+            onChange={(e) => setModelName(e.target.value)}
+          />
+          <input
+            className="input"
+            placeholder={t("agents.modelBaseUrlPlaceholder")}
+            value={modelBaseUrl}
+            onChange={(e) => setModelBaseUrl(e.target.value)}
+          />
           {error && <div className="agents-create-error">{error}</div>}
           <div className="agents-create-actions">
             <button
@@ -262,6 +328,17 @@ function Agents({
                 role="group"
                 aria-label={t("agents.actionsLabel")}
               >
+                <button
+                  className="agents-card-action-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openModelConfig(p);
+                  }}
+                  title={t("agents.configureModel")}
+                  aria-label={t("agents.configureModelFor", { name: p.name })}
+                >
+                  <Wrench size={15} />
+                </button>
                 {PROFILE_ACTIONS.map(({ view, icon: Icon, labelKey }) => {
                   const label = t(labelKey, { name: p.name });
                   const available = isProfileActionAvailable(p, view);
@@ -324,6 +401,35 @@ function Agents({
           </div>
         ))}
       </div>
+
+      {modelProfile && (
+        <div className="agents-modal-backdrop" onClick={() => setModelProfile(null)}>
+          <div className="agents-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{t("agents.configureModelFor", { name: modelProfile.name })}</h3>
+            <label>
+              {t("agents.modelProvider")}
+              <input className="input" value={modelProvider} onChange={(e) => setModelProvider(e.target.value)} />
+            </label>
+            <label>
+              {t("agents.modelName")}
+              <input className="input" value={modelName} onChange={(e) => setModelName(e.target.value)} />
+            </label>
+            <label>
+              {t("agents.modelBaseUrl")}
+              <input className="input" value={modelBaseUrl} onChange={(e) => setModelBaseUrl(e.target.value)} />
+            </label>
+            {error && <div className="agents-create-error">{error}</div>}
+            <div className="agents-create-actions">
+              <button className="btn btn-primary btn-sm" onClick={saveModelConfig} disabled={modelSaving}>
+                {modelSaving ? t("agents.savingModel") : t("agents.saveModel")}
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setModelProfile(null)}>
+                {t("common.cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

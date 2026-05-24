@@ -139,7 +139,7 @@ describe("read-only CLI commands", () => {
     expect((await runJson(home, ["mcp", "list"])).json.data).toEqual([{ name: "local", type: "stdio", enabled: true, detail: "node" }]);
     expect((await runJson(home, ["memory-providers", "list"])).json.data).toEqual([]);
     expect((await runJson(home, ["tools", "list"])).json.data.length).toBeGreaterThan(0);
-    expect((await runJson(home, ["models", "list"])).json.data.length).toBeGreaterThan(0);
+    expect((await runJson(home, ["models", "list"])).json.data).toEqual([]);
     expect((await runJson(home, ["credentials", "get"])).json.data).toEqual({});
     expect((await runJson(home, ["runtime", "diagnostic"])).json.data).toMatchObject({ requestedProfile: "default" });
     expect((await runJson(home, ["hermes", "doctor"])).json.data).toBe("Hermes is not installed.");

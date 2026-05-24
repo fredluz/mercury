@@ -65,7 +65,9 @@ export function useChatController({
     markActiveActivityGroup: activity.markActiveActivityGroup,
   });
   const perf = useChatPerfTracker();
-  const modelConfig = useChatModelConfig({ profile });
+  const modelConfig = useChatModelConfig({
+    profile,
+  });
   const scroll = useChatScroll({
     messages,
     activityGroups: activity.activityGroups,
@@ -425,19 +427,14 @@ export function useChatController({
     currentModel: modelConfig.currentModel,
     currentProvider: modelConfig.currentProvider,
     modelGroups: modelConfig.modelGroups,
-    showModelPicker: modelConfig.showModelPicker,
-    setShowModelPicker: modelConfig.setShowModelPicker,
     displayModel: modelConfig.currentModel
-      ? modelConfig.currentModel.split("/").pop() || modelConfig.currentModel
-      : modelConfig.currentProvider === "auto"
-        ? t("chat.auto")
-        : t("chat.noModel"),
+      ? `${modelConfig.currentProvider || t("chat.providerUnknown")} · ${modelConfig.currentModel.split("/").pop() || modelConfig.currentModel}`
+      : t("chat.agentModelNotConfigured"),
     visibleMessages: messages.filter((m) => (m.content || "").trim()),
     lastMessageIsAgent:
       messages.length > 0 && messages[messages.length - 1].role === "agent",
     hermesSessionId,
     loadModelConfig: modelConfig.loadModelConfig,
-    selectModel: modelConfig.selectModel,
     handleSend,
     handleQuickAsk,
     handleKeyDown,

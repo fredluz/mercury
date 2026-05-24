@@ -1,6 +1,6 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { ContextWindowSource } from "../../../../shared/chat-metadata";
-import type { ModelCapability } from "../../../../shared/model-roles";
+import type { ModelCapability } from "../../../../shared/models";
 import type { TraceEvent } from "../../../../shared/traces";
 
 export interface SlashCommand {
@@ -92,20 +92,11 @@ export interface ChatController {
   currentModel: string;
   currentProvider: string;
   modelGroups: ModelGroup[];
-  showModelPicker: boolean;
-  setShowModelPicker: Dispatch<SetStateAction<boolean>>;
   displayModel: string;
   visibleMessages: ChatMessage[];
   lastMessageIsAgent: boolean;
   hermesSessionId: string | null;
   loadModelConfig: () => Promise<void>;
-  selectModel: (
-    provider: string,
-    model: string,
-    baseUrl: string,
-    contextWindow?: number,
-    modelId?: string,
-  ) => Promise<void>;
   handleSend: () => Promise<void>;
   handleQuickAsk: () => Promise<void>;
   handleKeyDown: (e: React.KeyboardEvent) => void;
