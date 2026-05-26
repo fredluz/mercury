@@ -183,6 +183,33 @@ describe("ChatRuntimeReadinessCard", () => {
     expect(window.hermesAPI.revalidateRuntime).toHaveBeenCalledTimes(4);
   });
 
+  it("keeps repairing a local gateway when revalidation rejects transiently", async () => {
+    vi.useFakeTimers();
+    installHermesApiMock();
+    vi.mocked(window.hermesAPI.revalidateRuntime)
+      .mockRejectedValueOnce(new Error("runtime-profile-unverified"))
+      .mockRejectedValueOnce(new Error("runtime-profile-unverified"))
+      .mockRejectedValueOnce(new Error("runtime-profile-unverified"))
+      .mockResolvedValueOnce(true);
+
+    render(
+      <ChatRuntimeReadinessCard
+        diagnostic={unverifiedDiagnostic}
+        profile="default"
+        t={t}
+      />,
+    );
+    await Promise.resolve();
+    expect(window.hermesAPI.startGateway).toHaveBeenCalledWith("default");
+
+    await vi.advanceTimersByTimeAsync(700);
+    await vi.advanceTimersByTimeAsync(1_400);
+    await Promise.resolve();
+
+    expect(window.hermesAPI.restartGateway).toHaveBeenCalledWith("default");
+    expect(window.hermesAPI.revalidateRuntime).toHaveBeenCalledTimes(4);
+  });
+
   it("launches the selected external debug agent", async () => {
     vi.useFakeTimers();
     installHermesApiMock();

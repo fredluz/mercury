@@ -34,10 +34,14 @@ export async function revalidateRuntimeForProfile(profile?: string) {
   if (!model.provider || model.provider === "auto" || !model.model) {
     return false;
   }
-  const runtime = await prepareChatBackend(profile, "chat");
-  if (!runtime) return true;
-  const probe = await probeChatCompletionViaApi(profile, runtime);
-  return probe.success;
+  try {
+    const runtime = await prepareChatBackend(profile, "chat");
+    if (!runtime) return true;
+    const probe = await probeChatCompletionViaApi(profile, runtime);
+    return probe.success;
+  } catch {
+    return false;
+  }
 }
 
 export function launchRuntimeDebugAgentForProfile(

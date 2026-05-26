@@ -14,6 +14,8 @@ export default {
   auto: "Automático",
   commandsTitle: "Comandos",
   typeMessage: "Escribe un mensaje... (Mayús+Enter para una nueva línea)",
+  runtimeInputDisabled:
+    "Esperando el runtime de API verificado antes de iniciar el chat.",
   quickAskTitle:
     "Pregunta rápida (/btw) — una pregunta secundaria que no afectará el contexto de la conversación",
   send: "Enviar",

@@ -85,11 +85,40 @@ export async function resolveLocalApiRuntimeAttempt(
     };
   }
 
-  const managedProcessEvidence = hasManagedProcessEvidence(
+  const managedProcessEvidence = inspectManagedProcessEvidence(
     ctx,
     request.profile,
   );
-  if (!managedProcessEvidence) {
+  if (managedProcessEvidence.status === "pending") {
+    state.apiServerAvailable = false;
+    const identity = createLocalApiIdentity(
+      ctx.identityContext,
+      request.profile,
+      {
+        pid: ctx.pidFor(request.profile),
+        startedByMercury: true,
+        verified: false,
+        verificationSource: "managed-process",
+        command:
+          state.gatewayCommand ??
+          state.lastIdentity?.command ??
+          gatewayCommandArgs(ctx, request.profile),
+        mismatchReason: managedProcessEvidence.mismatchReason,
+      },
+    );
+    state.lastIdentity = identity;
+    return {
+      ok: false,
+      failure: {
+        reason: "not-ready",
+        retryable: true,
+        code: "runtime-unavailable",
+        message: `Local API runtime for profile ${request.profile} is not ready yet.`,
+        identity,
+      },
+    };
+  }
+  if (managedProcessEvidence.status === "unmanaged") {
     state.apiServerAvailable = false;
     const identity = createLocalApiIdentity(
       ctx.identityContext,
@@ -248,25 +277,42 @@ export function gatewayCommandArgs(
   return buildHermesProfileCommandArgs(ctx.hermesScript, profile, ["gateway"]);
 }
 
-function hasManagedProcessEvidence(
+type ManagedProcessEvidence =
+  | { status: "verified" }
+  | { status: "pending"; mismatchReason: string }
+  | { status: "unmanaged" };
+
+function inspectManagedProcessEvidence(
   ctx: LocalRuntimeContext,
   profile: string,
-): boolean {
+): ManagedProcessEvidence {
   const state = ctx.stateFor(profile);
   const expectedPort = ctx.getLocalApiPort(profile);
   const expectedCommand = gatewayCommandArgs(ctx, profile);
   const expectedPid = state.gatewayProcess?.pid;
+
+  if (
+    !state.gatewayStartedByApp ||
+    !state.gatewayProcess ||
+    state.gatewayProcess.killed ||
+    !expectedPid ||
+    state.managedApiHost !== "127.0.0.1" ||
+    state.managedApiPort !== expectedPort ||
+    JSON.stringify(state.gatewayCommand) !== JSON.stringify(expectedCommand)
+  ) {
+    return { status: "unmanaged" };
+  }
+
   const pidFilePid = readGatewayPidFile(ctx.pidFileFor(profile));
-  return Boolean(
-    state.gatewayStartedByApp &&
-    state.gatewayProcess &&
-    !state.gatewayProcess.killed &&
-    expectedPid &&
-    pidFilePid === expectedPid &&
-    state.managedApiHost === "127.0.0.1" &&
-    state.managedApiPort === expectedPort &&
-    JSON.stringify(state.gatewayCommand) === JSON.stringify(expectedCommand),
-  );
+  if (pidFilePid !== expectedPid) {
+    return {
+      status: "pending",
+      mismatchReason:
+        "Gateway process is managed by Mercury but runtime ownership evidence is not ready yet.",
+    };
+  }
+
+  return { status: "verified" };
 }
 
 function readGatewayPidFile(path: string): number | null {

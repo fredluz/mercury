@@ -31,8 +31,13 @@ function wait(ms: number): Promise<void> {
 
 async function revalidateWithRetry(profile?: string): Promise<boolean> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const verified = await window.hermesAPI.revalidateRuntime(profile);
-    if (verified) return true;
+    try {
+      const verified = await window.hermesAPI.revalidateRuntime(profile);
+      if (verified) return true;
+    } catch {
+      // Treat transient runtime verification errors as "not ready yet" so
+      // local repair can retry and reach the restart fallback.
+    }
     if (attempt < 2) await wait(700 * (attempt + 1));
   }
   return false;

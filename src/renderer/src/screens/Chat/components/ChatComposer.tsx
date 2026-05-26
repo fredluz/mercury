@@ -7,6 +7,8 @@ interface ChatComposerProps {
   input: string;
   isLoading: boolean;
   hermesSessionId: string | null;
+  disabled?: boolean;
+  disabledReason?: string;
   onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
   onAbort: () => void;
@@ -20,6 +22,8 @@ export function ChatComposer({
   input,
   isLoading,
   hermesSessionId,
+  disabled = false,
+  disabledReason,
   onChange,
   onKeyDown,
   onAbort,
@@ -27,17 +31,23 @@ export function ChatComposer({
   onSend,
   t,
 }: ChatComposerProps): React.JSX.Element {
+  const inputDisabled = isLoading || disabled;
+  const sendDisabled = disabled || !input.trim();
+  const placeholder = disabled
+    ? disabledReason || t("chat.runtimeInputDisabled")
+    : t("chat.typeMessage");
+
   return (
-    <div className="chat-input-wrapper">
+    <div className={`chat-input-wrapper ${disabled ? "chat-input-wrapper-disabled" : ""}`}>
       <textarea
         ref={inputRef}
         className="chat-input"
-        placeholder={t("chat.typeMessage")}
+        placeholder={placeholder}
         value={input}
         onChange={onChange}
         onKeyDown={onKeyDown}
         rows={1}
-        disabled={isLoading}
+        disabled={inputDisabled}
         autoFocus
       />
       {isLoading ? (
@@ -46,12 +56,12 @@ export function ChatComposer({
         </button>
       ) : (
         <>
-          {input.trim() && hermesSessionId && (
+          {input.trim() && hermesSessionId && !disabled && (
             <button className="chat-btw-btn" onClick={onQuickAsk} title={t("chat.quickAskTitle")}>
               💭
             </button>
           )}
-          <button className="chat-send-btn" onClick={onSend} disabled={!input.trim()} title={t("chat.send")}>
+          <button className="chat-send-btn" onClick={onSend} disabled={sendDisabled} title={disabled ? placeholder : t("chat.send")}>
             <Send size={16} />
           </button>
         </>

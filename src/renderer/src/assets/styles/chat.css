@@ -481,6 +481,15 @@
   line-height: 1.6;
 }
 
+.chat-runtime-center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 260px;
+  padding: 12px 0 28px;
+}
+
 .chat-runtime-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

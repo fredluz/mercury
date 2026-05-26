@@ -14,6 +14,7 @@ export default {
   auto: "自动",
   commandsTitle: "命令",
   typeMessage: "输入消息...（Shift+Enter 换行）",
+  runtimeInputDisabled: "正在等待已验证的 API runtime，验证完成后才能聊天。",
   quickAskTitle: "快速提问（/btw）—— 不会影响当前对话上下文的旁支问题",
   send: "发送",
   createScheduleFromConversation: "从对话创建计划",

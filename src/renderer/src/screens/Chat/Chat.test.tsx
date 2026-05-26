@@ -23,11 +23,16 @@ vi.mock("../../components/useI18n", () => ({
         "chat.fastModeInactive": "Enable priority processing.",
         "chat.fastModeOn": "Fast Mode ON",
         "chat.noModel": "No model set",
+        "chat.emptyTitle": "How can I help you today?",
+        "chat.typeMessage": "Type a message... (Shift+Enter for new line)",
+        "chat.send": "Send",
         "chat.runtimeReadinessTitle": "Chat requires a verified API runtime",
         "chat.runtimeReadinessCopy":
           "Mercury will start the selected Agent gateway, wait for the API, and verify the runtime before chat can run.",
         "chat.runtimeReadinessReasonFallback":
           "API runtime identity has not been verified yet.",
+        "chat.runtimeInputDisabled":
+          "Waiting for the verified API runtime before chat can run.",
         "chat.runtimeVerify": "Verify API runtime",
         "chat.runtimeDebugGroup": "Debug with",
         "chat.runtimeDebugCodex": "Codex",
@@ -65,6 +70,16 @@ const unverifiedDiagnostic: RuntimeDiagnostic = {
   startedByMercury: false,
   stale: false,
   mismatchReason: "API runtime identity has not been verified yet.",
+};
+
+const verifiedDiagnostic: RuntimeDiagnostic = {
+  ...unverifiedDiagnostic,
+  actualProfile: "work",
+  verified: true,
+  verificationSource: "managed-process",
+  status: "verified",
+  startedByMercury: true,
+  mismatchReason: undefined,
 };
 
 function installHermesApiMock(): void {
@@ -124,7 +139,7 @@ function controllerFor(messages: ChatMessage[]): ChatController {
 }
 
 describe("Chat schedule handoff", () => {
-  it("shows one API readiness card in empty chat", () => {
+  it("centers the API readiness card in empty chat", () => {
     useChatControllerMock.mockReturnValue(controllerFor([]));
     installHermesApiMock();
 
@@ -142,6 +157,64 @@ describe("Chat schedule handoff", () => {
     expect(
       screen.getAllByText("Chat requires a verified API runtime"),
     ).toHaveLength(1);
+    expect(screen.getByText("Chat requires a verified API runtime").closest(".chat-runtime-center")).not.toBeNull();
+    expect(screen.queryByText("How can I help you today?")).not.toBeInTheDocument();
+  });
+
+  it("disables message sending while runtime is unverified", () => {
+    const controller = controllerFor([]);
+    controller.input = "hello";
+    useChatControllerMock.mockReturnValue(controller);
+    installHermesApiMock();
+
+    render(
+      <Chat
+        messages={[]}
+        setMessages={vi.fn()}
+        sessionId={null}
+        conversationVersion={0}
+        profile="work"
+        runtimeDiagnostic={unverifiedDiagnostic}
+      />,
+    );
+
+    expect(
+      screen.getByPlaceholderText(
+        "Waiting for the verified API runtime before chat can run.",
+      ),
+    ).toBeDisabled();
+    const sendButton = screen.getByTitle(
+      "Waiting for the verified API runtime before chat can run.",
+    );
+    expect(sendButton).toBeDisabled();
+    fireEvent.click(sendButton);
+    expect(controller.handleSend).not.toHaveBeenCalled();
+  });
+
+  it("enables message sending once runtime is verified", () => {
+    const controller = controllerFor([]);
+    controller.input = "hello";
+    useChatControllerMock.mockReturnValue(controller);
+    installHermesApiMock();
+
+    render(
+      <Chat
+        messages={[]}
+        setMessages={vi.fn()}
+        sessionId={null}
+        conversationVersion={0}
+        profile="work"
+        runtimeDiagnostic={verifiedDiagnostic}
+      />,
+    );
+
+    expect(
+      screen.getByPlaceholderText("Type a message... (Shift+Enter for new line)"),
+    ).not.toBeDisabled();
+    const sendButton = screen.getByTitle("Send");
+    expect(sendButton).not.toBeDisabled();
+    fireEvent.click(sendButton);
+    expect(controller.handleSend).toHaveBeenCalledTimes(1);
   });
 
   it("shows API readiness state above a non-empty transcript", () => {

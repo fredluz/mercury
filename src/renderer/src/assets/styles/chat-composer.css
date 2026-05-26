@@ -29,6 +29,17 @@
     color-mix(in srgb, var(--accent-subtle) 82%, transparent);
 }
 
+.chat-input-wrapper-disabled {
+  opacity: 0.72;
+  border-color: color-mix(in srgb, var(--warning) 26%, var(--border) 74%);
+  background: color-mix(in srgb, var(--warning) 5%, var(--bg-secondary) 95%);
+}
+
+.chat-input-wrapper-disabled:focus-within {
+  border-color: color-mix(in srgb, var(--warning) 26%, var(--border) 74%);
+  box-shadow: none;
+}
+
 .chat-input {
   flex: 1;
   background: none;

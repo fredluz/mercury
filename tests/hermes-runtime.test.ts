@@ -222,6 +222,243 @@ describe("ProfileRuntimeManager contract", () => {
     });
   });
 
+  it("waits for managed local API pid evidence to settle before classifying ownership", async () => {
+    const root = mkdtempSync(join(tmpdir(), "mercury-profile-runtime-"));
+    const child = fakeChildProcess(4_321);
+    const setTimeoutFn = vi.fn((callback: () => void, ms?: number) => {
+      if (ms === 1) {
+        writeGatewayPid(root, "alpha", 4_321);
+        callback();
+      }
+      return 1;
+    }) as unknown as typeof setTimeout;
+    const isApiServerReady = vi.fn().mockResolvedValue(true);
+    const manager = new ProfileRuntimeManager({
+      baseHermesHome: root,
+      hermesPython: "python",
+      hermesRepo: join(root, "hermes-agent"),
+      hermesScript: "hermes",
+      spawn: vi.fn().mockReturnValue(child),
+      readEnv: vi.fn().mockReturnValue({}),
+      getConnectionConfig: vi.fn().mockReturnValue({ mode: "local" }),
+      ensureApiServerConfig: vi.fn(),
+      isApiServerReady,
+      getEnhancedPath: vi.fn().mockReturnValue("/usr/bin"),
+      profileHome: (profile?: string) => profileHomeFor(root, profile),
+      getLocalApiPort: vi.fn().mockReturnValue(19_001),
+      getLocalApiUrl: vi.fn().mockReturnValue("http://127.0.0.1:19001"),
+      apiStartupTimeoutMs: 2,
+      apiStartupRetryIntervalMs: 1,
+      ...noOpTimers(),
+      setTimeout: setTimeoutFn,
+    });
+
+    manager.startGateway("alpha");
+    await expect(
+      manager.resolveRuntime({
+        profile: "alpha",
+        mode: "local",
+        purpose: "chat",
+      }),
+    ).resolves.toMatchObject({
+      transport: "api",
+      identity: expect.objectContaining({
+        requestedProfile: "alpha",
+        actualProfile: "alpha",
+        verified: true,
+        startedByMercury: true,
+        pid: 4_321,
+      }),
+    });
+    expect(isApiServerReady).toHaveBeenCalledWith("http://127.0.0.1:19001", {});
+  });
+
+  it("waits for stale local API pid evidence to be corrected before verifying", async () => {
+    const root = mkdtempSync(join(tmpdir(), "mercury-profile-runtime-"));
+    const child = fakeChildProcess(4_321);
+    writeGatewayPid(root, "alpha", 9_999);
+    const setTimeoutFn = vi.fn((callback: () => void, ms?: number) => {
+      if (ms === 1) {
+        writeGatewayPid(root, "alpha", 4_321);
+        callback();
+      }
+      return 1;
+    }) as unknown as typeof setTimeout;
+    const isApiServerReady = vi.fn().mockResolvedValue(true);
+    const manager = new ProfileRuntimeManager({
+      baseHermesHome: root,
+      hermesPython: "python",
+      hermesRepo: join(root, "hermes-agent"),
+      hermesScript: "hermes",
+      spawn: vi.fn().mockReturnValue(child),
+      readEnv: vi.fn().mockReturnValue({}),
+      getConnectionConfig: vi.fn().mockReturnValue({ mode: "local" }),
+      ensureApiServerConfig: vi.fn(),
+      isApiServerReady,
+      getEnhancedPath: vi.fn().mockReturnValue("/usr/bin"),
+      profileHome: (profile?: string) => profileHomeFor(root, profile),
+      getLocalApiPort: vi.fn().mockReturnValue(19_001),
+      getLocalApiUrl: vi.fn().mockReturnValue("http://127.0.0.1:19001"),
+      apiStartupTimeoutMs: 2,
+      apiStartupRetryIntervalMs: 1,
+      ...noOpTimers(),
+      setTimeout: setTimeoutFn,
+    });
+
+    manager.startGateway("alpha");
+    await expect(
+      manager.resolveRuntime({
+        profile: "alpha",
+        mode: "local",
+        purpose: "chat",
+      }),
+    ).resolves.toMatchObject({
+      identity: expect.objectContaining({
+        verified: true,
+        startedByMercury: true,
+        pid: 4_321,
+      }),
+    });
+    expect(isApiServerReady).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a managed local API runtime as unavailable when pid evidence never settles", async () => {
+    const root = mkdtempSync(join(tmpdir(), "mercury-profile-runtime-"));
+    const child = fakeChildProcess(4_321);
+    const setTimeoutFn = vi.fn((callback: () => void, ms?: number) => {
+      if (ms === 1) callback();
+      return 1;
+    }) as unknown as typeof setTimeout;
+    const isApiServerReady = vi.fn().mockResolvedValue(true);
+    const manager = new ProfileRuntimeManager({
+      baseHermesHome: root,
+      hermesPython: "python",
+      hermesRepo: join(root, "hermes-agent"),
+      hermesScript: "hermes",
+      spawn: vi.fn().mockReturnValue(child),
+      readEnv: vi.fn().mockReturnValue({}),
+      getConnectionConfig: vi.fn().mockReturnValue({ mode: "local" }),
+      ensureApiServerConfig: vi.fn(),
+      isApiServerReady,
+      getEnhancedPath: vi.fn().mockReturnValue("/usr/bin"),
+      profileHome: (profile?: string) => profileHomeFor(root, profile),
+      getLocalApiPort: vi.fn().mockReturnValue(19_001),
+      getLocalApiUrl: vi.fn().mockReturnValue("http://127.0.0.1:19001"),
+      apiStartupTimeoutMs: 2,
+      apiStartupRetryIntervalMs: 1,
+      ...noOpTimers(),
+      setTimeout: setTimeoutFn,
+    });
+
+    manager.startGateway("alpha");
+    await expect(
+      manager.resolveRuntime({
+        profile: "alpha",
+        mode: "local",
+        purpose: "chat",
+      }),
+    ).rejects.toMatchObject({
+      code: "runtime-unavailable",
+      identity: expect.objectContaining({
+        requestedProfile: "alpha",
+        actualProfile: null,
+        verified: false,
+        verificationSource: "managed-process",
+        startedByMercury: true,
+        pid: 4_321,
+        mismatchReason:
+          "Gateway process is managed by Mercury but runtime ownership evidence is not ready yet.",
+      }),
+    });
+    expect(isApiServerReady).not.toHaveBeenCalled();
+  });
+
+  it("reports corrupt managed local API pid evidence as unavailable when it never settles", async () => {
+    const root = mkdtempSync(join(tmpdir(), "mercury-profile-runtime-"));
+    const child = fakeChildProcess(4_321);
+    const home = profileHomeFor(root, "alpha");
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, "gateway.pid"), "not-json-or-a-pid", "utf-8");
+    const setTimeoutFn = vi.fn((callback: () => void, ms?: number) => {
+      if (ms === 1) callback();
+      return 1;
+    }) as unknown as typeof setTimeout;
+    const isApiServerReady = vi.fn().mockResolvedValue(true);
+    const manager = new ProfileRuntimeManager({
+      baseHermesHome: root,
+      hermesPython: "python",
+      hermesRepo: join(root, "hermes-agent"),
+      hermesScript: "hermes",
+      spawn: vi.fn().mockReturnValue(child),
+      readEnv: vi.fn().mockReturnValue({}),
+      getConnectionConfig: vi.fn().mockReturnValue({ mode: "local" }),
+      ensureApiServerConfig: vi.fn(),
+      isApiServerReady,
+      getEnhancedPath: vi.fn().mockReturnValue("/usr/bin"),
+      profileHome: (profile?: string) => profileHomeFor(root, profile),
+      getLocalApiPort: vi.fn().mockReturnValue(19_001),
+      getLocalApiUrl: vi.fn().mockReturnValue("http://127.0.0.1:19001"),
+      apiStartupTimeoutMs: 2,
+      apiStartupRetryIntervalMs: 1,
+      ...noOpTimers(),
+      setTimeout: setTimeoutFn,
+    });
+
+    manager.startGateway("alpha");
+    await expect(
+      manager.resolveRuntime({
+        profile: "alpha",
+        mode: "local",
+        purpose: "chat",
+      }),
+    ).rejects.toMatchObject({
+      code: "runtime-unavailable",
+      identity: expect.objectContaining({
+        verificationSource: "managed-process",
+        startedByMercury: true,
+        mismatchReason:
+          "Gateway process is managed by Mercury but runtime ownership evidence is not ready yet.",
+      }),
+    });
+    expect(isApiServerReady).not.toHaveBeenCalled();
+  });
+
+  it("fails closed for a killed local gateway child even when pid evidence matches", async () => {
+    const root = mkdtempSync(join(tmpdir(), "mercury-profile-runtime-"));
+    const child = fakeChildProcess(4_321);
+    const isApiServerReady = vi.fn().mockResolvedValue(true);
+    const manager = new ProfileRuntimeManager({
+      baseHermesHome: root,
+      hermesPython: "python",
+      hermesRepo: join(root, "hermes-agent"),
+      hermesScript: "hermes",
+      spawn: vi.fn().mockReturnValue(child),
+      readEnv: vi.fn().mockReturnValue({}),
+      getConnectionConfig: vi.fn().mockReturnValue({ mode: "local" }),
+      ensureApiServerConfig: vi.fn(),
+      isApiServerReady,
+      getEnhancedPath: vi.fn().mockReturnValue("/usr/bin"),
+      profileHome: (profile?: string) => profileHomeFor(root, profile),
+      getLocalApiPort: vi.fn().mockReturnValue(19_001),
+      getLocalApiUrl: vi.fn().mockReturnValue("http://127.0.0.1:19001"),
+      ...noOpTimers(),
+    });
+
+    manager.startGateway("alpha");
+    child.killed = true;
+    writeGatewayPid(root, "alpha", 4_321);
+    await expect(
+      manager.resolveRuntime({
+        profile: "alpha",
+        mode: "local",
+        purpose: "chat",
+      }),
+    ).rejects.toMatchObject({
+      code: "runtime-profile-unverified",
+    });
+    expect(isApiServerReady).not.toHaveBeenCalled();
+  });
+
   it("waits briefly for a managed local API runtime to become ready", async () => {
     const root = mkdtempSync(join(tmpdir(), "mercury-profile-runtime-"));
     const child = fakeChildProcess(4_321);

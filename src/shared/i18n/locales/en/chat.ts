@@ -18,6 +18,7 @@ export default {
   auto: "Auto",
   commandsTitle: "Commands",
   typeMessage: "Type a message... (Shift+Enter for new line)",
+  runtimeInputDisabled: "Waiting for the verified API runtime before chat can run.",
   quickAskTitle:
     "Quick Ask (/btw) — side question that won't affect conversation context",
   send: "Send",

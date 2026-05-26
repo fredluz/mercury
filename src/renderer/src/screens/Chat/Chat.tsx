@@ -81,6 +81,10 @@ function Chat({
   const hasConversationContext = messages.some((message) =>
     message.content.trim(),
   );
+  const runtimeBlocksChat = Boolean(
+    runtimeDiagnostic && runtimeDiagnostic.status !== "verified",
+  );
+  const runtimeBlockReason = t("chat.runtimeInputDisabled");
   const handleCreateScheduleFromConversation = useCallback((): void => {
     if (!hasConversationContext || !onCreateScheduleFromConversation) return;
     onCreateScheduleFromConversation(
@@ -130,14 +134,18 @@ function Chat({
           t={t}
         />
 
-        <ChatRuntimeReadinessCard
-          diagnostic={runtimeDiagnostic}
-          profile={profile}
-          onRuntimeDiagnosticRefresh={onRuntimeDiagnosticRefresh}
-          t={t}
-        />
+        {runtimeBlocksChat && (
+          <div className="chat-runtime-center">
+            <ChatRuntimeReadinessCard
+              diagnostic={runtimeDiagnostic}
+              profile={profile}
+              onRuntimeDiagnosticRefresh={onRuntimeDiagnosticRefresh}
+              t={t}
+            />
+          </div>
+        )}
 
-        {messages.length === 0 ? (
+        {messages.length === 0 && !runtimeBlocksChat ? (
           <ChatEmpty
             setPrompt={chat.setInput}
             focusInput={() => chat.inputRef.current?.focus()}
@@ -201,7 +209,9 @@ function Chat({
           onKeyDown={chat.handleKeyDown}
           onAbort={chat.handleAbort}
           onQuickAsk={chat.handleQuickAsk}
-          onSend={chat.handleSend}
+          onSend={runtimeBlocksChat ? () => undefined : chat.handleSend}
+          disabled={runtimeBlocksChat}
+          disabledReason={runtimeBlockReason}
           t={t}
         />
 
