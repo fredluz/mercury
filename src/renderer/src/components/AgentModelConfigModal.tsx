@@ -1,15 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { SETTINGS_SECTIONS } from "../constants";
-import type { FieldDef } from "../constants";
+import {
+  dedupeInventoryModels,
+  filterInventoryToConnectedProviders,
+  type InventoryModel,
+} from "../modelInventory";
 import { useI18n } from "./useI18n";
-
-type InventoryModel = {
-  id: string;
-  provider: string;
-  model: string;
-  baseUrl: string;
-};
 
 interface AgentModelConfigModalProps {
   profile: string;
@@ -21,44 +17,8 @@ interface AgentModelConfigModalProps {
   onSaved?: () => Promise<void> | void;
 }
 
-const LLM_SECTION = SETTINGS_SECTIONS[0];
-const PROVIDER_BY_ENV_KEY: Record<string, string> = {
-  OPENROUTER_API_KEY: "openrouter",
-  OPENAI_API_KEY: "openai",
-  ANTHROPIC_API_KEY: "anthropic",
-  GROQ_API_KEY: "groq",
-  GLM_API_KEY: "zai",
-  KIMI_API_KEY: "kimi",
-  MINIMAX_API_KEY: "minimax",
-  MINIMAX_CN_API_KEY: "minimax-cn",
-  OPENCODE_ZEN_API_KEY: "opencode-zen",
-  OPENCODE_GO_API_KEY: "opencode-go",
-  HF_TOKEN: "huggingface",
-  DEEPSEEK_API_KEY: "deepseek",
-  TOGETHER_API_KEY: "together",
-  FIREWORKS_API_KEY: "fireworks",
-  CEREBRAS_API_KEY: "cerebras",
-  MISTRAL_API_KEY: "mistral",
-  PERPLEXITY_API_KEY: "perplexity",
-  CUSTOM_API_KEY: "custom",
-  GOOGLE_API_KEY: "google",
-  XAI_API_KEY: "xai",
-};
-
-function providerIdForField(field: FieldDef): string {
-  return PROVIDER_BY_ENV_KEY[field.key] || field.key.toLowerCase();
-}
-
 function dedupeModels(models: InventoryModel[]): InventoryModel[] {
-  const seen = new Set<string>();
-  const result: InventoryModel[] = [];
-  for (const model of models) {
-    const key = `${model.provider}\u0000${model.model}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(model);
-  }
-  return result;
+  return dedupeInventoryModels(models);
 }
 
 function withCurrentModel(
@@ -68,7 +28,8 @@ function withCurrentModel(
 ): InventoryModel[] {
   if (!provider.trim() || !model.trim()) return models;
   const hasCurrent = models.some(
-    (entry) => entry.provider === provider.trim() && entry.model === model.trim(),
+    (entry) =>
+      entry.provider === provider.trim() && entry.model === model.trim(),
   );
   if (hasCurrent) return models;
   return dedupeModels([
@@ -114,29 +75,19 @@ export function AgentModelConfigModal({
       .then(([models, env, credPool, codexStatus]) => {
         if (cancelled) return;
 
-        const connectedProviders = new Set<string>();
-        for (const field of LLM_SECTION.items) {
-          const providerId = providerIdForField(field);
-          if ((env[field.key] || "").trim() || (credPool[providerId] || []).length > 0) {
-            connectedProviders.add(providerId);
-          }
-        }
-        if (codexStatus?.hasHermesAuth) {
-          connectedProviders.add("openai-codex");
-        }
-        if (initialProvider.trim()) {
-          connectedProviders.add(initialProvider.trim());
-        }
-
-        const normalized = dedupeModels(
-          models
-            .map((entry) => ({
-              id: entry.id,
-              provider: entry.provider,
-              model: entry.model,
-              baseUrl: entry.baseUrl,
-            }))
-            .filter((entry) => connectedProviders.has(entry.provider)),
+        const normalized = filterInventoryToConnectedProviders(
+          models.map((entry) => ({
+            id: entry.id,
+            provider: entry.provider,
+            model: entry.model,
+            baseUrl: entry.baseUrl,
+          })),
+          {
+            env,
+            credentialPool: credPool,
+            codexStatus,
+            includeProviders: [initialProvider],
+          },
         );
         const filtered = withCurrentModel(
           normalized,
@@ -145,10 +96,14 @@ export function AgentModelConfigModal({
         );
 
         setInventory(filtered);
-        const firstProvider = initialProvider.trim() || filtered[0]?.provider || "";
-        const providerModels = filtered.filter((entry) => entry.provider === firstProvider);
+        const firstProvider =
+          initialProvider.trim() || filtered[0]?.provider || "";
+        const providerModels = filtered.filter(
+          (entry) => entry.provider === firstProvider,
+        );
         const firstModel =
-          providerModels.find((entry) => entry.model === initialModel.trim())?.model ||
+          providerModels.find((entry) => entry.model === initialModel.trim())
+            ?.model ||
           providerModels[0]?.model ||
           initialModel.trim() ||
           "";
@@ -160,7 +115,9 @@ export function AgentModelConfigModal({
         setInventory([]);
         setProvider(initialProvider.trim());
         setModel(initialModel.trim());
-        setError(err instanceof Error ? err.message : t("agents.modelInventoryFailed"));
+        setError(
+          err instanceof Error ? err.message : t("agents.modelInventoryFailed"),
+        );
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -172,7 +129,9 @@ export function AgentModelConfigModal({
   }, [initialModel, initialProvider, open, profile, t]);
 
   const providers = useMemo(
-    () => [...new Set(inventory.map((entry) => entry.provider).filter(Boolean))],
+    () => [
+      ...new Set(inventory.map((entry) => entry.provider).filter(Boolean)),
+    ],
     [inventory],
   );
 
@@ -199,7 +158,9 @@ export function AgentModelConfigModal({
       await onSaved?.();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("agents.modelSaveFailed"));
+      setError(
+        err instanceof Error ? err.message : t("agents.modelSaveFailed"),
+      );
     } finally {
       setSaving(false);
     }
@@ -209,7 +170,10 @@ export function AgentModelConfigModal({
 
   return (
     <div className="agents-modal-backdrop" onClick={onClose}>
-      <div className="agents-modal agents-model-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="agents-modal agents-model-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="agents-modal-header">
           <div>
             <h3>{title}</h3>
@@ -226,7 +190,9 @@ export function AgentModelConfigModal({
                 value={provider}
                 onChange={(e) => {
                   const nextProvider = e.target.value;
-                  const nextModels = inventory.filter((entry) => entry.provider === nextProvider);
+                  const nextModels = inventory.filter(
+                    (entry) => entry.provider === nextProvider,
+                  );
                   setProvider(nextProvider);
                   setModel(nextModels[0]?.model || "");
                 }}
@@ -258,7 +224,10 @@ export function AgentModelConfigModal({
                   <option value="">{t("agents.noModelsAvailable")}</option>
                 ) : null}
                 {providerModels.map((entry) => (
-                  <option key={`${entry.provider}:${entry.model}`} value={entry.model}>
+                  <option
+                    key={`${entry.provider}:${entry.model}`}
+                    value={entry.model}
+                  >
                     {entry.model}
                   </option>
                 ))}
@@ -270,7 +239,9 @@ export function AgentModelConfigModal({
 
         {error ? <div className="agents-create-error">{error}</div> : null}
         {!error && !loading && providers.length === 0 ? (
-          <div className="agents-model-empty">{t("agents.noModelsAvailableHint")}</div>
+          <div className="agents-model-empty">
+            {t("agents.noModelsAvailableHint")}
+          </div>
         ) : null}
 
         <div className="agents-model-actions">
@@ -282,7 +253,11 @@ export function AgentModelConfigModal({
           >
             {saving ? t("agents.savingModel") : t("agents.saveModel")}
           </button>
-          <button className="btn btn-secondary btn-sm" type="button" onClick={onClose}>
+          <button
+            className="btn btn-secondary btn-sm"
+            type="button"
+            onClick={onClose}
+          >
             {t("common.cancel")}
           </button>
         </div>

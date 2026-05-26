@@ -1,16 +1,21 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Brain, ChatBubble, Plus, Puzzle, Sparkles, Trash, Wrench } from "../../assets/icons";
+import {
+  Brain,
+  ChatBubble,
+  Plus,
+  Puzzle,
+  Sparkles,
+  Trash,
+  Wrench,
+} from "../../assets/icons";
 import type { LucideIcon } from "lucide-react";
 import MercuryMark from "../../components/common/MercuryMark";
 import { AgentModelConfigModal } from "../../components/AgentModelConfigModal";
 import { useI18n } from "../../components/useI18n";
-
-type InventoryModel = {
-  id: string;
-  provider: string;
-  model: string;
-  baseUrl: string;
-};
+import {
+  filterInventoryToConnectedProviders,
+  type InventoryModel,
+} from "../../modelInventory";
 
 interface ProfileInfo {
   name: string;
@@ -55,22 +60,16 @@ function AgentAvatar({ name }: { name: string }): React.JSX.Element {
       </div>
     );
   }
-  return <div className="agents-card-avatar">{name.charAt(0).toUpperCase()}</div>;
+  return (
+    <div className="agents-card-avatar">{name.charAt(0).toUpperCase()}</div>
+  );
 }
 
-function dedupeInventory(models: InventoryModel[]): InventoryModel[] {
-  const seen = new Set<string>();
-  const result: InventoryModel[] = [];
-  for (const model of models) {
-    const key = `${model.provider}\u0000${model.model}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(model);
-  }
-  return result;
-}
-
-function Agents({ activeProfile, onSelectProfile, onProfileAction }: AgentsProps): React.JSX.Element {
+function Agents({
+  activeProfile,
+  onSelectProfile,
+  onProfileAction,
+}: AgentsProps): React.JSX.Element {
   const { t } = useI18n();
   const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
   const [inventory, setInventory] = useState<InventoryModel[]>([]);
@@ -92,14 +91,23 @@ function Agents({ activeProfile, onSelectProfile, onProfileAction }: AgentsProps
   }, []);
 
   const loadInventory = useCallback(async (): Promise<void> => {
-    const models = await window.hermesAPI.listModels();
-    const normalized = dedupeInventory(
+    // New profile creation clones config/API keys from default, so filter the
+    // picker against the credentials the new agent can actually inherit.
+    const providerProfile = "default";
+    const [models, env, credPool, codexStatus] = await Promise.all([
+      window.hermesAPI.listModels(),
+      window.hermesAPI.getEnv(providerProfile),
+      window.hermesAPI.getCredentialPool(),
+      window.hermesAPI.getCodexAuthStatus(providerProfile).catch(() => null),
+    ]);
+    const normalized = filterInventoryToConnectedProviders(
       models.map((entry) => ({
         id: entry.id,
         provider: entry.provider,
         model: entry.model,
         baseUrl: entry.baseUrl,
       })),
+      { env, credentialPool: credPool, codexStatus },
     );
     setInventory(normalized);
     setCreateProvider((current) => current || normalized[0]?.provider || "");
@@ -113,7 +121,9 @@ function Agents({ activeProfile, onSelectProfile, onProfileAction }: AgentsProps
   }, [loadInventory, loadProfiles]);
 
   const createProviders = useMemo(
-    () => [...new Set(inventory.map((entry) => entry.provider).filter(Boolean))],
+    () => [
+      ...new Set(inventory.map((entry) => entry.provider).filter(Boolean)),
+    ],
     [inventory],
   );
   const createModels = useMemo(
@@ -137,7 +147,9 @@ function Agents({ activeProfile, onSelectProfile, onProfileAction }: AgentsProps
       setCreateModel("");
       return;
     }
-    const hasCurrent = createModels.some((entry) => entry.model === createModel);
+    const hasCurrent = createModels.some(
+      (entry) => entry.model === createModel,
+    );
     if (!hasCurrent) {
       setCreateModel(createModels[0]?.model || "");
     }
@@ -156,7 +168,9 @@ function Agents({ activeProfile, onSelectProfile, onProfileAction }: AgentsProps
     }
 
     try {
-      const selected = createModels.find((entry) => entry.model === createModel);
+      const selected = createModels.find(
+        (entry) => entry.model === createModel,
+      );
       if (selected) {
         await window.hermesAPI.setModelConfig(
           selected.provider,
@@ -170,7 +184,9 @@ function Agents({ activeProfile, onSelectProfile, onProfileAction }: AgentsProps
       setError("");
       await loadProfiles();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("agents.modelSaveFailed"));
+      setError(
+        err instanceof Error ? err.message : t("agents.modelSaveFailed"),
+      );
     } finally {
       setCreating(false);
     }
@@ -191,7 +207,10 @@ function Agents({ activeProfile, onSelectProfile, onProfileAction }: AgentsProps
     void loadProfiles();
   }
 
-  async function handleProfileAction(name: string, view: ProfileActionView): Promise<void> {
+  async function handleProfileAction(
+    name: string,
+    view: ProfileActionView,
+  ): Promise<void> {
     await handleSelect(name);
     onProfileAction(view);
   }
@@ -202,7 +221,10 @@ function Agents({ activeProfile, onSelectProfile, onProfileAction }: AgentsProps
     return provider.charAt(0).toUpperCase() + provider.slice(1);
   }
 
-  function isProfileActionAvailable(profile: ProfileInfo, view: ProfileActionView): boolean {
+  function isProfileActionAvailable(
+    profile: ProfileInfo,
+    view: ProfileActionView,
+  ): boolean {
     void profile;
     void view;
     return true;
@@ -225,7 +247,10 @@ function Agents({ activeProfile, onSelectProfile, onProfileAction }: AgentsProps
           <h2 className="agents-title">{t("agents.title")}</h2>
           <p className="agents-subtitle">{t("agents.subtitle")}</p>
         </div>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)}>
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={() => setShowCreate(true)}
+        >
           <Plus size={14} />
           {t("agents.newAgent")}
         </button>
@@ -238,7 +263,9 @@ function Agents({ activeProfile, onSelectProfile, onProfileAction }: AgentsProps
             placeholder={t("agents.namePlaceholder")}
             value={newName}
             onChange={(e) => {
-              const value = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "");
+              const value = e.target.value
+                .toLowerCase()
+                .replace(/[^a-z0-9_-]/g, "");
               setNewName(value);
               setError("");
             }}
@@ -287,7 +314,10 @@ function Agents({ activeProfile, onSelectProfile, onProfileAction }: AgentsProps
                     <option value="">{t("agents.noModelsAvailable")}</option>
                   ) : null}
                   {createModels.map((entry) => (
-                    <option key={`${entry.provider}:${entry.model}`} value={entry.model}>
+                    <option
+                      key={`${entry.provider}:${entry.model}`}
+                      value={entry.model}
+                    >
                       {entry.model}
                     </option>
                   ))}
@@ -296,7 +326,9 @@ function Agents({ activeProfile, onSelectProfile, onProfileAction }: AgentsProps
             </label>
           </div>
           {createProviders.length === 0 ? (
-            <div className="agents-model-empty">{t("agents.noModelsAvailableHint")}</div>
+            <div className="agents-model-empty">
+              {t("agents.noModelsAvailableHint")}
+            </div>
           ) : null}
           {error ? <div className="agents-create-error">{error}</div> : null}
           <div className="agents-create-actions">
@@ -336,26 +368,40 @@ function Agents({ activeProfile, onSelectProfile, onProfileAction }: AgentsProps
               <AgentAvatar name={profile.name} />
               <div className="agents-card-info">
                 <div className="agents-card-name">{profile.name}</div>
-                <div className="agents-card-provider">{providerLabel(profile.provider)}</div>
+                <div className="agents-card-provider">
+                  {providerLabel(profile.provider)}
+                </div>
               </div>
               {activeProfile === profile.name ? (
-                <span className="agents-card-active-badge">{t("agents.active")}</span>
+                <span className="agents-card-active-badge">
+                  {t("agents.active")}
+                </span>
               ) : null}
             </div>
             <div className="agents-card-model">
-              {profile.model ? profile.model.split("/").pop() : t("agents.noModel")}
+              {profile.model
+                ? profile.model.split("/").pop()
+                : t("agents.noModel")}
             </div>
             <div className="agents-card-stats">
-              <span>{t("agents.skillsCount", { count: profile.skillCount })}</span>
+              <span>
+                {t("agents.skillsCount", { count: profile.skillCount })}
+              </span>
               <span className="agents-card-dot" />
               {profile.gatewayRunning ? (
-                <span className="agents-card-gateway-on">{t("agents.gatewayRunning")}</span>
+                <span className="agents-card-gateway-on">
+                  {t("agents.gatewayRunning")}
+                </span>
               ) : (
                 <span>{t("agents.gatewayOff")}</span>
               )}
             </div>
             <div className="agents-card-footer">
-              <div className="agents-card-actions" role="group" aria-label={t("agents.actionsLabel")}>
+              <div
+                className="agents-card-actions"
+                role="group"
+                aria-label={t("agents.actionsLabel")}
+              >
                 <button
                   className="agents-card-action-btn"
                   onClick={(e) => {
@@ -363,7 +409,9 @@ function Agents({ activeProfile, onSelectProfile, onProfileAction }: AgentsProps
                     setModelProfile(profile);
                   }}
                   title={t("agents.configureModel")}
-                  aria-label={t("agents.configureModelFor", { name: profile.name })}
+                  aria-label={t("agents.configureModelFor", {
+                    name: profile.name,
+                  })}
                 >
                   <Wrench size={15} />
                 </button>
@@ -376,7 +424,8 @@ function Agents({ activeProfile, onSelectProfile, onProfileAction }: AgentsProps
                       className="agents-card-action-btn"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (available) void handleProfileAction(profile.name, view);
+                        if (available)
+                          void handleProfileAction(profile.name, view);
                       }}
                       title={label}
                       aria-label={label}
@@ -389,7 +438,10 @@ function Agents({ activeProfile, onSelectProfile, onProfileAction }: AgentsProps
               </div>
               {!profile.isDefault ? (
                 confirmDelete === profile.name ? (
-                  <div className="agents-card-confirm-delete" onClick={(e) => e.stopPropagation()}>
+                  <div
+                    className="agents-card-confirm-delete"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <span>{t("agents.deleteConfirm")}</span>
                     <button
                       className="btn btn-primary btn-sm"
@@ -430,7 +482,9 @@ function Agents({ activeProfile, onSelectProfile, onProfileAction }: AgentsProps
 
       <AgentModelConfigModal
         profile={modelProfile?.name || ""}
-        title={t("agents.configureModelFor", { name: modelProfile?.name || "" })}
+        title={t("agents.configureModelFor", {
+          name: modelProfile?.name || "",
+        })}
         open={Boolean(modelProfile)}
         initialProvider={modelProfile?.provider}
         initialModel={modelProfile?.model}

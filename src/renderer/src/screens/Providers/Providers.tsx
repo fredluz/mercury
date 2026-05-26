@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SETTINGS_SECTIONS } from "../../constants";
 import type { SectionDef, FieldDef } from "../../constants";
 import { useI18n } from "../../components/useI18n";
+import { providerIdForEnvKey } from "../../modelInventory";
 
 type CodexAuthStatus = Awaited<
   ReturnType<typeof window.hermesAPI.getCodexAuthStatus>
@@ -16,31 +17,8 @@ type CredentialDraft = { key: string; label: string };
 const LLM_SECTION = SETTINGS_SECTIONS[0];
 const SECONDARY_SECTIONS = SETTINGS_SECTIONS.slice(1);
 
-const PROVIDER_BY_ENV_KEY: Record<string, string> = {
-  OPENROUTER_API_KEY: "openrouter",
-  OPENAI_API_KEY: "openai",
-  ANTHROPIC_API_KEY: "anthropic",
-  GROQ_API_KEY: "groq",
-  GLM_API_KEY: "zai",
-  KIMI_API_KEY: "kimi",
-  MINIMAX_API_KEY: "minimax",
-  MINIMAX_CN_API_KEY: "minimax-cn",
-  OPENCODE_ZEN_API_KEY: "opencode-zen",
-  OPENCODE_GO_API_KEY: "opencode-go",
-  HF_TOKEN: "huggingface",
-  DEEPSEEK_API_KEY: "deepseek",
-  TOGETHER_API_KEY: "together",
-  FIREWORKS_API_KEY: "fireworks",
-  CEREBRAS_API_KEY: "cerebras",
-  MISTRAL_API_KEY: "mistral",
-  PERPLEXITY_API_KEY: "perplexity",
-  CUSTOM_API_KEY: "custom",
-  GOOGLE_API_KEY: "google",
-  XAI_API_KEY: "xai",
-};
-
 function providerIdForField(field: FieldDef): string {
-  return PROVIDER_BY_ENV_KEY[field.key] || field.key.toLowerCase();
+  return providerIdForEnvKey(field.key);
 }
 
 function maskKey(key: string): string {
