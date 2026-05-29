@@ -22,7 +22,6 @@ import type {
   SkillMetadata,
 } from "../../shared/skills";
 import { isGatewayRunning, markRuntimeStale } from "../hermes";
-import { restartGatewayAndRevalidate } from "./gateway-service";
 import {
   sshReadMemory,
   sshAddMemoryEntry,
@@ -46,25 +45,6 @@ import {
 
 function markProfileMutation(profile: string | undefined, area: string): void {
   markRuntimeStale(profile, `${area} changed for profile runtime.`);
-}
-
-async function refreshRunningRuntimeAfterMutation(
-  profile?: string,
-): Promise<void> {
-  const conn = getConnectionConfig();
-  try {
-    if (conn.mode === "ssh" && conn.ssh) {
-      if (await sshGatewayStatus(conn.ssh, profile)) {
-        await restartGatewayAndRevalidate(profile);
-      }
-      return;
-    }
-    if (conn.mode !== "remote" && isGatewayRunning(profile)) {
-      await restartGatewayAndRevalidate(profile);
-    }
-  } catch {
-    // Keep the stale marker; the chat runtime card can still repair manually.
-  }
 }
 
 export function readMemoryForProfile(profile?: string) {
@@ -168,10 +148,9 @@ export async function setToolsetEnabledForProfile(
     conn.mode === "ssh" && conn.ssh
       ? await sshSetToolsetEnabled(conn.ssh, key, enabled, profile)
       : setToolsetEnabled(key, enabled, profile);
-  if (result) {
-    markProfileMutation(profile, `Toolset ${key}`);
-    await refreshRunningRuntimeAfterMutation(profile);
-  }
+  // Hermes API-server toolsets are hot-read when constructing the next
+  // request's agent, so ordinary tool toggles are next-message config writes.
+  // Do not mark the runtime stale or restart/revalidate the gateway per click.
   return result;
 }
 

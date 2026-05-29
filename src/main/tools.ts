@@ -163,6 +163,8 @@ function escapeRegex(value: string): string {
 }
 
 function platformToolsetSection(platform: string, enabled: Set<string>): string {
+  if (enabled.size === 0) return `  ${platform}: []`;
+
   const toolsetLines = Array.from(enabled)
     .sort()
     .map((tool) => `      - ${tool}`)
@@ -215,7 +217,7 @@ function replacePlatformToolset(
 
     if (inTarget) {
       if (/^\s+-\s/.test(trimmed)) continue;
-      if (/^\s{4}\S/.test(trimmed) || /^\S/.test(trimmed) || trimmed === "") {
+      if (/^\s{2}\S/.test(trimmed) || /^\S/.test(trimmed) || trimmed === "") {
         inTarget = false;
         result.push(line);
       }

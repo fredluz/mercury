@@ -2,6 +2,8 @@ export default {
   title: "工具",
   subtitle: "启用或禁用代理在对话期间可使用的工具集",
   backToAgents: "返回代理",
+  savedNextMessage: "工具更改已保存。它们将在下一条消息生效；正在运行的回复会保留原来的工具。",
+  saveFailed: "工具更改无法保存。请重新打开工具页面后重试。",
   web: { label: "网络搜索", description: "搜索网页并提取 URL 内容" },
   browser: { label: "浏览器", description: "浏览、点击、输入并与网页交互" },
   terminal: { label: "终端", description: "执行 shell 命令和脚本" },

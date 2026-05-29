@@ -3,6 +3,9 @@ export default {
   subtitle:
     "Enable or disable the toolsets your agent can use during conversations",
   backToAgents: "Back to Agents",
+  savedNextMessage:
+    "Tool changes saved. They apply to the next message; running replies keep their original tools.",
+  saveFailed: "Tool changes could not be saved. Reopen Tools and try again.",
   web: {
     label: "Web Search",
     description: "Search the web and extract content from URLs",

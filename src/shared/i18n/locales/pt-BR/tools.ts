@@ -3,6 +3,10 @@ export default {
   subtitle:
     "Ative ou desative os conjuntos de ferramentas que seu agente pode usar durante as conversas",
   backToAgents: "Voltar para Agentes",
+  savedNextMessage:
+    "Alterações nas ferramentas salvas. Elas valem para a próxima mensagem; respostas em andamento mantêm as ferramentas originais.",
+  saveFailed:
+    "Não foi possível salvar as alterações nas ferramentas. Reabra Ferramentas e tente novamente.",
   web: {
     label: "Pesquisa na Web",
     description: "Pesquisa na web e extrai conteúdo de URLs",

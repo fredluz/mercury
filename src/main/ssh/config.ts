@@ -75,7 +75,9 @@ export async function sshSetToolsetEnabled(
     if (enabled) current.add(key); else current.delete(key);
 
     const toolsetLines = Array.from(current).sort().map((t) => `      - ${t}`).join("\n");
-    const newSection = `  cli:\n${toolsetLines}\n  api_server:\n${toolsetLines}`;
+    const newSection = current.size === 0
+      ? "  cli: []\n  api_server: []"
+      : `  cli:\n${toolsetLines}\n  api_server:\n${toolsetLines}`;
 
     let newContent: string;
     if (content.includes("platform_toolsets")) {

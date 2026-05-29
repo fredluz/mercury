@@ -221,7 +221,7 @@ describe("reliable profile runtime contract sentinels", () => {
     expect(layout).toContain("activeProfileRef.current === requestedProfile");
     expect(layout).toContain("showGlobalRuntimeDiagnostic");
     expect(layout).toContain("isIdleLocalUnverifiedRuntime");
-    expect(diagnosticNotice).toContain("Runtime warning");
+    expect(diagnosticNotice).toContain("Runtime updating");
     expect(diagnosticNotice).toContain("Runtime verified");
     expect(diagnosticNotice).toContain("runtimeDiagnosticMessage");
     const chatEmpty = src("src/renderer/src/screens/Chat/components/ChatEmpty.tsx");

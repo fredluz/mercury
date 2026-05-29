@@ -263,6 +263,10 @@ function Tools({ profile, onBackToAgents }: ToolsProps): React.JSX.Element {
   const [toolsets, setToolsets] = useState<ToolsetInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
+  const [toolsetNotice, setToolsetNotice] = useState<{
+    kind: "success" | "error";
+    message: string;
+  } | null>(null);
 
   const loadToolsets = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -283,10 +287,32 @@ function Tools({ profile, onBackToAgents }: ToolsProps): React.JSX.Element {
     key: string,
     currentEnabled: boolean,
   ): Promise<void> {
+    const nextEnabled = !currentEnabled;
+    setToolsetNotice(null);
     setToolsets((prev) =>
-      prev.map((t) => (t.key === key ? { ...t, enabled: !currentEnabled } : t)),
+      prev.map((t) => (t.key === key ? { ...t, enabled: nextEnabled } : t)),
     );
-    await window.hermesAPI.setToolsetEnabled(key, !currentEnabled, profile);
+
+    try {
+      const saved = await window.hermesAPI.setToolsetEnabled(
+        key,
+        nextEnabled,
+        profile,
+      );
+      if (!saved) throw new Error("Toolset change was not saved.");
+      setToolsetNotice({
+        kind: "success",
+        message: t("tools.savedNextMessage"),
+      });
+    } catch {
+      setToolsets((prev) =>
+        prev.map((t) => (t.key === key ? { ...t, enabled: currentEnabled } : t)),
+      );
+      setToolsetNotice({
+        kind: "error",
+        message: t("tools.saveFailed"),
+      });
+    }
   }
 
   if (loading) {
@@ -310,6 +336,14 @@ function Tools({ profile, onBackToAgents }: ToolsProps): React.JSX.Element {
         ) : null}
         <h2 className="tools-title">{t("tools.title")}</h2>
         <p className="tools-subtitle">{t("tools.subtitle")}</p>
+        {toolsetNotice ? (
+          <div
+            className={`tools-notice tools-notice-${toolsetNotice.kind}`}
+            role="status"
+          >
+            {toolsetNotice.message}
+          </div>
+        ) : null}
       </div>
 
       <div className="tools-grid">
