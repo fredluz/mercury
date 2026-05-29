@@ -303,6 +303,76 @@ describe("chat IPC lifecycle hardening", () => {
     expect(settleCount).toBe(1);
   });
 
+  it("updates the profile-scoped session cache when chat completes with a real session id", async () => {
+    const handler = await setupHandler();
+    const event = createEvent();
+
+    const invokePromise = handler(event, "hello", "alpha");
+    const callbacks = await waitForTransportCallbacks();
+    callbacks.onChunk("complete answer");
+    callbacks.onDone("session-alpha");
+
+    await expect(invokePromise).resolves.toEqual({
+      response: "complete answer",
+      sessionId: "session-alpha",
+    });
+    expect(mocks.updateSessionProfile).toHaveBeenCalledWith(
+      "session-alpha",
+      "alpha",
+    );
+    expect(sentChannels(event.sender, "chat-done")).toEqual([
+      ["chat-done", "session-alpha"],
+    ]);
+  });
+
+  it("diagnoses missing durable session ids without creating false persistence", async () => {
+    const handler = await setupHandler();
+    const event = createEvent();
+
+    const invokePromise = handler(event, "hello", "alpha");
+    const callbacks = await waitForTransportCallbacks();
+    callbacks.onChunk("complete answer");
+    callbacks.onDiagnostic?.({
+      code: "missing-session-id",
+      severity: "warning",
+      source: "api",
+      profile: "alpha",
+      resumed: false,
+      transport: "api",
+      apiBaseUrl: "http://127.0.0.1:19001",
+      headerName: "x-hermes-session-id",
+      headerShape: "missing",
+    });
+    callbacks.onDone(undefined);
+
+    await expect(invokePromise).resolves.toEqual({
+      response: "complete answer",
+      sessionId: undefined,
+    });
+    expect(mocks.updateSessionProfile).not.toHaveBeenCalled();
+    expect(sentChannels(event.sender, "chat-done")).toEqual([
+      ["chat-done", ""],
+    ]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[chat-service] Chat completed without a durable Hermes session id",
+      expect.objectContaining({
+        code: "missing-session-id",
+        profile: "alpha",
+        headerShape: "missing",
+      }),
+    );
+    expect(mocks.recordTraceEvent).toHaveBeenCalledWith(
+      "trace-1",
+      "transport.error",
+      "Missing durable session id",
+      expect.stringContaining("x-hermes-session-id"),
+      expect.objectContaining({
+        code: "missing-session-id",
+        profile: "alpha",
+      }),
+    );
+  });
+
   it("restarts an unmanaged local gateway before resolving chat runtime", async () => {
     const handler = await setupHandler();
     const event = createEvent();

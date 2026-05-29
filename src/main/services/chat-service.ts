@@ -9,7 +9,11 @@ import {
   isRemoteMode,
 } from "../hermes";
 import { extractArtifactEventsFromText } from "../hermes/trace-events";
-import type { ChatCallbacks, ProfileRuntimeHandle } from "../hermes/types";
+import type {
+  ChatCallbacks,
+  ChatTransportDiagnostic,
+  ProfileRuntimeHandle,
+} from "../hermes/types";
 import { profileRuntimeManager } from "../hermes/runtime";
 import { startSshTunnel, isSshTunnelHealthy } from "../ssh-tunnel";
 import { getConnectionConfig } from "../config";
@@ -30,6 +34,7 @@ import {
 } from "../session-cache";
 import { generateChatTitle as resolveChatTitle } from "../hermes/title";
 import { isSyntheticChatStreamEnabled } from "../hermes/synthetic-chat";
+import type { ChatErrorInfo } from "../../shared/codex-auth-recovery";
 import type { TraceEvent, TraceEventType, TraceUsage } from "../../shared/traces";
 import {
   normalizeGenerateChatTitleRequest,
@@ -56,7 +61,7 @@ export interface RunChatRequest {
 export interface ChatServiceCallbacks {
   onChunk?: (chunk: string) => void;
   onDone?: (sessionId?: string) => void;
-  onError?: (error: string) => void;
+  onError?: (error: string, info?: ChatErrorInfo) => void;
   onLiveTraceEvent?: (event: TraceEvent) => void;
   onToolProgress?: (tool: string) => void;
   onUsage?: (usage: TraceUsage) => void;
@@ -255,6 +260,38 @@ export async function runChatMessage({
   const shouldIgnoreCallback = (): boolean =>
     settled || (activeChatRun !== null && !isActiveRun());
   let skipNextLegacyToolTrace = false;
+  let missingSessionDiagnosticRecorded = false;
+  const recordMissingSessionDiagnostic = (
+    diagnostic?: ChatTransportDiagnostic,
+  ): void => {
+    if (missingSessionDiagnosticRecorded) return;
+    missingSessionDiagnosticRecorded = true;
+    const normalizedProfile = profileRuntimeManager.normalizeProfile(
+      diagnostic?.profile ?? profile,
+    );
+    const metadata = {
+      code: "missing-session-id",
+      severity: "warning",
+      source: diagnostic?.source ?? "service",
+      profile: normalizedProfile,
+      resumed: Boolean(resumeSessionId),
+      transport: diagnostic?.transport,
+      apiBaseUrl: diagnostic?.apiBaseUrl,
+      headerName: "x-hermes-session-id",
+      headerShape: diagnostic?.headerShape ?? "missing",
+    };
+    console.warn(
+      "[chat-service] Chat completed without a durable Hermes session id",
+      metadata,
+    );
+    recordChatTraceEvent(
+      "trace missing session id diagnostic",
+      "transport.error",
+      "Missing durable session id",
+      "Chat completed successfully, but Hermes did not return x-hermes-session-id; the chat will remain non-persistent.",
+      metadata,
+    );
+  };
 
   const transportCallbacks: ChatCallbacks = {
     onChunk: (chunk) => {
@@ -302,10 +339,22 @@ export async function runChatMessage({
         sessionId,
         "Hermes returned a completed response.",
       );
+      if (!sessionId && !resumeSessionId) {
+        recordMissingSessionDiagnostic();
+      }
       if (sessionId) {
-        runBestEffort("session profile update", () =>
+        const profileUpdated = runBestEffort("session profile update", () =>
           updateSessionProfile(sessionId, profile),
         );
+        if (profileUpdated === false) {
+          console.warn(
+            "[chat-service] Hermes returned a session id, but the session cache/profile row was not updated",
+            {
+              sessionId,
+              profile: profileRuntimeManager.normalizeProfile(profile),
+            },
+          );
+        }
       }
       notify("chat done callback", () => callbacks?.onDone?.(sessionId));
       const response = { response: fullResponse, sessionId };
@@ -317,26 +366,29 @@ export async function runChatMessage({
         }),
       );
     },
-    onError: (error) => {
+    onError: (error, info) => {
       if (shouldIgnoreCallback()) return;
       if (isActiveRun()) activeChatRun = null;
+      const visibleError = info?.displayMessage || error;
+      const metadata: Record<string, unknown> = { source: "chat" };
+      if (info?.recovery) metadata.recovery = info.recovery;
       const recordedError = recordChatTraceEvent(
         "trace transport error",
         "transport.error",
         "Transport error",
-        error,
-        { source: "chat" },
+        visibleError,
+        metadata,
       );
       emitLiveTrace(callbacks, recordedError ?? null);
       finishChatTraceRun(
         "trace failure finalization",
         "failed",
         undefined,
-        error,
+        visibleError,
       );
-      notify("chat error callback", () => callbacks?.onError?.(error));
+      notify("chat error callback", () => callbacks?.onError?.(visibleError, info));
       settleRejected(new Error(error));
-      notify("chat failure callback", () => callbacks?.onFailed?.(error));
+      notify("chat failure callback", () => callbacks?.onFailed?.(visibleError));
     },
     onTraceEvent: (traceEvent) => {
       if (shouldIgnoreCallback()) return;
@@ -351,6 +403,12 @@ export async function runChatMessage({
         traceEvent.metadata,
       );
       emitLiveTrace(callbacks, recordedEvent ?? null);
+    },
+    onDiagnostic: (diagnostic) => {
+      if (shouldIgnoreCallback()) return;
+      if (diagnostic.code === "missing-session-id" && !resumeSessionId) {
+        recordMissingSessionDiagnostic(diagnostic);
+      }
     },
     onToolProgress: (tool) => {
       if (shouldIgnoreCallback()) return;

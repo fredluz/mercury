@@ -119,6 +119,9 @@ function Layout(): React.JSX.Element {
     mode: "all",
   });
   const [traceLaunchVersion, setTraceLaunchVersion] = useState(0);
+  const [agentReturnViews, setAgentReturnViews] = useState<Set<View>>(
+    () => new Set<View>(),
+  );
   const [scheduleInitialDraft, setScheduleInitialDraft] =
     useState<ScheduleInitialDraft | null>(null);
   // Tabs lazy-mount on first visit, then stay mounted (display:none toggle).
@@ -434,18 +437,45 @@ function Layout(): React.JSX.Element {
     goTo("sessions");
   }, [goTo]);
 
+  const handleAgentProfileAction = useCallback(
+    (nextView: "chat" | "skills" | "tools" | "soul" | "memory") => {
+      if (nextView !== "chat") {
+        setAgentReturnViews((prev) => new Set(prev).add(nextView));
+      }
+      goTo(nextView);
+    },
+    [goTo],
+  );
+
+  const handleBackToAgents = useCallback(() => {
+    goTo("agents");
+  }, [goTo]);
+
   const showGlobalRuntimeDiagnostic =
     runtimeDiagnostic &&
     !(view === "chat" && isIdleLocalUnverifiedRuntime(runtimeDiagnostic))
       ? runtimeDiagnostic
       : null;
 
+  const handleChatSessionResolved = useCallback(
+    (sessionId: string): void => {
+      const resolvedSessionId = sessionId.trim();
+      if (!resolvedSessionId) return;
+      const resolvedProfile = activeProfileRef.current || "default";
+      if (
+        currentSessionId !== resolvedSessionId ||
+        currentSessionProfile !== resolvedProfile
+      ) {
+        setSessionsRefreshToken((value) => value + 1);
+      }
+      setCurrentSessionId(resolvedSessionId);
+      setCurrentSessionProfile(resolvedProfile);
+    },
+    [currentSessionId, currentSessionProfile],
+  );
+
   const handleResumeSession = useCallback(
-    async (
-      sessionId: string,
-      title?: string | null,
-      profile?: string,
-    ) => {
+    async (sessionId: string, title?: string | null, profile?: string) => {
       const rowProfile = profile?.trim() || undefined;
       const nextProfile = rowProfile || activeProfile;
       const requestId = resumeRequestIdRef.current + 1;
@@ -550,10 +580,7 @@ function Layout(): React.JSX.Element {
               profile={activeProfile}
               runtimeDiagnostic={runtimeDiagnostic}
               onRuntimeDiagnosticRefresh={refreshRuntimeDiagnostic}
-              onSessionResolved={(sessionId) => {
-                setCurrentSessionId(sessionId);
-                setCurrentSessionProfile(activeProfile);
-              }}
+              onSessionResolved={handleChatSessionResolved}
               onSessionTitleChange={(title) => {
                 setCurrentSessionTitle(title);
                 setSessionsRefreshToken((value) => value + 1);
@@ -562,7 +589,7 @@ function Layout(): React.JSX.Element {
                 setCurrentSessionId(null);
                 setCurrentSessionTitle(null);
                 setCurrentSessionProfile(null);
-                          setConversationVersion((value) => value + 1);
+                setConversationVersion((value) => value + 1);
               }}
               onCreateScheduleFromConversation={
                 handleCreateScheduleFromConversation
@@ -632,7 +659,7 @@ function Layout(): React.JSX.Element {
               <Agents
                 activeProfile={activeProfile}
                 onSelectProfile={handleSelectProfile}
-                onProfileAction={goTo}
+                onProfileAction={handleAgentProfileAction}
               />
             )}
           </div>
@@ -686,7 +713,12 @@ function Layout(): React.JSX.Element {
             {remoteMode ? (
               <RemoteNotice feature="Tools" />
             ) : (
-              <Tools profile={activeProfile} />
+              <Tools
+                profile={activeProfile}
+                onBackToAgents={
+                  agentReturnViews.has("tools") ? handleBackToAgents : undefined
+                }
+              />
             )}
           </div>
         )}

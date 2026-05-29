@@ -30,6 +30,7 @@ vi.mock("../Chat/Chat", () => ({
     onCreateScheduleFromConversation,
     onOpenTraceRun,
     onViewSchedules,
+    onSessionResolved,
   }: {
     messages?: Array<{ id: string; role: string; content: string }>;
     sessionId?: string | null;
@@ -43,6 +44,7 @@ vi.mock("../Chat/Chat", () => ({
     }) => void;
     onOpenTraceRun?: (runId: string) => void;
     onViewSchedules?: () => void;
+    onSessionResolved?: (sessionId: string) => void;
   }) => (
     <div>
       Chat mock profile:{profile} session:{sessionId ?? "none"} messages:
@@ -62,6 +64,7 @@ vi.mock("../Chat/Chat", () => ({
         Open chat trace
       </button>
       <button onClick={onViewSchedules}>View schedules from chat</button>
+      <button onClick={() => onSessionResolved?.("session-resolved")}>Resolve chat session</button>
     </div>
   ),
 }));
@@ -161,6 +164,8 @@ const layoutCachedRows = [
   },
 ];
 
+let currentLayoutCachedRows = layoutCachedRows;
+
 const layoutProfiles = [
   {
     name: "default",
@@ -219,8 +224,12 @@ function installHermesApiMock(
       onMenuSearchSessions: vi.fn(() => vi.fn()),
       checkForUpdates: vi.fn().mockResolvedValue(null),
       abortChat: vi.fn().mockResolvedValue(undefined),
-      listCachedSessions: vi.fn().mockResolvedValue(layoutCachedRows),
-      syncSessionCache: vi.fn().mockResolvedValue(layoutCachedRows),
+      listCachedSessions: vi.fn().mockImplementation(() =>
+        Promise.resolve(currentLayoutCachedRows),
+      ),
+      syncSessionCache: vi.fn().mockImplementation(() =>
+        Promise.resolve(currentLayoutCachedRows),
+      ),
       listProfiles: vi.fn().mockResolvedValue(layoutProfiles),
       setActiveProfile: vi.fn().mockResolvedValue(true),
       getSessionMessages: vi.fn().mockResolvedValue([
@@ -232,6 +241,7 @@ function installHermesApiMock(
 
 describe("Layout trace routing", () => {
   beforeEach(() => {
+    currentLayoutCachedRows = layoutCachedRows;
     installHermesApiMock();
   });
 
@@ -355,6 +365,40 @@ describe("Layout trace routing", () => {
     expect(
       screen.getByRole("button", { name: "navigation.sessions" }),
     ).toBeInTheDocument();
+  });
+
+  it("refreshes the compact chat sidebar when a chat session is resolved", async () => {
+    render(<Layout />);
+    await waitFor(() =>
+      expect(window.hermesAPI.isRemoteOnlyMode).toHaveBeenCalled(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "navigation.chat" }));
+    await screen.findByText("Work session");
+    const callsBeforeResolution = (
+      window.hermesAPI.listCachedSessions as unknown as ReturnType<typeof vi.fn>
+    ).mock.calls.length;
+
+    currentLayoutCachedRows = [
+      {
+        id: "session-resolved",
+        title: "Resolved first send",
+        startedAt: 1_700_000_200,
+        source: "local",
+        messageCount: 2,
+        model: "openai/gpt-4o",
+        profile: "default",
+      },
+      ...layoutCachedRows,
+    ];
+    fireEvent.click(screen.getByRole("button", { name: "Resolve chat session" }));
+
+    await waitFor(() =>
+      expect(window.hermesAPI.listCachedSessions).toHaveBeenCalledTimes(
+        callsBeforeResolution + 1,
+      ),
+    );
+    expect(await screen.findByText("Resolved first send")).toBeInTheDocument();
   });
 
   it("keeps the main sidebar when Chat nav is clicked in remote-only mode", async () => {

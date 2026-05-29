@@ -63,7 +63,10 @@ export function registerChatIpc({
         callbacks: {
           onChunk: (chunk) => safeSend(event.sender, "chat-chunk", chunk),
           onDone: (sessionId) => safeSend(event.sender, "chat-done", sessionId || ""),
-          onError: (error) => safeSend(event.sender, "chat-error", error),
+          onError: (error, info) => {
+            if (info) safeSend(event.sender, "chat-error", error, info);
+            else safeSend(event.sender, "chat-error", error);
+          },
           onLiveTraceEvent: (traceEvent) => sendChatTraceEvent(event.sender, traceEvent),
           onToolProgress: (tool) => safeSend(event.sender, "chat-tool-progress", tool),
           onUsage: (usage) => safeSend(event.sender, "chat-usage", usage),

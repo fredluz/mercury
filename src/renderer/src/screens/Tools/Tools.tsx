@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { ArrowLeft } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
 
 interface ToolsetInfo {
@@ -10,6 +11,7 @@ interface ToolsetInfo {
 
 interface ToolsProps {
   profile?: string;
+  onBackToAgents?: () => void;
 }
 
 // SVG icons per toolset key
@@ -256,7 +258,7 @@ interface McpServer {
   detail: string;
 }
 
-function Tools({ profile }: ToolsProps): React.JSX.Element {
+function Tools({ profile, onBackToAgents }: ToolsProps): React.JSX.Element {
   const { t } = useI18n();
   const [toolsets, setToolsets] = useState<ToolsetInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -300,6 +302,12 @@ function Tools({ profile }: ToolsProps): React.JSX.Element {
   return (
     <div className="tools-container">
       <div className="tools-header">
+        {onBackToAgents ? (
+          <button className="tools-back" onClick={onBackToAgents} type="button">
+            <ArrowLeft size={14} />
+            {t("tools.backToAgents")}
+          </button>
+        ) : null}
         <h2 className="tools-title">{t("tools.title")}</h2>
         <p className="tools-subtitle">{t("tools.subtitle")}</p>
       </div>
@@ -335,7 +343,10 @@ function Tools({ profile }: ToolsProps): React.JSX.Element {
         <>
           <div className="tools-header" style={{ marginTop: 32 }}>
             <h2 className="tools-title">{t("tools.mcpServers")}</h2>
-            <p className="tools-subtitle" dangerouslySetInnerHTML={{ __html: t("tools.mcpDescription") }} />
+            <p
+              className="tools-subtitle"
+              dangerouslySetInnerHTML={{ __html: t("tools.mcpDescription") }}
+            />
           </div>
           <div className="tools-grid">
             {mcpServers.map((s) => (

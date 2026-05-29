@@ -35,6 +35,10 @@ interface NormalSendFlowContext extends BaseSendFlowContext {
 interface QuickAskSendFlowContext extends BaseSendFlowContext {
   text: string;
   perf: ChatPerfTracker;
+  isSendRunCurrentOrFinalized: (runSeq: number) => boolean;
+  setHermesSessionId: React.Dispatch<React.SetStateAction<string | null>>;
+  sessionIdRef: MutableRefObject<string | null>;
+  onSessionResolved?: (sessionId: string) => void;
 }
 
 interface ApprovalSendFlowContext extends BaseSendFlowContext {
@@ -132,6 +136,13 @@ export async function sendQuickAskMessage(ctx: QuickAskSendFlowContext): Promise
       responseLength: result.response.length,
       sessionIdPresent: Boolean(result.sessionId || resumeSessionId),
     });
+    const resolvedSessionId = result.sessionId || resumeSessionId;
+    const shouldApplyResult = ctx.isSendRunCurrentOrFinalized(runSeq);
+    if (shouldApplyResult && resolvedSessionId) {
+      ctx.setHermesSessionId(resolvedSessionId);
+      ctx.sessionIdRef.current = resolvedSessionId;
+      ctx.onSessionResolved?.(resolvedSessionId);
+    }
     ctx.finalizeChatRun(runSeq, "completed");
   } catch (error) {
     ctx.perf.markIpcRejected({

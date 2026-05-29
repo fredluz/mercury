@@ -213,6 +213,66 @@ describe("useChatController send lifecycle", () => {
     },
   );
 
+  it("resolves the session after a normal send returns a durable session id", async () => {
+    const onSessionResolved = vi.fn();
+    sendMessageMock().mockResolvedValueOnce({
+      response: "done",
+      sessionId: "session-new",
+    });
+    const { result } = renderHook(() =>
+      useControllerProbe({ onSessionResolved }),
+    );
+
+    await act(async () => {
+      result.current.controller.setInput("hello");
+    });
+    await act(async () => {
+      await result.current.controller.handleSend();
+    });
+
+    expect(onSessionResolved).toHaveBeenCalledWith("session-new");
+    expect(result.current.controller.hermesSessionId).toBe("session-new");
+  });
+
+  it("does not resolve the session after a new normal send returns no durable session id", async () => {
+    const onSessionResolved = vi.fn();
+    sendMessageMock().mockResolvedValueOnce({ response: "done" });
+    const { result } = renderHook(() =>
+      useControllerProbe({ onSessionResolved }),
+    );
+
+    await act(async () => {
+      result.current.controller.setInput("hello");
+    });
+    await act(async () => {
+      await result.current.controller.handleSend();
+    });
+
+    expect(onSessionResolved).not.toHaveBeenCalled();
+    expect(result.current.controller.hermesSessionId).toBeNull();
+  });
+
+  it("resolves the session after Quick Ask returns a durable session id", async () => {
+    const onSessionResolved = vi.fn();
+    sendMessageMock().mockResolvedValueOnce({
+      response: "done",
+      sessionId: "session-quick",
+    });
+    const { result } = renderHook(() =>
+      useControllerProbe({ onSessionResolved }),
+    );
+
+    await act(async () => {
+      result.current.controller.setInput("quick question");
+    });
+    await act(async () => {
+      await result.current.controller.handleQuickAsk();
+    });
+
+    expect(onSessionResolved).toHaveBeenCalledWith("session-quick");
+    expect(result.current.controller.hermesSessionId).toBe("session-quick");
+  });
+
   it("records chat perf metadata without raw prompt or response content", async () => {
     const send = deferred<{ response: string; sessionId?: string }>();
     sendMessageMock().mockReturnValueOnce(send.promise);

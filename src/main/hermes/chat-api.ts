@@ -1,6 +1,11 @@
 import http from "http";
 import https from "https";
-import type { ChatCallbacks, ChatHandle, ProfileRuntimeHandle } from "./types";
+import type {
+  ChatCallbacks,
+  ChatHandle,
+  ChatSessionIdHeaderShape,
+  ProfileRuntimeHandle,
+} from "./types";
 import { resolveChatRuntimeModel } from "./chat-model";
 import {
   assertVerifiedApiRuntimeHandle,
@@ -10,6 +15,10 @@ import {
   normalizeHermesStreamEvent,
   splitLegacyToolProgressContent,
 } from "./trace-events";
+import {
+  detectCodexAuthRecovery,
+  type ChatErrorInfo,
+} from "../../shared/codex-auth-recovery";
 
 export function sendMessageViaApi(
   message: string,
@@ -133,6 +142,28 @@ function parseChatError(raw: string): string {
   }
 }
 
+function readHermesSessionIdHeader(raw: unknown): {
+  sessionId?: string;
+  shape: ChatSessionIdHeaderShape;
+} {
+  if (raw === undefined) return { shape: "missing" };
+  if (typeof raw === "string") {
+    const sessionId = raw.trim();
+    return sessionId
+      ? { sessionId, shape: "string" }
+      : { shape: "string-empty" };
+  }
+  if (Array.isArray(raw)) {
+    for (const value of raw) {
+      if (typeof value !== "string") continue;
+      const sessionId = value.trim();
+      if (sessionId) return { sessionId, shape: "array" };
+    }
+    return { shape: "array-empty" };
+  }
+  return { shape: "unsupported" };
+}
+
 async function sendMessageViaVerifiedApi(
   message: string,
   cb: ChatCallbacks,
@@ -153,6 +184,13 @@ async function sendMessageViaVerifiedApi(
     return { abort: () => {} };
   }
   const controller = new AbortController();
+  const normalizedProfile = profile?.trim() || runtime.request.profile || "default";
+  const buildErrorInfo = (error: string): ChatErrorInfo | undefined =>
+    detectCodexAuthRecovery({
+      error,
+      provider: mc.provider,
+      profile: normalizedProfile,
+    }) ?? undefined;
 
   // Build full conversation from history + current message (standard OpenAI format)
   const messages: Array<{ role: string; content: string }> = [];
@@ -178,16 +216,33 @@ async function sendMessageViaVerifiedApi(
   };
 
   let sessionId = _resumeSessionId || "";
+  let sessionHeaderShape: ChatSessionIdHeaderShape = "missing";
   let hasContent = false;
   let hasStreamSignal = false;
   let finished = false; // guard against double callbacks
   let lastError = ""; // capture embedded error messages
+  function emitMissingSessionIdDiagnostic(): void {
+    if (_resumeSessionId || sessionId) return;
+    cb.onDiagnostic?.({
+      code: "missing-session-id",
+      severity: "warning",
+      source: "api",
+      profile: normalizedProfile,
+      resumed: false,
+      transport: runtime.transport,
+      apiBaseUrl: runtime.apiBaseUrl,
+      headerName: "x-hermes-session-id",
+      headerShape: sessionHeaderShape,
+    });
+  }
+
   function finish(error?: string): void {
     if (finished) return;
     finished = true;
     if (error) {
-      cb.onError(error);
+      cb.onError(error, buildErrorInfo(error));
     } else {
+      emitMissingSessionIdDiagnostic();
       cb.onDone(sessionId || undefined);
     }
   }
@@ -327,8 +382,13 @@ async function sendMessageViaVerifiedApi(
       timeout: 120000,
     },
     (res) => {
-      const sid = res.headers["x-hermes-session-id"];
-      if (sid && typeof sid === "string") sessionId = sid;
+      const parsedSessionHeader = readHermesSessionIdHeader(
+        res.headers["x-hermes-session-id"],
+      );
+      sessionHeaderShape = parsedSessionHeader.shape;
+      if (parsedSessionHeader.sessionId) {
+        sessionId = parsedSessionHeader.sessionId;
+      }
 
       if (res.statusCode !== 200) {
         let errBody = "";

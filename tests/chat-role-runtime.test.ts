@@ -32,6 +32,66 @@ async function loadChatApiWithModel(model: { provider: string; model: string; ba
   return { ...module, request, bodies };
 }
 
+async function loadChatApiWithStreamingResponse(
+  headers: Record<string, string | string[] | undefined>,
+) {
+  vi.resetModules();
+  const request = vi.fn(
+    (
+      _url: string,
+      _options: unknown,
+      callback: (
+        res: EventEmitter & {
+          statusCode: number;
+          headers: Record<string, string | string[] | undefined>;
+        },
+      ) => void,
+    ) => {
+      const req = new EventEmitter() as EventEmitter & {
+        write: ReturnType<typeof vi.fn>;
+        end: ReturnType<typeof vi.fn>;
+        destroy: ReturnType<typeof vi.fn>;
+      };
+      req.write = vi.fn();
+      req.destroy = vi.fn();
+      req.end = vi.fn(() => {
+        const res = new EventEmitter() as EventEmitter & {
+          statusCode: number;
+          headers: Record<string, string | string[] | undefined>;
+        };
+        res.statusCode = 200;
+        res.headers = headers;
+        callback(res);
+        queueMicrotask(() => {
+          res.emit(
+            "data",
+            Buffer.from('data: {"choices":[{"delta":{"content":"hello"}}]}\n\n'),
+          );
+          res.emit("data", Buffer.from("data: [DONE]\n\n"));
+          res.emit("end");
+        });
+      });
+      return req;
+    },
+  );
+  vi.doMock("http", () => ({ default: { request }, request }));
+  vi.doMock("https", () => ({ default: { request }, request }));
+  vi.doMock("../src/main/hermes/chat-model", () => ({
+    resolveChatRuntimeModel: vi.fn().mockResolvedValue({
+      provider: "openai",
+      model: "agent-api-model",
+      baseUrl: "",
+      source: "agent-config",
+    }),
+  }));
+  vi.doMock("../src/main/hermes/trace-events", () => ({
+    normalizeHermesStreamEvent: () => [],
+    splitLegacyToolProgressContent: (content: string) => ({ prose: content, progressLabels: [] }),
+  }));
+  const module = await import("../src/main/hermes/chat-api");
+  return { ...module, request };
+}
+
 async function loadTitleWithModel(model: { provider: string; model: string; baseUrl: string }) {
   vi.resetModules();
   const bodies: unknown[] = [];
@@ -106,6 +166,93 @@ describe("direct agent runtime model resolution", () => {
     const { sendMessageViaApi, bodies } = await loadChatApiWithModel({ provider: "openai", model: "agent-api-model", baseUrl: "" });
     await sendMessageViaApi("hello", { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() }, "work", undefined, undefined, runtime);
     expect(bodies[0]).toMatchObject({ model: "agent-api-model", stream: true });
+  });
+
+  it("captures string x-hermes-session-id headers from API chat responses", async () => {
+    const { sendMessageViaApi } = await loadChatApiWithStreamingResponse({
+      "x-hermes-session-id": " session-from-string ",
+    });
+    const onDone = vi.fn();
+    const onDiagnostic = vi.fn();
+
+    await sendMessageViaApi(
+      "hello",
+      { onChunk: vi.fn(), onDone, onError: vi.fn(), onDiagnostic },
+      "work",
+      undefined,
+      undefined,
+      runtime,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onDone).toHaveBeenCalledWith("session-from-string");
+    expect(onDiagnostic).not.toHaveBeenCalled();
+  });
+
+  it("captures array-shaped x-hermes-session-id headers from API chat responses", async () => {
+    const { sendMessageViaApi } = await loadChatApiWithStreamingResponse({
+      "x-hermes-session-id": ["", " session-from-array "],
+    });
+    const onDone = vi.fn();
+    const onDiagnostic = vi.fn();
+
+    await sendMessageViaApi(
+      "hello",
+      { onChunk: vi.fn(), onDone, onError: vi.fn(), onDiagnostic },
+      "work",
+      undefined,
+      undefined,
+      runtime,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onDone).toHaveBeenCalledWith("session-from-array");
+    expect(onDiagnostic).not.toHaveBeenCalled();
+  });
+
+  it("diagnoses successful new API sends that return no session id", async () => {
+    const { sendMessageViaApi } = await loadChatApiWithStreamingResponse({});
+    const onDone = vi.fn();
+    const onDiagnostic = vi.fn();
+
+    await sendMessageViaApi(
+      "hello",
+      { onChunk: vi.fn(), onDone, onError: vi.fn(), onDiagnostic },
+      "work",
+      undefined,
+      undefined,
+      runtime,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onDone).toHaveBeenCalledWith(undefined);
+    expect(onDiagnostic).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "missing-session-id",
+        profile: "work",
+        resumed: false,
+        headerShape: "missing",
+      }),
+    );
+  });
+
+  it("uses the resumed session id when API chat responses omit the header", async () => {
+    const { sendMessageViaApi } = await loadChatApiWithStreamingResponse({});
+    const onDone = vi.fn();
+    const onDiagnostic = vi.fn();
+
+    await sendMessageViaApi(
+      "hello",
+      { onChunk: vi.fn(), onDone, onError: vi.fn(), onDiagnostic },
+      "work",
+      "resume-session",
+      undefined,
+      runtime,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onDone).toHaveBeenCalledWith("resume-session");
+    expect(onDiagnostic).not.toHaveBeenCalled();
   });
 
   it("does not call API transport when direct agent model is unresolved", async () => {

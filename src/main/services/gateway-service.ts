@@ -22,6 +22,22 @@ import {
   sshReadRemoteApiKey,
 } from "../ssh-remote";
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function revalidateRuntimeWithRetry(profile?: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      if (await revalidateRuntime(profile)) return true;
+    } catch {
+      // Runtime restarts can briefly reject while the API process is coming up.
+    }
+    if (attempt < 4) await wait(500 * (attempt + 1));
+  }
+  return false;
+}
+
 async function restartSshGatewayAndRevalidate(profile?: string): Promise<void> {
   const conn = getConnectionConfig();
   if (conn.mode !== "ssh" || !conn.ssh) return;
@@ -30,7 +46,28 @@ async function restartSshGatewayAndRevalidate(profile?: string): Promise<void> {
   await startSshTunnel(conn.ssh, profile);
   const key = await sshReadRemoteApiKey(conn.ssh, profile);
   setSshRemoteApiKey(key, profile);
-  await revalidateRuntime(profile);
+  await revalidateRuntimeWithRetry(profile);
+}
+
+export async function restartGatewayAndRevalidate(
+  profile?: string,
+): Promise<boolean> {
+  const conn = getConnectionConfig();
+  if (conn.mode === "ssh" && conn.ssh) {
+    await restartSshGatewayAndRevalidate(profile);
+    return true;
+  }
+  if (conn.mode === "remote") return false;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      restartLocalGateway(profile);
+      if (await revalidateRuntimeWithRetry(profile)) return true;
+    } catch {
+      // A named profile can briefly fail while its runtime config is settling.
+    }
+    if (attempt < 4) await wait(500 * (attempt + 1));
+  }
+  return false;
 }
 
 export async function startGateway(profile?: string): Promise<boolean> {
@@ -56,21 +93,14 @@ export async function stopGateway(profile?: string): Promise<boolean> {
 
 export function gatewayStatus(profile?: string): boolean | Promise<boolean> {
   const conn = getConnectionConfig();
-  if (conn.mode === "ssh" && conn.ssh) return sshGatewayStatus(conn.ssh, profile);
+  if (conn.mode === "ssh" && conn.ssh)
+    return sshGatewayStatus(conn.ssh, profile);
   if (conn.mode === "remote") return false;
   return isGatewayRunning(profile);
 }
 
 export async function restartGateway(profile?: string): Promise<boolean> {
-  const conn = getConnectionConfig();
-  if (conn.mode === "ssh" && conn.ssh) {
-    await sshStopGateway(conn.ssh, profile);
-    await sshStartGateway(conn.ssh, profile);
-    return true;
-  }
-  if (conn.mode === "remote") return false;
-  restartLocalGateway(profile);
-  return true;
+  return restartGatewayAndRevalidate(profile);
 }
 
 export function getPlatformEnabledForProfile(profile?: string) {
@@ -89,17 +119,23 @@ export async function setPlatformEnabledForProfile(
   const conn = getConnectionConfig();
   if (conn.mode === "ssh" && conn.ssh) {
     await sshSetPlatformEnabled(conn.ssh, platform, enabled, profile);
-    markRuntimeStale(profile, `Gateway platform ${platform} changed for profile runtime.`);
+    markRuntimeStale(
+      profile,
+      `Gateway platform ${platform} changed for profile runtime.`,
+    );
     if (await sshGatewayStatus(conn.ssh, profile)) {
-      await restartSshGatewayAndRevalidate(profile);
+      await restartGatewayAndRevalidate(profile);
     }
     return true;
   }
   if (conn.mode === "remote") return false;
   setPlatformEnabled(platform, enabled, profile);
-  markRuntimeStale(profile, `Gateway platform ${platform} changed for profile runtime.`);
+  markRuntimeStale(
+    profile,
+    `Gateway platform ${platform} changed for profile runtime.`,
+  );
   if (isGatewayRunning(profile)) {
-    restartLocalGateway(profile);
+    await restartGatewayAndRevalidate(profile);
   }
   return true;
 }

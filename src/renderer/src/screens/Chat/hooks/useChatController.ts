@@ -274,6 +274,10 @@ export function useChatController({
       getResumeSessionId,
       appendFallbackSendError,
       perf,
+      isSendRunCurrentOrFinalized: runState.isSendRunCurrentOrFinalized,
+      setHermesSessionId,
+      sessionIdRef,
+      onSessionResolved,
     });
   }, [
     activity.beginActivityGroup,
@@ -281,11 +285,13 @@ export function useChatController({
     getResumeSessionId,
     input,
     messages,
+    onSessionResolved,
     perf,
     profile,
     runState.beginChatRun,
     runState.finalizeChatRun,
     runState.isLoading,
+    runState.isSendRunCurrentOrFinalized,
     setMessages,
     slash,
   ]);

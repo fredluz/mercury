@@ -1,5 +1,6 @@
 import { ElectronAPI } from "@electron-toolkit/preload";
 import type { GenerateChatTitleRequest } from "../shared/chat-metadata";
+import type { ChatErrorInfo } from "../shared/codex-auth-recovery";
 import type { AppLocale } from "../shared/i18n/types";
 import type {
   SkillMarkdownImportRequest,
@@ -173,7 +174,9 @@ interface HermesAPI {
       rateLimitReset?: number;
     }) => void,
   ) => () => void;
-  onChatError: (callback: (error: string) => void) => () => void;
+  onChatError: (
+    callback: (error: string, info?: ChatErrorInfo) => void,
+  ) => () => void;
 
   // Trace Lab
   listTraceRuns: () => Promise<TraceRun[]>;

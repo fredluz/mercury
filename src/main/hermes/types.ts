@@ -1,3 +1,4 @@
+import type { ChatErrorInfo } from "../../shared/codex-auth-recovery";
 import type { TraceEventType } from "../../shared/traces";
 
 export type RuntimeMode = "local" | "ssh" | "remote";
@@ -106,12 +107,33 @@ export interface ChatTraceCallbackEvent {
   metadata?: Record<string, unknown>;
 }
 
+export type ChatSessionIdHeaderShape =
+  | "missing"
+  | "string"
+  | "string-empty"
+  | "array"
+  | "array-empty"
+  | "unsupported";
+
+export interface ChatTransportDiagnostic {
+  code: "missing-session-id";
+  severity: "warning";
+  source: "api" | "service";
+  profile: string;
+  resumed: boolean;
+  transport?: RuntimeTransport;
+  apiBaseUrl?: string;
+  headerName: "x-hermes-session-id";
+  headerShape: ChatSessionIdHeaderShape;
+}
+
 export interface ChatCallbacks {
   onChunk: (text: string) => void;
   onDone: (sessionId?: string) => void;
-  onError: (error: string) => void;
+  onError: (error: string, info?: ChatErrorInfo) => void;
   onToolProgress?: (tool: string) => void;
   onTraceEvent?: (event: ChatTraceCallbackEvent) => void;
+  onDiagnostic?: (event: ChatTransportDiagnostic) => void;
   onUsage?: (usage: {
     promptTokens: number;
     completionTokens: number;

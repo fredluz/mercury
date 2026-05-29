@@ -1,5 +1,6 @@
 import { ipcRenderer } from "electron";
 import type { GenerateChatTitleRequest } from "../../shared/chat-metadata";
+import type { ChatErrorInfo } from "../../shared/codex-auth-recovery";
 import type { LocalChatTraceRequest, TraceEvent, TraceRun } from "../../shared/traces";
 
 export const chatApi = {
@@ -75,9 +76,14 @@ export const chatApi = {
     return () => ipcRenderer.removeListener("chat-usage", handler);
   },
 
-  onChatError: (callback: (error: string) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, error: string): void =>
-      callback(error);
+  onChatError: (
+    callback: (error: string, info?: ChatErrorInfo) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      error: string,
+      info?: ChatErrorInfo,
+    ): void => callback(error, info);
     ipcRenderer.on("chat-error", handler);
     return () => ipcRenderer.removeListener("chat-error", handler);
   },

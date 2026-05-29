@@ -5,22 +5,36 @@ function profileLabel(profile: string | null | undefined): string {
   return profile && profile !== "default" ? profile : "default";
 }
 
+function runtimeNoticeLabel(diagnostic: RuntimeDiagnostic): string {
+  if (diagnostic.status === "verified") return "Runtime verified";
+  if (diagnostic.stale) return "Runtime updating";
+  return "Runtime needs attention";
+}
+
 export function runtimeDiagnosticMessage(
   diagnostic: RuntimeDiagnostic | null | undefined,
 ): string | null {
   if (!diagnostic) return null;
   if (diagnostic.stale) {
-    return diagnostic.staleReason || "Runtime is stale and should be restarted or revalidated.";
+    return "Runtime settings changed. Mercury is applying the update automatically.";
   }
   if (diagnostic.status === "unsupported") {
-    return diagnostic.unsupportedReason || "Runtime identity is not verified for this connection mode.";
+    return (
+      diagnostic.unsupportedReason ||
+      "Runtime identity is not verified for this connection mode."
+    );
   }
   if (diagnostic.status === "mismatch") {
-    return diagnostic.mismatchReason ||
-      `Selected Agent ${profileLabel(diagnostic.selectedProfile)} does not match backing runtime profile ${profileLabel(diagnostic.actualProfile)}.`;
+    return (
+      diagnostic.mismatchReason ||
+      `Selected Agent ${profileLabel(diagnostic.selectedProfile)} does not match backing runtime profile ${profileLabel(diagnostic.actualProfile)}.`
+    );
   }
   if (diagnostic.status === "unverified") {
-    return diagnostic.mismatchReason || "Runtime identity has not been verified for the selected Agent.";
+    return (
+      diagnostic.mismatchReason ||
+      "Runtime identity has not been verified for the selected Agent."
+    );
   }
   return null;
 }
@@ -30,7 +44,9 @@ export function runtimeDiagnosticSummary(
 ): string {
   if (!diagnostic) return "Runtime diagnostic unavailable";
   const profile = profileLabel(diagnostic.selectedProfile);
-  const actual = diagnostic.actualProfile ? profileLabel(diagnostic.actualProfile) : "unverified";
+  const actual = diagnostic.actualProfile
+    ? profileLabel(diagnostic.actualProfile)
+    : "unverified";
   const port = diagnostic.localPort
     ? `:${diagnostic.localPort}`
     : diagnostic.remotePort
@@ -52,14 +68,23 @@ export function RuntimeDiagnosticNotice({
 }: RuntimeDiagnosticNoticeProps): React.JSX.Element | null {
   const message = runtimeDiagnosticMessage(diagnostic);
   if (!diagnostic || (!message && !showWhenVerified)) return null;
-  const tone = diagnostic.status === "verified" ? "ok" : diagnostic.stale ? "stale" : "warn";
+  const tone =
+    diagnostic.status === "verified"
+      ? "ok"
+      : diagnostic.stale
+        ? "stale"
+        : "warn";
   const titleParts = [
     runtimeDiagnosticSummary(diagnostic),
     diagnostic.apiBaseUrl ? `API ${diagnostic.apiBaseUrl}` : null,
     diagnostic.pid ? `PID ${diagnostic.pid}` : null,
     diagnostic.configPath ? `Config ${diagnostic.configPath}` : null,
-    diagnostic.authSource !== "none" ? `Auth ${diagnostic.authSource}` : "Auth none",
-    diagnostic.verifiedAt ? `Verified ${new Date(diagnostic.verifiedAt).toLocaleString()}` : null,
+    diagnostic.authSource !== "none"
+      ? `Auth ${diagnostic.authSource}`
+      : "Auth none",
+    diagnostic.verifiedAt
+      ? `Verified ${new Date(diagnostic.verifiedAt).toLocaleString()}`
+      : null,
   ].filter(Boolean);
 
   return (
@@ -68,7 +93,7 @@ export function RuntimeDiagnosticNotice({
       title={titleParts.join("\n")}
     >
       <span className="runtime-diagnostic-label">
-        {diagnostic.status === "verified" ? "Runtime verified" : "Runtime warning"}
+        {runtimeNoticeLabel(diagnostic)}
       </span>
       <span className="runtime-diagnostic-message">
         {message || runtimeDiagnosticSummary(diagnostic)}

@@ -17,8 +17,12 @@ import {
   uninstallSkill,
   importSkillMarkdown,
 } from "../skills";
-import type { SkillMarkdownImportRequest, SkillMetadata } from "../../shared/skills";
+import type {
+  SkillMarkdownImportRequest,
+  SkillMetadata,
+} from "../../shared/skills";
 import { isGatewayRunning, markRuntimeStale } from "../hermes";
+import { restartGatewayAndRevalidate } from "./gateway-service";
 import {
   sshReadMemory,
   sshAddMemoryEntry,
@@ -44,17 +48,40 @@ function markProfileMutation(profile: string | undefined, area: string): void {
   markRuntimeStale(profile, `${area} changed for profile runtime.`);
 }
 
+async function refreshRunningRuntimeAfterMutation(
+  profile?: string,
+): Promise<void> {
+  const conn = getConnectionConfig();
+  try {
+    if (conn.mode === "ssh" && conn.ssh) {
+      if (await sshGatewayStatus(conn.ssh, profile)) {
+        await restartGatewayAndRevalidate(profile);
+      }
+      return;
+    }
+    if (conn.mode !== "remote" && isGatewayRunning(profile)) {
+      await restartGatewayAndRevalidate(profile);
+    }
+  } catch {
+    // Keep the stale marker; the chat runtime card can still repair manually.
+  }
+}
+
 export function readMemoryForProfile(profile?: string) {
   const conn = getConnectionConfig();
   if (conn.mode === "ssh" && conn.ssh) return sshReadMemory(conn.ssh, profile);
   return readMemory(profile);
 }
 
-export async function addMemoryEntryForProfile(content: string, profile?: string) {
+export async function addMemoryEntryForProfile(
+  content: string,
+  profile?: string,
+) {
   const conn = getConnectionConfig();
-  const result = conn.mode === "ssh" && conn.ssh
-    ? await sshAddMemoryEntry(conn.ssh, content, profile)
-    : addMemoryEntry(content, profile);
+  const result =
+    conn.mode === "ssh" && conn.ssh
+      ? await sshAddMemoryEntry(conn.ssh, content, profile)
+      : addMemoryEntry(content, profile);
   if (result.success) markProfileMutation(profile, "Memory");
   return result;
 }
@@ -65,27 +92,36 @@ export async function updateMemoryEntryForProfile(
   profile?: string,
 ) {
   const conn = getConnectionConfig();
-  const result = conn.mode === "ssh" && conn.ssh
-    ? await sshUpdateMemoryEntry(conn.ssh, index, content, profile)
-    : updateMemoryEntry(index, content, profile);
+  const result =
+    conn.mode === "ssh" && conn.ssh
+      ? await sshUpdateMemoryEntry(conn.ssh, index, content, profile)
+      : updateMemoryEntry(index, content, profile);
   if (result.success) markProfileMutation(profile, "Memory");
   return result;
 }
 
-export async function removeMemoryEntryForProfile(index: number, profile?: string) {
+export async function removeMemoryEntryForProfile(
+  index: number,
+  profile?: string,
+) {
   const conn = getConnectionConfig();
-  const result = conn.mode === "ssh" && conn.ssh
-    ? await sshRemoveMemoryEntry(conn.ssh, index, profile)
-    : removeMemoryEntry(index, profile);
+  const result =
+    conn.mode === "ssh" && conn.ssh
+      ? await sshRemoveMemoryEntry(conn.ssh, index, profile)
+      : removeMemoryEntry(index, profile);
   if (result) markProfileMutation(profile, "Memory");
   return result;
 }
 
-export async function writeUserProfileForProfile(content: string, profile?: string) {
+export async function writeUserProfileForProfile(
+  content: string,
+  profile?: string,
+) {
   const conn = getConnectionConfig();
-  const result = conn.mode === "ssh" && conn.ssh
-    ? await sshWriteUserProfile(conn.ssh, content, profile)
-    : writeUserProfile(content, profile);
+  const result =
+    conn.mode === "ssh" && conn.ssh
+      ? await sshWriteUserProfile(conn.ssh, content, profile)
+      : writeUserProfile(content, profile);
   if (result.success) markProfileMutation(profile, "User profile memory");
   return result;
 }
@@ -98,18 +134,20 @@ export function readSoulForProfile(profile?: string) {
 
 export async function writeSoulForProfile(content: string, profile?: string) {
   const conn = getConnectionConfig();
-  const result = conn.mode === "ssh" && conn.ssh
-    ? await sshWriteSoul(conn.ssh, content, profile)
-    : writeSoul(content, profile);
+  const result =
+    conn.mode === "ssh" && conn.ssh
+      ? await sshWriteSoul(conn.ssh, content, profile)
+      : writeSoul(content, profile);
   if (result) markProfileMutation(profile, "SOUL");
   return result;
 }
 
 export async function resetSoulForProfile(profile?: string) {
   const conn = getConnectionConfig();
-  const result = conn.mode === "ssh" && conn.ssh
-    ? await sshResetSoul(conn.ssh, profile)
-    : resetSoul(profile);
+  const result =
+    conn.mode === "ssh" && conn.ssh
+      ? await sshResetSoul(conn.ssh, profile)
+      : resetSoul(profile);
   markProfileMutation(profile, "SOUL");
   return result;
 }
@@ -126,10 +164,14 @@ export async function setToolsetEnabledForProfile(
   profile?: string,
 ) {
   const conn = getConnectionConfig();
-  const result = conn.mode === "ssh" && conn.ssh
-    ? await sshSetToolsetEnabled(conn.ssh, key, enabled, profile)
-    : setToolsetEnabled(key, enabled, profile);
-  if (result) markProfileMutation(profile, `Toolset ${key}`);
+  const result =
+    conn.mode === "ssh" && conn.ssh
+      ? await sshSetToolsetEnabled(conn.ssh, key, enabled, profile)
+      : setToolsetEnabled(key, enabled, profile);
+  if (result) {
+    markProfileMutation(profile, `Toolset ${key}`);
+    await refreshRunningRuntimeAfterMutation(profile);
+  }
   return result;
 }
 
@@ -171,20 +213,25 @@ export function getSkillMetadataForConnection(
   return getSkillMetadata(skillPath);
 }
 
-export async function installSkillForProfile(identifier: string, profile?: string) {
+export async function installSkillForProfile(
+  identifier: string,
+  profile?: string,
+) {
   const conn = getConnectionConfig();
-  const result = conn.mode === "ssh" && conn.ssh
-    ? await sshInstallSkill(conn.ssh, identifier, profile)
-    : installSkill(identifier, profile);
+  const result =
+    conn.mode === "ssh" && conn.ssh
+      ? await sshInstallSkill(conn.ssh, identifier, profile)
+      : installSkill(identifier, profile);
   if (result.success) markProfileMutation(profile, "Skills");
   return result;
 }
 
 export async function uninstallSkillForProfile(name: string, profile?: string) {
   const conn = getConnectionConfig();
-  const result = conn.mode === "ssh" && conn.ssh
-    ? await sshUninstallSkill(conn.ssh, name, profile)
-    : uninstallSkill(name, profile);
+  const result =
+    conn.mode === "ssh" && conn.ssh
+      ? await sshUninstallSkill(conn.ssh, name, profile)
+      : uninstallSkill(name, profile);
   if (result.success) markProfileMutation(profile, "Skills");
   return result;
 }
