@@ -1,3 +1,7 @@
+import {
+  isChatAuthRecovery,
+  type ChatAuthRecovery,
+} from "../../../../shared/codex-auth-recovery";
 import type { TraceEvent, TraceEventType } from "../../../../shared/traces";
 import type { ChatActivityGroupStatus } from "./types";
 
@@ -30,6 +34,17 @@ export function isChatActivityEventType(type: TraceEventType): boolean {
     type.startsWith("approval.") ||
     type === "transport.error"
   );
+}
+
+export function codexAuthRecoveryFromEvents(
+  events: TraceEvent[],
+): ChatAuthRecovery | null {
+  for (const event of events) {
+    if (event.type !== "transport.error") continue;
+    const recovery = event.metadata?.recovery;
+    if (isChatAuthRecovery(recovery)) return recovery;
+  }
+  return null;
 }
 
 export function summarizeActivityEvents(events: TraceEvent[]): ChatActivitySummary[] {

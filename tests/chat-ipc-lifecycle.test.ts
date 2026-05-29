@@ -645,6 +645,46 @@ describe("chat IPC lifecycle hardening", () => {
     );
   });
 
+  it("forwards structured Codex auth recovery metadata with sanitized trace detail", async () => {
+    const handler = await setupHandler();
+    const event = createEvent();
+    const invokePromise = handler(event, "hello", "alpha");
+    const callbacks = await waitForTransportCallbacks();
+    const info = {
+      displayMessage:
+        "Codex sign-in needs to be refreshed. Re-authenticate with Mercury's in-app Codex login.",
+      recovery: {
+        kind: "codex-auth" as const,
+        provider: "openai-codex" as const,
+        reason: "refresh-token-consumed" as const,
+        profile: "alpha",
+        action: "start-codex-device-auth" as const,
+      },
+    };
+
+    callbacks.onError(
+      "Codex refresh token was already consumed by another client",
+      info,
+    );
+
+    await expect(invokePromise).rejects.toThrow(
+      "Codex refresh token was already consumed by another client",
+    );
+    expect(sentChannels(event.sender, "chat-error")).toEqual([
+      ["chat-error", info.displayMessage, info],
+    ]);
+    expect(mocks.recordTraceEvent).toHaveBeenCalledWith(
+      "trace-1",
+      "transport.error",
+      "Transport error",
+      info.displayMessage,
+      { source: "chat", recovery: info.recovery },
+    );
+    expect(JSON.stringify(mocks.recordTraceEvent.mock.calls)).not.toContain(
+      "already consumed",
+    );
+  });
+
   it("still sends chat-error and rejects when error side effects throw", async () => {
     const handler = await setupHandler();
     const event = createEvent();

@@ -2,6 +2,11 @@ import { useEffect } from "react";
 import type React from "react";
 import type { MutableRefObject } from "react";
 import type { ContextWindowInfo } from "../../../../../shared/chat-metadata";
+import {
+  detectCodexAuthRecovery,
+  type ChatAuthRecovery,
+  type ChatErrorInfo,
+} from "../../../../../shared/codex-auth-recovery";
 import type { TraceEvent } from "../../../../../shared/traces";
 import type { ChatActivityGroupStatus, ChatMessage, ChatUsage } from "../types";
 import type { ChatPerfTracker } from "./chatPerf";
@@ -15,6 +20,9 @@ interface UseChatIpcListenersArgs {
   currentContextInfoRef: MutableRefObject<ContextWindowInfo>;
   currentModelRef: MutableRefObject<string>;
   currentProviderRef: MutableRefObject<string>;
+  profileRef: MutableRefObject<string | undefined>;
+  onAuthRecovery?: (recovery: ChatAuthRecovery, displayMessage: string) => void;
+  formatChatErrorMessage?: (error: string, info?: ChatErrorInfo) => string;
   perf: ChatPerfTracker;
 }
 
@@ -27,6 +35,9 @@ export function useChatIpcListeners({
   currentContextInfoRef,
   currentModelRef,
   currentProviderRef,
+  profileRef,
+  onAuthRecovery,
+  formatChatErrorMessage,
   perf,
 }: UseChatIpcListenersArgs): void {
   useEffect(() => {
@@ -45,9 +56,31 @@ export function useChatIpcListeners({
       if (sessionId) setHermesSessionId(sessionId);
       finalizeActiveChatRun("completed");
     });
-    const cleanupError = window.hermesAPI.onChatError((error) => {
+    const cleanupError = window.hermesAPI.onChatError((error, info) => {
       perf.markErrorCallback(error);
-      setMessages((prev) => [...prev, { id: `error-${Date.now()}`, role: "agent", content: `Error: ${error}` }]);
+      const detectedInfo =
+        info?.recovery
+          ? info
+          : (detectCodexAuthRecovery({
+              error,
+              provider: currentProviderRef.current,
+              profile: profileRef.current,
+            }) ?? undefined);
+      const recovery = detectedInfo?.recovery;
+      if (recovery) {
+        onAuthRecovery?.(
+          recovery,
+          detectedInfo.displayMessage ||
+            "Codex sign-in needs to be refreshed. Re-authenticate with Mercury's in-app Codex login.",
+        );
+      }
+      const content = formatChatErrorMessage
+        ? formatChatErrorMessage(error, detectedInfo)
+        : `Error: ${detectedInfo?.displayMessage || error}`;
+      setMessages((prev) => [
+        ...prev,
+        { id: `error-${Date.now()}`, role: "agent", content },
+      ]);
       finalizeActiveChatRun("failed");
     });
     const cleanupUsage = window.hermesAPI.onChatUsage((u) => {
@@ -73,11 +106,13 @@ export function useChatIpcListeners({
       cleanupError();
       cleanupUsage();
     };
-    // Model/context refs are intentionally read lazily in the usage callback so
+    // Model/context/profile refs are intentionally read lazily in callbacks so
     // model selection does not churn terminal IPC listeners.
   }, [
     appendActivityEvent,
     finalizeActiveChatRun,
+    formatChatErrorMessage,
+    onAuthRecovery,
     perf.markChunkCallback,
     perf.markDoneCallback,
     perf.markErrorCallback,

@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { calculateContextUsage } from "../../../../../shared/chat-metadata";
+import {
+  detectCodexAuthRecovery,
+  type ChatAuthRecovery,
+  type ChatErrorInfo,
+} from "../../../../../shared/codex-auth-recovery";
 import { useI18n } from "../../../components/useI18n";
 import { executeLocalCommand, isLocalSlashCommand } from "../chatCommands";
 import type {
@@ -55,6 +60,9 @@ export function useChatController({
   const [hermesSessionId, setHermesSessionId] = useState<string | null>(null);
   const [usage, setUsage] = useState<ChatUsage | null>(null);
   const [fastMode, setFastMode] = useState(false);
+  const [codexAuthRecovery, setCodexAuthRecovery] = useState<
+    ChatController["codexAuthRecovery"]
+  >(null);
   const messagesRef = useRef(messages);
   const profileRef = useRef(profile);
   const sessionIdRef = useRef<string | null>(sessionId ?? null);
@@ -98,6 +106,7 @@ export function useChatController({
     activity.resetActivityGroups();
     runState.resetRunState({ cancelActive: true });
     perf.reset();
+    setCodexAuthRecovery(null);
   }, [
     activity.resetActivityGroups,
     conversationVersion,
@@ -115,6 +124,7 @@ export function useChatController({
     if (messages.length === 0) {
       if (!sessionId) setHermesSessionId(null);
       setUsage(null);
+      setCodexAuthRecovery(null);
       activity.resetActivityGroups();
       titleGeneration.resetTitleGeneration(true);
     }
@@ -131,6 +141,32 @@ export function useChatController({
     });
   }, [profile]);
 
+  const showCodexAuthRecovery = useCallback(
+    (recovery: ChatAuthRecovery, displayMessage?: string): void => {
+      setCodexAuthRecovery({
+        id: `codex-auth-${Date.now()}`,
+        recovery,
+        displayMessage:
+          displayMessage ||
+          "Codex sign-in needs to be refreshed. Re-authenticate with Mercury's in-app Codex login.",
+        receivedAt: Date.now(),
+      });
+    },
+    [],
+  );
+
+  const dismissCodexAuthRecovery = useCallback((): void => {
+    setCodexAuthRecovery(null);
+  }, []);
+
+  const formatChatErrorMessage = useCallback(
+    (error: string, info?: ChatErrorInfo): string => {
+      if (info?.recovery) return t("chat.codexAuthRecoveryTranscript");
+      return `Error: ${error}`;
+    },
+    [t],
+  );
+
   useChatIpcListeners({
     setMessages,
     appendActivityEvent: activity.appendActivityEvent,
@@ -140,6 +176,9 @@ export function useChatController({
     currentContextInfoRef: modelConfig.currentContextInfoRef,
     currentModelRef: modelConfig.currentModelRef,
     currentProviderRef: modelConfig.currentProviderRef,
+    profileRef,
+    onAuthRecovery: showCodexAuthRecovery,
+    formatChatErrorMessage,
     perf,
   });
 
@@ -155,16 +194,26 @@ export function useChatController({
         error instanceof Error
           ? error.message
           : String(error || "Unknown error");
+      const recoveryInfo = detectCodexAuthRecovery({
+        error: message,
+        provider: modelConfig.currentProviderRef.current,
+        profile: profileRef.current,
+      });
+      if (recoveryInfo?.recovery) {
+        showCodexAuthRecovery(recoveryInfo.recovery, recoveryInfo.displayMessage);
+      }
       setMessages((prev) => [
         ...prev,
         {
           id: `error-${Date.now()}`,
           role: "agent",
-          content: `Error: ${message}`,
+          content: recoveryInfo?.recovery
+            ? t("chat.codexAuthRecoveryTranscript")
+            : `Error: ${message}`,
         },
       ]);
     },
-    [setMessages],
+    [modelConfig.currentProviderRef, setMessages, showCodexAuthRecovery, t],
   );
 
   const handleClear = useCallback((): void => {
@@ -175,6 +224,7 @@ export function useChatController({
     setMessages([]);
     setHermesSessionId(null);
     setUsage(null);
+    setCodexAuthRecovery(null);
     titleGeneration.resetTitleGeneration(false);
     activity.resetActivityGroups();
     runState.resetRunState();
@@ -202,6 +252,7 @@ export function useChatController({
     const text = input.trim();
     if (!text || runState.isLoading) return;
     slash.setSlashMenuOpen(false);
+    setCodexAuthRecovery(null);
     setInput("");
     slash.resetInputHeight();
 
@@ -262,6 +313,7 @@ export function useChatController({
     const text = input.trim();
     if (!text || runState.isLoading) return;
     setInput("");
+    setCodexAuthRecovery(null);
     slash.resetInputHeight();
     await sendQuickAskMessage({
       text,
@@ -337,6 +389,7 @@ export function useChatController({
 
   const handleApprove = useCallback((): void => {
     setInput("");
+    setCodexAuthRecovery(null);
     perf.reset();
     sendApprovalCommand({
       command: "/approve",
@@ -363,6 +416,7 @@ export function useChatController({
 
   const handleDeny = useCallback((): void => {
     setInput("");
+    setCodexAuthRecovery(null);
     perf.reset();
     sendApprovalCommand({
       command: "/deny",
@@ -440,6 +494,9 @@ export function useChatController({
     lastMessageIsAgent:
       messages.length > 0 && messages[messages.length - 1].role === "agent",
     hermesSessionId,
+    codexAuthRecovery,
+    showCodexAuthRecovery,
+    dismissCodexAuthRecovery,
     loadModelConfig: modelConfig.loadModelConfig,
     handleSend,
     handleQuickAsk,

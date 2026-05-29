@@ -1,16 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { SETTINGS_SECTIONS } from "../../constants";
 import type { SectionDef, FieldDef } from "../../constants";
 import { useI18n } from "../../components/useI18n";
 import { providerIdForEnvKey } from "../../modelInventory";
+import { useCodexAuthFlow } from "../../hooks/useCodexAuthFlow";
 
-type CodexAuthStatus = Awaited<
-  ReturnType<typeof window.hermesAPI.getCodexAuthStatus>
->;
-type CodexDeviceAuthStart = Awaited<
-  ReturnType<typeof window.hermesAPI.startCodexDeviceAuth>
->;
-type PendingCodexAuth = CodexDeviceAuthStart & { profile?: string };
 type CredentialEntry = { key: string; label: string };
 type CredentialDraft = { key: string; label: string };
 
@@ -58,26 +52,20 @@ function Providers({
   );
   const [providerSearch, setProviderSearch] = useState("");
 
-  const [codexStatus, setCodexStatus] = useState<CodexAuthStatus | null>(null);
-  const [codexPending, setCodexPending] = useState<PendingCodexAuth | null>(
-    null,
-  );
-  const [codexAuthState, setCodexAuthState] = useState<
-    "idle" | "starting" | "waiting" | "success" | "error"
-  >("idle");
-  const [codexMessage, setCodexMessage] = useState("");
-  const codexPollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-
   const loadConfig = useCallback(async (): Promise<void> => {
-    const [envData, pool, codex] = await Promise.all([
+    const [envData, pool] = await Promise.all([
       window.hermesAPI.getEnv(profile),
       window.hermesAPI.getCredentialPool(),
-      window.hermesAPI.getCodexAuthStatus(profile),
     ]);
     setEnv(envData);
     setCredPool(pool);
-    setCodexStatus(codex);
   }, [profile]);
+
+  const codexAuth = useCodexAuthFlow({
+    profile,
+    active: visible !== false,
+    onAuthenticated: loadConfig,
+  });
 
   useEffect(() => {
     void loadConfig();
@@ -87,67 +75,6 @@ function Providers({
     if (!visible) return;
     void loadConfig();
   }, [loadConfig, visible]);
-
-  useEffect(() => {
-    if (!codexPending || codexAuthState !== "waiting") return;
-    if (codexPollTimer.current) clearInterval(codexPollTimer.current);
-
-    async function poll(): Promise<void> {
-      if (!codexPending) return;
-      try {
-        const result = await window.hermesAPI.pollCodexDeviceAuth(
-          codexPending.sessionId,
-          codexPending.profile,
-        );
-        if (result.status === "pending") return;
-        if (codexPollTimer.current) clearInterval(codexPollTimer.current);
-        codexPollTimer.current = null;
-        if (result.status === "authenticated") {
-          setCodexAuthState("success");
-          setCodexMessage("Codex app-server login complete.");
-          setCodexPending(null);
-          await loadConfig();
-          return;
-        }
-        setCodexAuthState("error");
-        setCodexMessage(result.message || "Codex login failed.");
-      } catch (error) {
-        if (codexPollTimer.current) clearInterval(codexPollTimer.current);
-        codexPollTimer.current = null;
-        setCodexAuthState("error");
-        setCodexMessage(error instanceof Error ? error.message : String(error));
-      }
-    }
-
-    codexPollTimer.current = setInterval(
-      () => void poll(),
-      Math.max(3000, codexPending.intervalSeconds * 1000),
-    );
-    void poll();
-    return () => {
-      if (codexPollTimer.current) clearInterval(codexPollTimer.current);
-      codexPollTimer.current = null;
-    };
-  }, [codexAuthState, codexPending, loadConfig]);
-
-  async function handleStartCodexAuth(): Promise<void> {
-    setCodexAuthState("starting");
-    setCodexMessage("");
-    try {
-      const start = await window.hermesAPI.startCodexDeviceAuth();
-      setCodexPending({ ...start, profile });
-      setCodexAuthState("waiting");
-      setCodexMessage("Browser opened. Complete login to connect Codex.");
-    } catch (error) {
-      setCodexAuthState("error");
-      setCodexMessage(error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  async function handleCopyCodexCode(): Promise<void> {
-    if (!codexPending?.userCode) return;
-    await navigator.clipboard.writeText(codexPending.userCode);
-  }
 
   async function handleBlur(key: string): Promise<void> {
     const value = env[key] || "";
@@ -351,7 +278,7 @@ function Providers({
   }
 
   function renderCodexCard(): React.JSX.Element {
-    const connected = Boolean(codexStatus?.hasHermesAuth);
+    const connected = Boolean(codexAuth.status?.hasHermesAuth);
     return (
       <details className={`provider-card ${connected ? "connected" : ""}`} open>
         <summary className="provider-card-summary">
@@ -384,36 +311,39 @@ function Providers({
                 >
                   {connected ? "Signed in" : "Not signed in"}
                 </span>
-                {codexStatus?.hasCodexCliAuth && !connected && (
+                {codexAuth.status?.hasCodexCliAuth && !connected && (
                   <span className="settings-codex-pill">
                     Codex CLI login found; Hermes needs its own session
                   </span>
                 )}
               </div>
-              {codexPending && codexAuthState === "waiting" && (
+              {codexAuth.pending && codexAuth.phase === "waiting" && (
                 <div className="settings-codex-code-box">
                   <div>
-                    Open <code>{codexPending.verificationUri}</code> and enter:
+                    Open <code>{codexAuth.pending.verificationUri}</code> and enter:
                   </div>
-                  <strong>{codexPending.userCode}</strong>
+                  <strong>{codexAuth.pending.userCode}</strong>
                   <button
                     type="button"
                     className="btn-ghost"
-                    onClick={() => void handleCopyCodexCode()}
+                    onClick={() => void codexAuth.copyCode()}
                   >
                     Copy code
                   </button>
                 </div>
               )}
-              {codexMessage && (
+              {(codexAuth.errorMessage || codexAuth.phase === "success" || codexAuth.phase === "waiting") && (
                 <div
                   className={
-                    codexAuthState === "error"
+                    codexAuth.phase === "error"
                       ? "settings-codex-message settings-codex-message-error"
                       : "settings-codex-message"
                   }
                 >
-                  {codexMessage}
+                  {codexAuth.errorMessage ||
+                    (codexAuth.phase === "success"
+                      ? "Codex app-server login complete."
+                      : "Browser opened. Complete login to connect Codex.")}
                 </div>
               )}
             </div>
@@ -421,9 +351,9 @@ function Providers({
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
-                onClick={() => void handleStartCodexAuth()}
+                onClick={() => void codexAuth.start()}
                 disabled={
-                  codexAuthState === "starting" || codexAuthState === "waiting"
+                  codexAuth.phase === "starting" || codexAuth.phase === "waiting"
                 }
               >
                 {connected ? "Re-authenticate" : "Sign in"}

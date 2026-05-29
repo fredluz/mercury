@@ -1,5 +1,6 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { ContextWindowSource } from "../../../../shared/chat-metadata";
+import type { ChatAuthRecovery } from "../../../../shared/codex-auth-recovery";
 import type { ModelCapability } from "../../../../shared/models";
 import type { TraceEvent } from "../../../../shared/traces";
 
@@ -69,6 +70,13 @@ export interface ChatActivityGroup {
   events: TraceEvent[];
 }
 
+export interface CodexAuthRecoveryState {
+  id: string;
+  recovery: ChatAuthRecovery;
+  displayMessage: string;
+  receivedAt: number;
+}
+
 export interface ChatController {
   input: string;
   setInput: Dispatch<SetStateAction<string>>;
@@ -96,6 +104,9 @@ export interface ChatController {
   visibleMessages: ChatMessage[];
   lastMessageIsAgent: boolean;
   hermesSessionId: string | null;
+  codexAuthRecovery: CodexAuthRecoveryState | null;
+  showCodexAuthRecovery: (recovery: ChatAuthRecovery) => void;
+  dismissCodexAuthRecovery: () => void;
   loadModelConfig: () => Promise<void>;
   handleSend: () => Promise<void>;
   handleQuickAsk: () => Promise<void>;

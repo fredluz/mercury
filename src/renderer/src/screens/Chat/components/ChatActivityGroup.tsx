@@ -1,24 +1,31 @@
 import type React from "react";
 import {
   activityStatusForGroup,
+  codexAuthRecoveryFromEvents,
   formatActivityMetadata,
   summarizeActivityEvents,
 } from "../chatActivity";
+import type { ChatAuthRecovery } from "../../../../../shared/codex-auth-recovery";
 import type { ChatActivityGroup as ChatActivityGroupModel } from "../types";
 
 interface ChatActivityGroupProps {
   group: ChatActivityGroupModel;
   onToggle: (groupId: string) => void;
+  onCodexAuthRecovery?: (recovery: ChatAuthRecovery) => void;
+  t?: (key: string) => string;
 }
 
 export function ChatActivityGroup({
   group,
   onToggle,
+  onCodexAuthRecovery,
+  t = (key) => key,
 }: ChatActivityGroupProps): React.JSX.Element | null {
   const summaries = summarizeActivityEvents(group.events);
   if (summaries.length === 0) return null;
 
   const status = activityStatusForGroup(group.events, group.status);
+  const recovery = codexAuthRecoveryFromEvents(group.events);
   const detailsId = `chat-activity-details-${group.id}`;
 
   return (
@@ -45,6 +52,19 @@ export function ChatActivityGroup({
         </span>
         <span className="chat-activity-toggle">{group.expanded ? "Hide" : "Details"}</span>
       </button>
+
+      {recovery && onCodexAuthRecovery ? (
+        <button
+          type="button"
+          className="chat-activity-recovery-action"
+          onClick={(event) => {
+            event.stopPropagation();
+            onCodexAuthRecovery(recovery);
+          }}
+        >
+          {t("chat.codexAuthRecoveryAction")}
+        </button>
+      ) : null}
 
       {group.expanded ? (
         <div id={detailsId} className="chat-activity-details">

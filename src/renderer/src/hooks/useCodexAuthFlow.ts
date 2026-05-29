@@ -46,9 +46,7 @@ export function useCodexAuthFlow({
   const [pending, setPending] = useState<PendingCodexAuth | null>(null);
   const [phase, setPhase] = useState<CodexAuthPhase>("idle");
   const [errorMessage, setErrorMessage] = useState("");
-  const pollTimerRef = useRef<ReturnType<typeof window.setInterval> | null>(
-    null,
-  );
+  const pollTimerRef = useRef<number | null>(null);
   const onAuthenticatedRef = useRef(onAuthenticated);
 
   onAuthenticatedRef.current = onAuthenticated;

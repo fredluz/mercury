@@ -4,6 +4,7 @@ import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { AgentModelConfigModal } from "../../components/AgentModelConfigModal";
 import { useI18n } from "../../components/useI18n";
 import { ChatActivityGroup } from "./components/ChatActivityGroup";
+import { ChatCodexAuthRecoveryCard } from "./components/ChatCodexAuthRecoveryCard";
 import { ChatComposer } from "./components/ChatComposer";
 import { ChatEmpty } from "./components/ChatEmpty";
 import { ChatRuntimeReadinessCard } from "./components/ChatRuntimeReadinessCard";
@@ -174,6 +175,8 @@ function Chat({
                         key={group.id}
                         group={group}
                         onToggle={chat.toggleActivityGroup}
+                        onCodexAuthRecovery={chat.showCodexAuthRecovery}
+                        t={t}
                       />
                     ))}
                   </div>
@@ -181,6 +184,21 @@ function Chat({
               </Fragment>
             );
           })
+        )}
+
+        {chat.codexAuthRecovery && (
+          <div className="chat-transcript-item chat-codex-recovery-item">
+            <ChatCodexAuthRecoveryCard
+              recovery={chat.codexAuthRecovery}
+              profile={profile}
+              onAuthenticated={async () => {
+                await chat.loadModelConfig();
+                onRuntimeDiagnosticRefresh?.();
+              }}
+              onDismiss={chat.dismissCodexAuthRecovery}
+              t={t}
+            />
+          </div>
         )}
 
         {chat.isLoading && !chat.lastMessageIsAgent && <ChatLoading />}

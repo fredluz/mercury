@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import { useChatController } from "./useChatController";
+import type { ChatErrorInfo } from "../../../../../shared/codex-auth-recovery";
 import type { ChatMessage } from "../types";
 
 const perfMocks = vi.hoisted(() => ({
@@ -21,7 +22,7 @@ vi.mock("../../../components/useI18n", () => ({
 }));
 
 type ChatDoneCallback = (sessionId?: string) => void;
-type ChatErrorCallback = (error: string) => void;
+type ChatErrorCallback = (error: string, info?: ChatErrorInfo) => void;
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -392,6 +393,77 @@ describe("useChatController send lifecycle", () => {
 
     expect(onSessionResolved).not.toHaveBeenCalled();
     expect(result.current.controller.hermesSessionId).toBeNull();
+  });
+
+  it("sets Codex auth recovery state from structured chat-error metadata", async () => {
+    const { result } = renderHook(() => useControllerProbe());
+    const info: ChatErrorInfo = {
+      displayMessage: "Codex sign-in needs refresh.",
+      recovery: {
+        kind: "codex-auth",
+        provider: "openai-codex",
+        reason: "refresh-token-consumed",
+        profile: "default",
+        action: "start-codex-device-auth",
+      },
+    };
+
+    await act(async () => {
+      listenerCallbacks.error[listenerCallbacks.error.length - 1]?.(
+        "Codex refresh token was already consumed by another client",
+        info,
+      );
+    });
+
+    expect(result.current.controller.codexAuthRecovery?.recovery).toEqual(
+      info.recovery,
+    );
+    expect(result.current.controller.codexAuthRecovery?.displayMessage).toBe(
+      "Codex sign-in needs refresh.",
+    );
+    expect(result.current.messages[result.current.messages.length - 1]?.content).toBe(
+      "chat.codexAuthRecoveryTranscript",
+    );
+  });
+
+  it("sanitizes fallback Codex auth errors when terminal IPC does not arrive", async () => {
+    vi.mocked(window.hermesAPI.getModelConfig).mockResolvedValue({
+      provider: "openai-codex",
+      model: "gpt-5.5",
+      baseUrl: "",
+    });
+    sendMessageMock().mockRejectedValueOnce(
+      new Error("Codex refresh token was already consumed by another client"),
+    );
+    const { result } = renderHook(() => useControllerProbe());
+
+    await waitFor(() =>
+      expect(result.current.controller.currentProvider).toBe("openai-codex"),
+    );
+    await act(async () => {
+      result.current.controller.setInput("hello");
+    });
+    await act(async () => {
+      await result.current.controller.handleSend();
+    });
+
+    expect(result.current.controller.codexAuthRecovery?.recovery.reason).toBe(
+      "refresh-token-consumed",
+    );
+    expect(result.current.messages[result.current.messages.length - 1]?.content).toBe(
+      "chat.codexAuthRecoveryTranscript",
+    );
+  });
+
+  it("keeps plain error behavior for non-Codex chat errors", async () => {
+    const { result } = renderHook(() => useControllerProbe());
+
+    await act(async () => {
+      listenerCallbacks.error.at(-1)?.("Unauthorized");
+    });
+
+    expect(result.current.controller.codexAuthRecovery).toBeNull();
+    expect(result.current.messages[result.current.messages.length - 1]?.content).toBe("Error: Unauthorized");
   });
 
   it("loads direct agent model config without role APIs", async () => {
