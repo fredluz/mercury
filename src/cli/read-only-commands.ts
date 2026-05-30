@@ -112,7 +112,7 @@ async function dispatchSessions(rest: string[], context: CliContext): Promise<Re
   const sessions = await import("../main/services/sessions-service");
 
   if (action === "list") {
-    return { handled: true, data: await sessions.listSessionsForProfile(limit, offset, profile) };
+    return { handled: true, data: await sessions.listServerSessionsForProfile(limit, offset, profile) };
   }
 
   if (action === "messages") {

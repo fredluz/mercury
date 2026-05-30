@@ -1,17 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 function mockSystemServiceDeps(options: {
-  prepareChatBackend?: ReturnType<typeof vi.fn>;
-  probeChatCompletionViaApi?: ReturnType<typeof vi.fn>;
-  resolveChatRuntimeModel?: ReturnType<typeof vi.fn>;
+  revalidateRuntime?: ReturnType<typeof vi.fn>;
 } = {}): void {
-  const prepareChatBackend =
-    options.prepareChatBackend ?? vi.fn().mockResolvedValue({ transport: "api" });
-  const probeChatCompletionViaApi =
-    options.probeChatCompletionViaApi ?? vi.fn().mockResolvedValue({ success: true });
-  const resolveChatRuntimeModel =
-    options.resolveChatRuntimeModel ??
-    vi.fn().mockResolvedValue({ provider: "openai", model: "gpt-5.5" });
+  const revalidateRuntime =
+    options.revalidateRuntime ?? vi.fn().mockResolvedValue(true);
 
   vi.doMock("../src/main/installer", () => ({
     runHermesBackup: vi.fn(),
@@ -27,15 +20,7 @@ function mockSystemServiceDeps(options: {
   vi.doMock("../src/main/hermes", () => ({
     getRuntimeDiagnostic: vi.fn(),
     markRuntimeStale: vi.fn(),
-  }));
-  vi.doMock("../src/main/hermes/chat-api", () => ({
-    probeChatCompletionViaApi,
-  }));
-  vi.doMock("../src/main/hermes/chat-model", () => ({
-    resolveChatRuntimeModel,
-  }));
-  vi.doMock("../src/main/services/chat-service", () => ({
-    prepareChatBackend,
+    revalidateRuntime,
   }));
   vi.doMock("../src/main/ssh-remote", () => ({
     sshRunDump: vi.fn(),
@@ -54,9 +39,9 @@ describe("system-service runtime revalidation", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns false instead of rejecting when runtime preparation fails", async () => {
+  it("returns false instead of rejecting when runtime revalidation fails", async () => {
     mockSystemServiceDeps({
-      prepareChatBackend: vi
+      revalidateRuntime: vi
         .fn()
         .mockRejectedValue(new Error("runtime-profile-unverified")),
     });
@@ -67,17 +52,16 @@ describe("system-service runtime revalidation", () => {
     await expect(revalidateRuntimeForProfile("default")).resolves.toBe(false);
   });
 
-  it("returns false instead of rejecting when the API probe fails", async () => {
+  it("delegates runtime revalidation to the capability-gated runtime manager", async () => {
+    const revalidateRuntime = vi.fn().mockResolvedValue(false);
     mockSystemServiceDeps({
-      prepareChatBackend: vi.fn().mockResolvedValue({ transport: "api" }),
-      probeChatCompletionViaApi: vi
-        .fn()
-        .mockRejectedValue(new Error("probe assertion failed")),
+      revalidateRuntime,
     });
     const { revalidateRuntimeForProfile } = await import(
       "../src/main/services/system-service"
     );
 
     await expect(revalidateRuntimeForProfile("default")).resolves.toBe(false);
+    expect(revalidateRuntime).toHaveBeenCalledWith("default");
   });
 });

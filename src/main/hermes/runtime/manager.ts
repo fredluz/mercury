@@ -18,6 +18,7 @@ import {
   getLocalApiPort,
   getLocalApiUrl,
   isApiServerReady,
+  probeHermesCapabilities,
 } from "../connection";
 import type { RuntimeDiagnostic } from "../../../shared/runtime";
 import type {
@@ -65,6 +66,7 @@ export interface ProfileRuntimeManagerDeps {
   getConnectionConfig?: typeof getConnectionConfig;
   ensureApiServerConfig?: typeof ensureApiServerConfig;
   isApiServerReady?: typeof isApiServerReady;
+  probeHermesCapabilities?: typeof probeHermesCapabilities;
   getLocalApiPort?: typeof getLocalApiPort;
   getLocalApiUrl?: typeof getLocalApiUrl;
   getEnhancedPath?: typeof getEnhancedPath;
@@ -89,6 +91,7 @@ export class ProfileRuntimeManager {
   private readonly getConnectionConfig: typeof getConnectionConfig;
   private readonly ensureApiServerConfig: typeof ensureApiServerConfig;
   private readonly isApiServerReady: typeof isApiServerReady;
+  private readonly probeHermesCapabilities: typeof probeHermesCapabilities;
   private readonly getLocalApiPort: typeof getLocalApiPort;
   private readonly getLocalApiUrl: typeof getLocalApiUrl;
   private readonly getEnhancedPath: typeof getEnhancedPath;
@@ -114,6 +117,8 @@ export class ProfileRuntimeManager {
     this.ensureApiServerConfig =
       deps.ensureApiServerConfig ?? ensureApiServerConfig;
     this.isApiServerReady = deps.isApiServerReady ?? isApiServerReady;
+    this.probeHermesCapabilities =
+      deps.probeHermesCapabilities ?? probeHermesCapabilities;
     this.getLocalApiPort = deps.getLocalApiPort ?? getLocalApiPort;
     this.getLocalApiUrl = deps.getLocalApiUrl ?? getLocalApiUrl;
     this.getEnhancedPath = deps.getEnhancedPath ?? getEnhancedPath;
@@ -148,6 +153,7 @@ export class ProfileRuntimeManager {
         getConnectionConfig: this.getConnectionConfig,
         getSshTunnelUrl: this.getSshTunnelUrl,
         verifySshRuntime: this.verifySshRuntime,
+        probeHermesCapabilities: this.probeHermesCapabilities,
         setLastIdentity: (profile, identity) => {
           this.stateFor(profile).lastIdentity = identity;
         },
@@ -381,7 +387,8 @@ export class ProfileRuntimeManager {
       const verified =
         handle.identity.verified &&
         handle.identity.actualProfile === normalizedProfile &&
-        handle.request.profile === normalizedProfile;
+        handle.request.profile === normalizedProfile &&
+        !handle.identity.capabilityProblem;
       if (verified) {
         state.staleReason = undefined;
         state.staleAt = undefined;
@@ -537,6 +544,7 @@ export class ProfileRuntimeManager {
       hermesScript: this.hermesScript,
       readEnv: this.readEnv,
       isApiServerReady: this.isApiServerReady,
+      probeHermesCapabilities: this.probeHermesCapabilities,
       getLocalApiPort: this.getLocalApiPort,
       getLocalApiUrl: this.getLocalApiUrl,
       stateFor: (profile) => this.stateFor(profile),

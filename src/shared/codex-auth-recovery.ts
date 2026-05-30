@@ -1,3 +1,5 @@
+import type { ChatRemediation } from "./chat-remediation";
+
 export const CODEX_PROVIDER_ID = "openai-codex" as const;
 
 export type CodexAuthRecoveryReason =
@@ -17,6 +19,7 @@ export interface ChatAuthRecovery {
 export interface ChatErrorInfo {
   displayMessage?: string;
   recovery?: ChatAuthRecovery;
+  remediation?: ChatRemediation;
 }
 
 interface DetectCodexAuthRecoveryArgs {

@@ -158,6 +158,20 @@ interface HermesAPI {
     history?: Array<{ role: string; content: string }>,
   ) => Promise<{ response: string; sessionId?: string }>;
   abortChat: () => Promise<void>;
+  resolveChatRunApproval: (request: {
+    runId: string;
+    choice:
+      | "once"
+      | "session"
+      | "always"
+      | "deny"
+      | "approve"
+      | "approved"
+      | "allow";
+    profile?: string;
+    all?: boolean;
+    resolveAll?: boolean;
+  }) => Promise<{ runId: string; choice: string; resolved: number }>;
   generateChatTitle: (request: GenerateChatTitleRequest) => Promise<string>;
   recordLocalChatTrace: (request: LocalChatTraceRequest) => Promise<TraceRun>;
   onChatChunk: (callback: (chunk: string) => void) => () => void;

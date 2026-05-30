@@ -205,9 +205,27 @@ async function dispatchSessions(rest: string[], context: CliContext): Promise<Mu
     const sessionId = requirePositional(positionals, "session id");
     const title = positionals.slice(1).join(" ").trim();
     if (!title) throw usageError("Missing session title");
-    const success = sessions.updateSessionTitleForProfile(sessionId, title, profileFor(context, options));
+    const success = await sessions.updateServerSessionTitleForProfile(sessionId, title, profileFor(context, options));
     if (!success) throw notFoundError(`Session not found: ${sessionId}`);
     return { handled: true, data: { success, sessionId, title } };
+  }
+
+  if (action === "delete") {
+    const { options, positionals } = parseOptions(rest.slice(1));
+    const sessionId = requirePositional(positionals, "session id");
+    if (!hasOption(options, "--yes")) throw usageError("sessions delete requires --yes");
+    const success = await sessions.deleteServerSessionForProfile(sessionId, profileFor(context, options));
+    if (!success) throw notFoundError(`Session not found: ${sessionId}`);
+    return { handled: true, data: { success, sessionId } };
+  }
+
+  if (action === "fork") {
+    const { options, positionals } = parseOptions(rest.slice(1));
+    const sessionId = requirePositional(positionals, "session id");
+    return {
+      handled: true,
+      data: await sessions.forkServerSessionForProfile(sessionId, profileFor(context, options)),
+    };
   }
 
   return { handled: false };

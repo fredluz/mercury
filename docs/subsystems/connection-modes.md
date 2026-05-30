@@ -1,12 +1,12 @@
 # Connection Modes
 
-Mercury supports three connection modes: local, pure remote HTTP, and SSH. This document describes the current behavior only; do not treat it as a proposal for new routing or fallback behavior.
+Mercury supports three connection modes: local, pure remote HTTP, and SSH. Every section below describes current behavior only; do not treat it as a proposal for new routing or fallback behavior.
 
 ## Source anchors
 
 - Connection config persistence: `src/main/config.ts`
 - Connection helpers: `src/main/hermes/connection.ts`
-- Profile runtime manager/identity contract: `src/main/hermes/runtime.ts`, `src/main/hermes/types.ts`, `src/shared/runtime.ts`
+- Profile runtime manager/identity contract: `src/main/hermes/runtime.ts`, `src/main/hermes/runtime/manager.ts`, `src/main/hermes/runtime/local-runtime.ts`, `src/main/hermes/types.ts`, `src/shared/runtime.ts`
 - Gateway lifecycle and chat dispatch choice: `src/main/hermes/gateway.ts`
 - SSH tunnel: `src/main/ssh-tunnel.ts`
 - SSH compatibility exports: `src/main/ssh-remote.ts`
@@ -77,15 +77,17 @@ Low-level helpers:
   - Local mode: returns no auth header.
 - `ensureSshTunnelIfNeeded(profile?)` starts the SSH tunnel when mode is SSH and the profile-bound tunnel is inactive or unhealthy.
 - `testRemoteConnection(url, apiKey?)` checks `<url>/health` with a 5 second timeout and optional bearer token.
+- `probeHermesCapabilities(apiBaseUrl, authHeaders)` checks `<url>/health`, then performs an authenticated `GET /v1/capabilities`. The gate requires `run_submission` and `session_resources`, captures downstream run/session flags (`run_events_sse`, `run_stop`, `run_approval_response`), and classifies `401` `invalid_api_key` as a gateway API-key fault rather than a provider/model error.
 
 `src/main/hermes/runtime.ts` is the authoritative runtime dispatcher:
 
 - `ProfileRuntimeRequest` carries profile, mode, purpose, optional session id, and optional transport preference.
 - `ProfileRuntimeHandle` carries the verified runtime identity, transport (`api`, `ssh-api`, or diagnostic-only `remote-api`), and API base URL/auth headers.
-- Local executable chat/title paths require a verified local API runtime with managed-process/profile evidence. Mercury waits a bounded time for cold-started local gateways to become ready, then fails with structured runtime verification errors instead of falling back to local Hermes CLI execution.
+- Local executable chat/title paths require a verified local API runtime with managed-process/profile evidence. Mercury waits a bounded time for cold-started local gateways to become ready, treating Mercury-managed processes whose PID file has not yet caught up as retryable `runtime-unavailable` instead of permanently unverified. After the startup window expires, local execution fails with structured runtime verification errors instead of falling back to local Hermes CLI execution.
 - SSH API handles require a profile-bound tunnel plus `sshVerifyProfileRuntime(...)` evidence from the remote profile config/gateway.
 - Pure remote HTTP currently fails closed for profile-bound execution with `runtime-unsupported-remote-profile`; `remote-api` appears only as an unverified external diagnostic identity.
-- Runtime diagnostics expose stale, mismatch, unverified, and unsupported states to the renderer.
+- Runtime diagnostics expose stale, mismatch, unverified, unsupported, invalid-auth, and update-required states to the renderer. `invalid-auth` means the authenticated capability probe returned `401 invalid_api_key`; `update-required` means Hermes is reachable but lacks Mercury's required runs/sessions surface.
+- Chat/title execution fails closed through `assertVerifiedApiRuntimeHandle(...)` when a verified runtime carries a capability problem. There is no `/v1/chat/completions` readiness fallback for old Hermes.
 
 ## Local mode
 
@@ -96,9 +98,12 @@ Current behavior:
 - `getApiUrl(profile)` resolves to the selected profile's local API URL; the default profile is `http://127.0.0.1:8642` unless config overrides the API port.
 - `isRemoteMode()` is false.
 - `send-message` in `src/main/ipc/chat.ts` lazy-starts the selected profile's local gateway when not remote and not already running, then resolves a `ProfileRuntimeHandle` for `{ profile, purpose: "chat", sessionId }`.
+- If a local gateway is already running but the last runtime identity was not started by Mercury, `prepareChatBackend(...)` force-stops it and starts a Mercury-managed gateway before resolving the runtime handle.
 - Chat dispatch in `src/main/hermes/gateway.ts` uses the resolved handle only when it is a verified API runtime (`api` locally or `ssh-api` over SSH); local unverified/unavailable runtimes fail loudly with structured runtime errors.
 - `ensureApiServerConfig(profile)` appends a profile-specific API server config block to the selected profile's `config.yaml` if no `api_server` text is present. It is called during local initialization, not in remote modes.
 - Local gateway startup runs Hermes via `HERMES_PYTHON` and `HERMES_SCRIPT`, with `HERMES_HOME`, enhanced `PATH`, `HOME`, `API_SERVER_ENABLED=true`, profile-specific `API_SERVER_HOST`/`API_SERVER_PORT`, and profile API keys from `.env` injected into the child process environment.
+- Local runtime verification requires all managed-process evidence to match: Mercury-started child process, live process, expected host `127.0.0.1`, expected profile API port, expected gateway command, and a gateway PID file whose PID matches the child process. If everything except the PID file matches, Mercury reports a retryable "not ready yet" state while startup/revalidation continues.
+- Once local managed-process evidence is valid and `/health` succeeds, Mercury probes `/v1/capabilities` with the profile API key from `.env`. Missing `run_submission` or `session_resources` records an update-required diagnostic; invalid bearer auth records an invalid-auth diagnostic. Both states block chat/title execution instead of falling back to chat completions.
 - Local config/env/model/storage functions operate under `profileHome(profile)` for profile-aware files.
 - Local model inventory prefers the verified runtime API `GET /api/model/options`. If that endpoint is unavailable, Mercury invokes Hermes metadata locally through Hermes venv Python with profile-scoped `HERMES_HOME`.
 
@@ -151,8 +156,10 @@ Current behavior:
   3. Start the local SSH tunnel.
   4. Read remote `API_SERVER_KEY` and cache it with `setSshRemoteApiKey(...)`.
 - `send-message` ensures the selected profile's SSH tunnel and remote gateway are healthy before dispatching chat. If gateway or tunnel health fails, it starts the remote gateway, starts the tunnel, reads the remote API key, and caches it.
+- Manual SSH tunnel startup and SSH install/update paths follow the same post-start repair step: start the remote gateway when needed, start the tunnel, read the remote `API_SERVER_KEY`, cache it for the profile, and revalidate the runtime.
 - `ProfileRuntimeManager.resolveRuntime(...)` then verifies the SSH runtime through `sshVerifyProfileRuntime(...)`. Named SSH profiles cannot be verified through the default remote API port; they require a profile-specific SSH remote port.
-- Verified SSH chat dispatch uses the API path via transport `ssh-api`, passing `runtime.apiBaseUrl` and `runtime.authHeaders` into `sendMessageViaApi(...)`.
+- After SSH runtime verification, Mercury probes `/v1/capabilities` through the tunnel using the cached remote API key. The same update-required and invalid-auth capability diagnostics apply over SSH.
+- Verified SSH chat dispatch uses the structured runs API path via transport `ssh-api`, passing `runtime.apiBaseUrl` and `runtime.authHeaders` into `sendMessageViaApi(...)`.
 - SSH model inventory prefers the verified runtime API through the tunnel. If the runtime API is unavailable, Mercury executes the remote Hermes metadata path over SSH instead of falling back to local metadata.
 
 ### CLI notes
@@ -209,18 +216,25 @@ Current gateway behavior by mode:
 - SSH chat dispatch uses the verified `ssh-api` transport; pure remote HTTP profile execution currently fails closed instead of falling back to CLI or using an unverified remote API.
 - `startGateway(profile)` does nothing if a gateway is already running and returns `false` in that case.
 - `stopGateway(force = false)` only stops if the app started the gateway unless `force` is true; it also attempts to signal any PID from `<HERMES_HOME>/gateway.pid` and clears the PID file.
-- `restartGateway(profile)` only restarts if the gateway was app-started or is currently running.
+- Low-level local `restartGateway(profile)` only restarts if the gateway was app-started or is currently running.
+- Service-level `restartGateway(profile)` goes through `restartGatewayAndRevalidate(profile)`. In local mode it attempts a local restart and runtime revalidation with retries; in SSH mode it stops/starts the remote gateway, restarts the profile-bound tunnel, refreshes the cached remote API key, and revalidates with retries; in pure remote HTTP mode it returns `false`.
+- Gateway revalidation retry handling is intentionally tolerant of startup races. `gateway-service.ts` tries runtime revalidation up to five times with increasing 500 ms waits, and local restart repair can repeat the restart/revalidate loop up to five times while a named profile runtime config settles.
+- `system-service.ts` runtime revalidation delegates to `ProfileRuntimeManager.revalidateRuntime(...)` and is fail-closed: runtime preparation failures, failed health checks, invalid gateway auth, missing required capabilities, and malformed capability responses all return `false` instead of surfacing startup exceptions.
 
 Current restart triggers visible in IPC handlers:
 
 - Local `set-env` restarts the gateway when it is running and the key ends with `_API_KEY`, the key ends with `_TOKEN`, or the key is `HF_TOKEN`.
 - Local `set-model-config` restarts the gateway when it is running and provider/model/base URL changed.
-- Local `set-platform-enabled` writes the platform setting and restarts the local gateway when `isGatewayRunning()` is true so the platform config is picked up.
+- Local `set-platform-enabled` writes the platform setting, marks the selected profile runtime stale, and runs the restart/revalidate repair flow when `isGatewayRunning()` is true so the platform config is picked up and the runtime identity is refreshed.
 - SSH `set-model-config` stops and starts the remote gateway when remote gateway is running and provider/model/base URL changed.
-- SSH `set-platform-enabled` writes remote config through `sshSetPlatformEnabled(...)`, marks the selected profile runtime stale, and, when the remote gateway is running, stops/starts the remote gateway, restarts the SSH tunnel, refreshes the cached remote API key, and calls `revalidateRuntime(profile)`.
+- SSH `set-platform-enabled` writes remote config through `sshSetPlatformEnabled(...)`, marks the selected profile runtime stale, and, when the remote gateway is running, uses the same stop/start, tunnel restart, API-key refresh, and retrying runtime revalidation flow as manual gateway restart.
 - Successful local or SSH Markdown skill import returns `warning: "gateway-restart-required"` when a gateway is running; it does not restart the gateway itself in the current code.
 
 `Gateway.tsx` optimistically flips platform toggle UI state, invokes `setPlatformEnabled(...)`, then re-checks gateway status after a short delay. In local mode, the handler may restart the local gateway. In SSH mode, the handler now performs the remote stop/start and tunnel/API-key/runtime revalidation sequence when a remote gateway is running, so the re-check observes the refreshed remote gateway state.
+
+## Remaining evolution: renderer targeting and auto-retry
+
+The capability probe, hard update-Hermes/gateway-key gate, explicit Sessions API lifecycle, structured Runs API chat execution, run-approval backend bridge, and structured remediation classifier from [Spec: Hermes API integration hardening](../../specs/hermes-api-integration-hardening.md) have landed. Remaining work is focused on renderer-targeted run approval/stop controls and bounded auto-retry behavior after recoverable remediation.
 
 ## Verification guidance
 

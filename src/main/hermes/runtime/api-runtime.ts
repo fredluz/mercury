@@ -40,6 +40,30 @@ export function assertVerifiedApiRuntimeHandle(
       runtime.identity,
     );
   }
+
+  if (runtime.identity.capabilityProblem === "invalid-api-key") {
+    throw new ProfileRuntimeError(
+      "runtime-invalid-api-key",
+      `Hermes gateway API key is invalid for profile ${expectedProfile}.`,
+      runtime.identity,
+    );
+  }
+
+  if (runtime.identity.capabilityProblem === "missing-required-features") {
+    throw new ProfileRuntimeError(
+      "runtime-capability-missing",
+      `Hermes must be updated before ${purpose} execution is available for profile ${expectedProfile}.`,
+      runtime.identity,
+    );
+  }
+
+  if (runtime.identity.capabilityProblem) {
+    throw new ProfileRuntimeError(
+      "runtime-capability-probe-failed",
+      `Hermes capability probing failed for profile ${expectedProfile}.`,
+      runtime.identity,
+    );
+  }
 }
 
 function isApiTransport(transport: ProfileRuntimeHandle["transport"]): transport is "api" | "ssh-api" {

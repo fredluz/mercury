@@ -114,6 +114,7 @@ describe("reliable profile runtime contract sentinels", () => {
     const chatIpc = src("src/main/ipc/chat.ts");
     const hermesGateway = src("src/main/hermes/gateway.ts");
     const chatApi = src("src/main/hermes/chat-api.ts");
+    const runsApi = src("src/main/hermes/runs-api.ts");
     const title = src("src/main/hermes/title.ts");
     const cron = src("src/main/cronjobs.ts");
 
@@ -130,17 +131,19 @@ describe("reliable profile runtime contract sentinels", () => {
     expect(hermesGateway).not.toContain("sendMessageViaCli");
     expect(hermesGateway).toContain("runtime,");
     expect(chatApi).toContain("runtime: ProfileRuntimeHandle");
-    expect(chatApi).toContain("assertVerifiedApiRuntimeHandle(runtime");
-    expect(chatApi).toContain("`${runtime.apiBaseUrl}/v1/chat/completions`");
-    expect(chatApi).toContain("...(runtime.authHeaders ?? {})");
+    expect(chatApi).toContain("sendMessageViaRunsApi(");
+    expect(runsApi).toContain("assertVerifiedApiRuntimeHandle(runtime");
+    expect(runsApi).toContain('"/v1/runs"');
+    expect(runsApi).toContain('`/v1/runs/${encodeURIComponent(runId)}/events`');
+    expect(runsApi).toContain("...(runtime.authHeaders ?? {})");
+    expect(chatApi).not.toContain("/v1/chat/completions");
+    expect(runsApi).not.toContain("/v1/chat/completions");
     expect(chatApi).not.toContain("getApiUrl(");
     expect(chatApi).not.toContain("getRemoteAuthHeader");
 
     expect(title).toContain("getSessionTitle(request.sessionId, request.profile)");
-    expect(title).toContain("assertVerifiedApiRuntimeHandle(runtime, requestedProfile, \"title\")");
-    expect(title).toContain("profileRuntimeManager.resolveRuntime({");
-    expect(title).toContain("purpose: \"title\"");
-    expect(title).toContain("`${runtime.apiBaseUrl}/v1/chat/completions`");
+    expect(title).toContain("fallbackTitle(request.messages)");
+    expect(title).not.toContain("/v1/chat/completions");
 
     expect(cron).toContain("buildHermesProfileCommandArgs(HERMES_SCRIPT, profile");
     expect(cron).toContain("profileRuntimeManager.resolveRuntime({");

@@ -2,6 +2,8 @@
 
 This document describes Mercury's current profile scoping, persistent files, session cache, memory/user/soul storage, model/credential files, runtime identity, and local/SSH/remote differences. It intentionally distinguishes profile-scoped storage from verified profile-scoped runtime execution.
 
+Every section describes current behavior. The Sessions API section near the end records the Hermes API hardening behavior that replaced the older accidental header-discovery model.
+
 ## Source anchors
 
 - Profile path helpers: `src/main/utils.ts`
@@ -11,12 +13,13 @@ This document describes Mercury's current profile scoping, persistent files, ses
 - Session cache: `src/main/session-cache.ts`
 - Memory/user profile: `src/main/memory.ts`
 - Soul: `src/main/soul.ts`
+- Toolset configuration: `src/main/tools.ts`, `src/renderer/src/screens/Tools/Tools.tsx`
 - Model config and inventory: `src/shared/models.ts`, `src/main/services/hermes-model-inventory-service.ts`, `src/main/services/models-service.ts`, `src/main/models.ts`, `src/shared/chat-metadata.ts`
 - IPC routing: `src/main/ipc/config.ts`, `src/main/ipc/sessions.ts`, `src/main/ipc/knowledge.ts`, `src/main/ipc/models.ts`, `src/main/ipc/system.ts`
 - Shared CLI/IPC services: `src/main/services/config-service.ts`, `src/main/services/sessions-service.ts`, `src/main/services/knowledge-service.ts`, `src/main/services/models-service.ts`, `src/main/services/system-service.ts`, `src/main/services/chat-service.ts`
 - Runtime identity and diagnostics: `src/main/hermes/runtime.ts`, `src/main/hermes/types.ts`, `src/shared/runtime.ts`
 - SSH implementations: `src/main/ssh/config.ts`, `src/main/ssh/sessions-profiles.ts`, `src/main/ssh/memory-soul.ts`, `src/main/ssh/runtime.ts`, `src/main/ssh/transport.ts`, `src/main/ssh-tunnel.ts`
-- Contract tests: `tests/profiles.test.ts`, `tests/chat-metadata.test.ts`, `tests/session-cache-sync.test.ts`, `tests/hermes-model-inventory.test.ts`, `tests/hermes-runtime.test.ts`, `tests/cron-runtime.test.ts`, `tests/ssh-remote.test.ts`, `tests/reliable-profile-runtime-contract.test.ts`
+- Contract tests: `tests/profiles.test.ts`, `tests/chat-metadata.test.ts`, `tests/session-cache-sync.test.ts`, `tests/hermes-model-inventory.test.ts`, `tests/hermes-runtime.test.ts`, `tests/cron-runtime.test.ts`, `tests/ssh-remote.test.ts`, `tests/reliable-profile-runtime-contract.test.ts`, `tests/knowledge-service.test.ts`, `tests/toolsets-config.test.ts`
 - CLI contract and parity tests: `docs/contracts/cli.md`, `tests/cli-chat-commands.test.ts`, `tests/cli-parity.test.ts`
 
 ## Profile scoping
@@ -43,7 +46,7 @@ Mercury enforces runtime isolation through `ProfileRuntimeManager` and the main-
 - `ProfileRuntimeHandle` is the only safe handoff for API execution. Chat, title, and cron API paths must use its URL/auth and reject mismatched or unverified profiles.
 - `RuntimeDiagnostic` from `src/shared/runtime.ts` is exposed through `get-runtime-diagnostic` and renderer `getRuntimeDiagnostic(profile)`. It reports selected/requested/actual profile, mode, transport, API URL/port, PID/config/auth source, verification time, stale state, mismatch, unsupported, and capability fields.
 
-A profile-scoped file write does not prove that a running Hermes API process has loaded that profile. Profile-scoped config changes that can affect a running runtime mark the runtime stale or restart it when practical. The UI surfaces stale/mismatch/unverified states in Chat, Gateway, Settings, and the main layout instead of implying profile isolation when Mercury cannot prove it.
+A profile-scoped file write does not prove that a running Hermes API process has loaded that profile. Profile-scoped config changes that can affect a running runtime mark the runtime stale or restart it when practical. Ordinary toolset toggles are the exception: they are persisted as next-message config writes because Hermes API-server toolsets are hot-read when constructing the next request's agent, so toggling a toolset does not mark the runtime stale or restart/revalidate the gateway. The UI surfaces stale/mismatch/unverified states in Chat, Gateway, Settings, and the main layout instead of implying profile isolation when Mercury cannot prove it.
 
 ## Persistent files
 
@@ -78,7 +81,7 @@ CLI mutations use the same profile-scoped files and service side effects as IPC/
 
 - `memory add|update|remove`, `memory read`, and `user-profile write` use the selected profile's `memories/` files and SQLite session counts.
 - `soul write|reset|read` uses the selected profile's `SOUL.md`.
-- `tools set` updates the selected profile's tool configuration.
+- `tools set` updates the selected profile's tool configuration as a next-message write and does not mark the profile runtime stale.
 - `skills install|uninstall|import|installed|content|metadata` uses the same local/SSH skill roots and Markdown import contract described in [Skills subsystem](skills.md).
 - `sessions cache sync`, `sessions cache list`, `sessions list|messages|search`, and `sessions title set` preserve profile metadata in the desktop session cache and profile DBs.
 - `cron create|remove|pause|resume|run` uses the same cron state/runtime isolation rules as the desktop schedules surface.
@@ -118,6 +121,40 @@ See [Connection modes](connection-modes.md) for runtime interpretation.
 - sets top-level `streaming:` to `true` when the field exists.
 
 `src/main/ipc/config.ts` restarts local or SSH gateways for selected config changes where it can safely do so and marks affected runtimes stale for changes that require revalidation. Connection-mode changes mark all known runtimes stale because the verified transport identity may no longer match the selected mode.
+
+## Toolset configuration
+
+Toolset state is stored in each profile's `config.yaml` under `platform_toolsets`. Mercury treats the Tools screen as editing the selected profile/Agent's Hermes tool registry:
+
+```yaml
+platform_toolsets:
+  cli:
+      - web
+      - terminal
+  api_server:
+      - web
+      - terminal
+```
+
+Current local behavior in `src/main/tools.ts`:
+
+- `getToolsets(profile?)` reads `<profileHome>/config.yaml` and parses `platform_toolsets.cli`.
+- If `config.yaml` is missing, or if it has no `platform_toolsets` section, Mercury reports all known toolsets enabled to match Hermes defaults.
+- `setToolsetEnabled(key, enabled, profile?)` requires an existing `config.yaml`; if the file is missing it returns `false` and does not create a config file.
+- Writes mirror the same sorted enabled set to both `platform_toolsets.cli` and `platform_toolsets.api_server`. This keeps the UI-visible CLI tool list aligned with the API-server tool registry used by the local chat path.
+- When the last enabled tool is disabled, both managed sections are written explicitly as empty arrays:
+
+```yaml
+platform_toolsets:
+  cli: []
+  api_server: []
+```
+
+This explicit empty-array form matters because an empty mapping/list body would be ambiguous with missing config, while `[]` means no toolsets are enabled.
+
+`src/main/services/knowledge-service.ts` routes `getToolsetsForProfile(...)` and `setToolsetEnabledForProfile(...)` through SSH helpers when connection mode is SSH and otherwise through the local helpers. SSH writes use the remote profile config path (`~/.hermes/config.yaml` or `~/.hermes/profiles/<profile>/config.yaml`) and mirror the same `cli`/`api_server` sections, including `[]` when all tools are disabled.
+
+Toolset toggles are deliberately not runtime-stale mutations. The knowledge service does not call `markRuntimeStale(...)`, `isGatewayRunning(...)`, or SSH gateway status for successful local or SSH toolset writes. The renderer optimistically flips the selected card, rolls back on save failure, and shows a saved-next-message notice when persistence succeeds.
 
 ## Credential pool
 
@@ -267,6 +304,7 @@ Current behavior:
 - `addMemoryEntry(...)` and `updateMemoryEntry(...)` trim entry content and reject writes that would exceed the memory limit.
 - `removeMemoryEntry(index)` removes an entry by parsed index.
 - `writeUserProfile(content)` rejects content over the user limit.
+- `src/main/services/knowledge-service.ts` routes memory reads/writes through SSH helpers when connection mode is SSH and otherwise through local files. Successful memory entry and user profile writes call `markRuntimeStale(profile, "... changed for profile runtime.")` because the running agent may have cached this profile context.
 
 SSH memory behavior in `src/main/ssh/memory-soul.ts` mirrors delimiter and character limits, but returns `lastModified: null` for remote memory/user files.
 
@@ -283,6 +321,7 @@ Current behavior:
 - `readSoul(profile)` returns an empty string if the file is missing or unreadable.
 - `writeSoul(content, profile)` writes the file with `safeWriteFile(...)` and returns success/failure.
 - `resetSoul(profile)` writes and returns the built-in `DEFAULT_SOUL` text.
+- `src/main/services/knowledge-service.ts` routes SOUL reads/writes through SSH helpers when connection mode is SSH and otherwise through local files. Successful SOUL writes and resets mark the profile runtime stale.
 
 SSH soul behavior in `src/main/ssh/memory-soul.ts` uses remote `~/.hermes/SOUL.md` or profile `SOUL.md` and the same default soul text.
 
@@ -305,6 +344,20 @@ Backup/import remain local filesystem operations; pure remote HTTP mode does not
 - **Pure remote HTTP mode** is renderer-gated for filesystem-backed screens and fail-closed for profile runtime execution unless an identity can be declared or verified. Generic remote `/health` success is not enough to satisfy a selected Mercury profile, so chat/title/cron/gateway paths do not silently reuse a profile-less remote API.
 - **SSH mode** uses SSH helpers for many env/config/session/profile/memory/soul/skill/runtime reads and writes. Remote paths are under `~/.hermes` and `~/.hermes/profiles/<profile>`. Gateway status/start/stop/restart/API-key/log/MCP paths accept profile and use `hermes -p <profile>` or profile-specific remote paths. SSH tunnel state is keyed by profile plus host/user/port/remote-port/local-port so a tunnel for one profile cannot satisfy another accidentally.
 
+## Sessions API lifecycle
+
+Bound to [Spec: Hermes API integration hardening](../../specs/hermes-api-integration-hardening.md). This is current behavior for verified runtimes, with local DB/cache fallback preserved for offline legacy stores.
+
+Previously Mercury treated sessions as something Hermes created and Mercury *observed*. For a brand-new chat, the durable session identity arrived only as the `x-hermes-session-id` response header on the first send (`chat-api.ts`); resumed chats carried a local `resumeSessionId` fallback, but the API request body did not bind a session id upstream. Session rows were read from the profile's `state.db`, and the desktop cache (`desktop/sessions.json`) was reconciled after the fact. That accidental-identity model was the documented root cause of two failures: new agent chats were invisible until the first send returned a header (`investigations/agent-new-chat-persistence-2026-05-26.md`), and agent switching reversed (`investigations/agent-switch-reversal-2026-05-29.md`).
+
+The current model adopts the Hermes **session resource API** so Mercury *owns* session lifecycle instead of inferring it:
+
+- **Explicit create/resume at new-chat time.** Opening a new chat creates a session via `POST /api/sessions` immediately, yielding a `session_id` before the first message is sent; resuming an existing chat loads/validates it via `GET /api/sessions/{session_id}` — there is no dedicated `resume` endpoint. Either way, runs (see [Chat and tracing](chat-and-tracing.md#remaining-evolution-auto-retry-and-renderer-targeting)) bind that `session_id`. New chats become visible at creation; chat visibility no longer depends on a response header arriving.
+- **Server-side list / history / fork / title / delete.** Session listing (`GET /api/sessions`), message history (`GET /api/sessions/{session_id}/messages`), fork/branch lineage (`POST /api/sessions/{session_id}/fork`), title update (`PATCH /api/sessions/{session_id}` — the API form of the UI "rename"), and deletion (`DELETE /api/sessions/{session_id}`) go through the session resource API rather than being inferred solely from `state.db` reads. The desktop cache (`desktop/sessions.json`) becomes a projection/cache of authoritative server session state, not the place session identity is first learned.
+- **Header dependency removed from the critical path.** `x-hermes-session-id` is no longer the only way Mercury learns a session exists, so the missing-session-id diagnostic and the title-generation "wait for a resolved session id" dance are no longer load-bearing for chat visibility.
+
+This is additive to the existing profile-scoped `state.db` contract: sessions remain profile-scoped, the cache keying by `(profile, id)` is unchanged, and SSH/local routing follows the same shared-service pattern. What changes is *when and how* a session comes into existence (explicitly, up front) versus *being discovered* after a completed send.
+
 ## Verification guidance
 
 For storage/profile changes, run targeted tests based on the touched area:
@@ -315,6 +368,7 @@ npm run test -- tests/session-cache-sync.test.ts tests/sessions-profile-db.test.
 npm run test -- tests/hermes-runtime.test.ts tests/cron-runtime.test.ts tests/ssh-remote.test.ts
 npm run test -- tests/chat-ipc-lifecycle.test.ts tests/hermes-title.test.ts
 npm run test -- tests/skills-import.test.ts
+npm run test -- tests/knowledge-service.test.ts tests/toolsets-config.test.ts
 npm run test -- tests/ipc-handlers.test.ts tests/preload-api-surface.test.ts tests/reliable-profile-runtime-contract.test.ts
 npm run typecheck
 ```

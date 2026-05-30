@@ -13,6 +13,8 @@ export type RuntimeDiagnosticStatus =
   | "unverified"
   | "mismatch"
   | "stale"
+  | "invalid-auth"
+  | "update-required"
   | "unsupported";
 
 export interface RuntimeDiagnostic {
@@ -42,6 +44,11 @@ export interface RuntimeDiagnostic {
   mismatchReason?: string;
   unsupportedReason?: string;
   capabilities?: Record<string, boolean>;
+  capabilityProblem?:
+    | "invalid-api-key"
+    | "missing-required-features"
+    | "network"
+    | "malformed";
   command?: string[];
 }
 

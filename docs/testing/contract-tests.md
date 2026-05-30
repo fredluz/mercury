@@ -8,10 +8,14 @@ This document maps Mercury's current contract tests and deterministic contract c
 - Preload API surface: `tests/preload-api-surface.test.ts`
 - Local perf telemetry safety: `tests/perf-telemetry.test.ts`
 - Chat IPC lifecycle: `tests/chat-ipc-lifecycle.test.ts`
+- Profile runtime management: `tests/hermes-runtime.test.ts`, `tests/reliable-profile-runtime-contract.test.ts`
 - Model configuration and Hermes inventory: `tests/model-roles.test.ts`, `tests/hermes-model-inventory.test.ts`, `tests/chat-role-runtime.test.ts`
+- Codex auth recovery detection: `tests/codex-auth-recovery.test.ts`
 - Chat metadata helpers: `tests/chat-metadata.test.ts`
 - Chat title generation: `tests/hermes-title.test.ts`
 - Hermes trace-event normalization: `tests/hermes-trace-events.test.ts`
+- Knowledge and toolset service contracts: `tests/knowledge-service.test.ts`, `tests/toolsets-config.test.ts`
+- System runtime revalidation: `tests/system-service.test.ts`
 - Trace-store persistence and skill-training derivation: `tests/trace-store.test.ts`
 - Manual Markdown skill import: `tests/skills-import.test.ts`
 - Session cache sync: `tests/session-cache-sync.test.ts`
@@ -41,7 +45,10 @@ Run contract tests when a change touches any of these areas:
 - Session cache sync, generated session titles, session cache persistence, local session DB reads, or session search inputs.
 - Persistent files/profile behavior that affects renderer-visible data.
 - Runtime diagnostics, `ProfileRuntimeManager`, profile runtime handles, profile-aware gateway/chat/title/cron execution, or fail-closed local/SSH/remote profile runtime behavior.
+- Runtime revalidation status, chat-backend preparation probes, or user-facing runtime recovery paths.
 - SSH config writes, SSH profile command routing, SSH tunnel identity, or remote connection-mode validation.
+- Knowledge-service mutation routing, memory/SOUL/skill/toolset profile behavior, or toolset YAML serialization.
+- Codex OAuth/auth error classification or recovery actions surfaced from chat failures.
 - Package perf scripts, benchmark harnesses, or docs that describe performance artifacts.
 - Docs guard rules or the mapped evergreen docs they require.
 - CLI command dispatch, output envelopes, streaming events, chat automation, or CLI parity coverage against the preload surface.
@@ -152,12 +159,18 @@ Current assertions:
 - Error side-effect failures still deliver a single `chat-error` and reject the handler once.
 - Runtime setup failures before transport dispatch surface a visible `chat-error`, reject with the original structured runtime error, and do not install an active chat run.
 - Chat sends forward the selected text role into the shared chat service; missing or invalid role inputs normalize to Chat.
+- Successful chat completion updates the selected profile's session cache only when Hermes returns a durable session id.
+- Missing durable session ids on new API sends emit diagnostics, warning logs, and sanitized `transport.error` trace evidence without creating false session/profile persistence.
+- An unmanaged local gateway is stopped and restarted before chat runtime resolution.
+- Structured Codex auth recovery metadata is forwarded to the renderer and stored in traces without persisting the raw token error text.
 
 Run this test when changing:
 
 - `src/main/ipc/chat.ts`
-- `src/main/hermes/title.ts`
 - `src/main/services/chat-service.ts`
+- `src/main/hermes/runtime.ts`
+- `src/main/hermes/title.ts`
+- `src/shared/codex-auth-recovery.ts`
 - Chat trace setup/finalization behavior in `src/main/trace-store.ts`
 - Session title/profile update behavior in `src/main/session-cache.ts`
 
@@ -208,6 +221,28 @@ Run this test when changing:
 - `src/main/install/paths.ts`
 - SSH metadata/inventory helpers
 
+### `tests/hermes-runtime.test.ts`
+
+Protects `ProfileRuntimeManager` behavior for profile-scoped Hermes API runtimes.
+
+Current assertions:
+
+- Local profile runtime resolution rejects profile mismatches instead of returning an unverified handle.
+- Remote HTTP mode rejects profile-scoped runtime requests.
+- SSH mode returns profile-bound API runtime handles.
+- Managed local API startup waits briefly for readiness before resolving.
+- Runtime diagnostics expose unavailable/stale/mismatch identity state.
+- Managed local API ownership verification waits for `gateway.pid` evidence to settle before classifying the runtime.
+- Stale or corrupt managed PID evidence remains unavailable when it never settles and does not probe the API as verified.
+- Killed managed local gateway children fail closed even when PID evidence matches.
+
+Run this test when changing:
+
+- `src/main/hermes/runtime.ts`
+- `src/main/hermes/types.ts`
+- `src/shared/runtime.ts`
+- Gateway PID ownership evidence, profile-home layout, local API readiness checks, or SSH/remote runtime resolution behavior
+
 ### `tests/chat-role-runtime.test.ts`
 
 Protects runtime use of direct agent model config.
@@ -217,13 +252,50 @@ Current assertions:
 - Direct profile config resolves to provider/model.
 - Missing direct model config fails with setup guidance before transport.
 - API chat and title requests use the direct agent model.
-- 
+- API chat captures string and array-shaped `x-hermes-session-id` headers and trims them before completion.
+- Successful new API sends without a returned session id emit a missing-session-id diagnostic.
+- Resumed API sends use the resumed session id when the response omits the session-id header.
+
 Run this test when changing:
 
 - `src/main/hermes/chat-model.ts`
 - `src/main/hermes/chat-api.ts`
 - `src/main/hermes/gateway.ts`
 - Chat runtime model resolution and direct model dispatch
+- API response header/session-id handling or missing-session diagnostics
+
+### `tests/codex-auth-recovery.test.ts`
+
+Protects shared detection of Codex OAuth refresh-token failures that can be recovered through device auth.
+
+Current assertions:
+
+- Known consumed Codex refresh-token errors produce a user-facing refresh message and `codex-auth` recovery action.
+- Invalid, expired, revoked, and `invalid_grant` refresh-token variants map to specific recovery reasons for the `openai-codex` provider.
+- The same refresh-token text is ignored for non-Codex providers.
+- Generic auth failures such as unauthorized, invalid API key, plain `invalid_grant`, or missing authentication are not classified as Codex auth recovery.
+
+Run this test when changing:
+
+- `src/shared/codex-auth-recovery.ts`
+- Chat transport error metadata that surfaces Codex auth recovery to renderer or trace events
+
+### `tests/chat-remediation.test.ts`
+
+Protects structured chat remediation classification and redaction.
+
+Current assertions:
+
+- Codex refresh-token run failures classify as assisted `codex-auth` remediation.
+- Run failures classify as `debug-prompt` remediations.
+- Debug prompts and diagnostics redact bearer tokens, API keys, and secret-shaped strings.
+- Runtime invalid-gateway-key and missing-capability setup errors classify as instruction remediations.
+
+Run this test when changing:
+
+- `src/shared/chat-remediation.ts`
+- Chat transport error metadata or run failure classification
+- Redaction behavior for debug prompts
 
 ### `tests/chat-metadata.test.ts`
 
@@ -322,6 +394,56 @@ Run this test when changing:
 - `src/main/ipc/knowledge.ts` Markdown import handling
 - `src/preload/api/knowledge.ts` or `src/preload/index.d.ts` import request/result types
 - SSH skill import behavior if local and SSH semantics are intentionally kept aligned
+
+### `tests/knowledge-service.test.ts`
+
+Protects service-level mutation policy for profile knowledge and toolset operations.
+
+Current assertions:
+
+- Local toolset toggles are treated as next-message config writes and do not mark the profile runtime stale or query gateway status.
+- SSH toolset toggles follow the same next-message config-write policy and do not mark the profile runtime stale or query gateway status.
+- Profile memory mutations still mark the selected profile runtime stale.
+
+Run this test when changing:
+
+- `src/main/services/knowledge-service.ts`
+- `src/main/tools.ts`
+- `src/main/memory.ts`
+- `src/main/ssh-remote.ts` knowledge/toolset routing
+- Runtime stale-marking policy for memory, SOUL, skills, or toolset mutations
+
+### `tests/toolsets-config.test.ts`
+
+Protects local and SSH serialization of Hermes platform toolset configuration.
+
+Current assertions:
+
+- Disabling a local toolset writes explicit empty arrays for both `platform_toolsets.cli` and `platform_toolsets.api_server`.
+- Disabling an SSH toolset writes the same explicit empty arrays through the SSH config path.
+- Empty toolset arrays are not serialized as dangling YAML keys.
+
+Run this test when changing:
+
+- `src/main/tools.ts`
+- `src/main/ssh/config.ts`
+- Toolset config YAML parsing/serialization or local/SSH toolset toggle behavior
+
+### `tests/system-service.test.ts`
+
+Protects runtime revalidation failure handling in the system service.
+
+Current assertions:
+
+- Runtime revalidation returns `false` instead of rejecting when chat backend preparation fails.
+- Runtime revalidation returns `false` instead of rejecting when the API probe fails.
+
+Run this test when changing:
+
+- `src/main/services/system-service.ts`
+- `src/main/services/chat-service.ts` runtime preparation behavior
+- `src/main/hermes/chat-api.ts` API probing behavior
+- Runtime diagnostics or revalidation UI flows that depend on boolean failure results
 
 ### `tests/session-cache-sync.test.ts`
 
@@ -487,8 +609,10 @@ Run targeted contract tests during focused changes:
 ```bash
 npm run test -- tests/perf-telemetry.test.ts tests/ipc-handlers.test.ts tests/preload-api-surface.test.ts
 npm run test -- tests/chat-ipc-lifecycle.test.ts tests/chat-metadata.test.ts tests/hermes-title.test.ts tests/hermes-trace-events.test.ts
-npm run test -- tests/trace-store.test.ts tests/skills-import.test.ts tests/session-cache-sync.test.ts tests/profiles.test.ts tests/sessions-profile-db.test.ts
-npm run test -- tests/reliable-profile-runtime-contract.test.ts tests/ssh-remote.test.ts
+npm run test -- tests/chat-role-runtime.test.ts tests/codex-auth-recovery.test.ts tests/system-service.test.ts
+npm run test -- tests/trace-store.test.ts tests/skills-import.test.ts tests/knowledge-service.test.ts tests/toolsets-config.test.ts
+npm run test -- tests/session-cache-sync.test.ts tests/profiles.test.ts tests/sessions-profile-db.test.ts
+npm run test -- tests/hermes-runtime.test.ts tests/reliable-profile-runtime-contract.test.ts tests/ssh-remote.test.ts
 ```
 
 Run the docs guard when mapped high-risk code/test/script paths change, and for CLI documentation sweeps that should prove the guarded `docs/contracts/cli.md` anchor remains sufficient:

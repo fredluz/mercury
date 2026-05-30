@@ -8,6 +8,8 @@ import {
   syncSessionCache,
   listCachedSessions,
   updateSessionTitle,
+  projectCachedSession,
+  removeCachedSession,
 } from "../session-cache";
 import {
   listProfiles,
@@ -24,6 +26,17 @@ import {
   sshDeleteProfile,
   sshListCachedSessions,
 } from "../ssh-remote";
+import { profileRuntimeManager } from "../hermes/runtime";
+import {
+  cachedSessionFromServerSession,
+  deleteHermesSession,
+  forkHermesSession,
+  getHermesSessionMessages,
+  listHermesSessions,
+  readHermesSession,
+  summaryFromServerSession,
+  updateHermesSessionTitle,
+} from "./hermes-sessions-api";
 
 type SessionsDiagChannel =
   | "get-session-messages"
@@ -121,6 +134,34 @@ export function listSessionsForProfile(limit?: number, offset?: number, profile?
   return listSessions(limit, offset, profile);
 }
 
+async function resolveSessionsRuntime(profile?: string) {
+  return profileRuntimeManager.resolveRuntime({
+    profile: profileRuntimeManager.normalizeProfile(profile),
+    purpose: "sessions",
+    preferTransport: "api",
+  });
+}
+
+export async function listServerSessionsForProfile(
+  limit = 30,
+  offset = 0,
+  profile?: string,
+) {
+  try {
+    const runtime = await resolveSessionsRuntime(profile);
+    const sessions = await listHermesSessions(runtime);
+    for (const session of sessions) {
+      projectCachedSession(cachedSessionFromServerSession(session));
+    }
+    return sessions
+      .map(summaryFromServerSession)
+      .sort((a, b) => b.startedAt - a.startedAt)
+      .slice(offset, offset + limit);
+  } catch {
+    return listSessionsForProfile(limit, offset, profile);
+  }
+}
+
 export async function getSessionMessagesForProfile(
   sessionId: string,
   profile?: string,
@@ -133,6 +174,14 @@ export async function getSessionMessagesForProfile(
     async () => {
       if (conn.mode === "ssh" && conn.ssh)
         return sshGetSessionMessages(conn.ssh, sessionId, profile);
+      try {
+        const runtime = await resolveSessionsRuntime(profile);
+        const session = await readHermesSession(runtime, sessionId);
+        projectCachedSession(cachedSessionFromServerSession(session));
+        return await getHermesSessionMessages(runtime, sessionId);
+      } catch {
+        // Fall through to the local DB cache for offline/legacy stores.
+      }
       return getSessionMessages(sessionId, profile);
     },
   );
@@ -229,6 +278,45 @@ export function updateSessionTitleForProfile(
   profile?: string,
 ): boolean {
   return updateSessionTitle(sessionId, title, profile);
+}
+
+export async function updateServerSessionTitleForProfile(
+  sessionId: string,
+  title: string,
+  profile?: string,
+): Promise<boolean> {
+  try {
+    const runtime = await resolveSessionsRuntime(profile);
+    const session = await updateHermesSessionTitle(runtime, sessionId, title);
+    projectCachedSession(cachedSessionFromServerSession(session));
+    return true;
+  } catch {
+    return updateSessionTitle(sessionId, title, profile);
+  }
+}
+
+export async function deleteServerSessionForProfile(
+  sessionId: string,
+  profile?: string,
+): Promise<boolean> {
+  try {
+    const runtime = await resolveSessionsRuntime(profile);
+    await deleteHermesSession(runtime, sessionId);
+    removeCachedSession(sessionId, profile);
+    return true;
+  } catch {
+    return removeCachedSession(sessionId, profile);
+  }
+}
+
+export async function forkServerSessionForProfile(
+  sessionId: string,
+  profile?: string,
+) {
+  const runtime = await resolveSessionsRuntime(profile);
+  const session = await forkHermesSession(runtime, sessionId);
+  projectCachedSession(cachedSessionFromServerSession(session));
+  return summaryFromServerSession(session);
 }
 
 export async function searchSessionsForProfile(

@@ -77,7 +77,7 @@ export default {
   modeLocalHint: "使用本机安装的 Hermes",
   modeRemoteHint: "连接到网络或云服务器上的 Hermes API",
   remoteUrl: "远程服务器地址",
-  remoteUrlHint: "Hermes API 服务器地址（需开放 /health 和 /v1/chat/completions）",
+  remoteUrlHint: "Hermes API 服务器地址（需开放 /health、/v1/capabilities、/api/sessions 和 /v1/runs）",
   remoteApiKey: "API 密钥",
   remoteApiKeyHint: "与远程主机上的 API_SERVER_KEY 匹配。如果服务器接受未认证的请求，可以留空。",
   testingConnection: "测试中...",

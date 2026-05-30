@@ -31,7 +31,18 @@ import {
 import {
   updateSessionProfile,
   updateSessionTitle,
+  projectCachedSession,
 } from "../session-cache";
+import {
+  cachedSessionFromServerSession,
+  createHermesSession,
+  readHermesSession,
+} from "./hermes-sessions-api";
+import {
+  resolveRunApproval,
+  type RunApprovalChoice,
+  type RunApprovalResponse,
+} from "../hermes/runs-api";
 import { generateChatTitle as resolveChatTitle } from "../hermes/title";
 import { isSyntheticChatStreamEnabled } from "../hermes/synthetic-chat";
 import type { ChatErrorInfo } from "../../shared/codex-auth-recovery";
@@ -40,6 +51,7 @@ import {
   normalizeGenerateChatTitleRequest,
   type GenerateChatTitleRequest,
 } from "../../shared/chat-metadata";
+import { classifyChatRemediation } from "../../shared/chat-remediation";
 
 export type ChatResponse = { response: string; sessionId?: string };
 
@@ -67,6 +79,14 @@ export interface ChatServiceCallbacks {
   onUsage?: (usage: TraceUsage) => void;
   onCompleted?: (result: ChatResponse & { durationMs: number }) => void;
   onFailed?: (error: string) => void;
+}
+
+export interface ResolveChatRunApprovalRequest {
+  runId: string;
+  choice: RunApprovalChoice;
+  profile?: string;
+  all?: boolean;
+  resolveAll?: boolean;
 }
 
 let activeChatRun: ActiveChatRun | null = null;
@@ -179,6 +199,7 @@ export async function runChatMessage({
   callbacks,
 }: RunChatRequest): Promise<ChatResponse> {
   abortCurrentRun("Superseded by a new Hermes message.");
+  let effectiveSessionId = resumeSessionId;
 
   let fullResponse = "";
   let recordedAgentStart = false;
@@ -274,7 +295,7 @@ export async function runChatMessage({
       severity: "warning",
       source: diagnostic?.source ?? "service",
       profile: normalizedProfile,
-      resumed: Boolean(resumeSessionId),
+      resumed: Boolean(effectiveSessionId),
       transport: diagnostic?.transport,
       apiBaseUrl: diagnostic?.apiBaseUrl,
       headerName: "x-hermes-session-id",
@@ -310,6 +331,7 @@ export async function runChatMessage({
     },
     onDone: (sessionId) => {
       if (shouldIgnoreCallback()) return;
+      const completedSessionId = sessionId || effectiveSessionId;
       if (isActiveRun()) activeChatRun = null;
       if (fullResponse.trim()) {
         recordChatTraceEvent(
@@ -336,28 +358,28 @@ export async function runChatMessage({
       finishChatTraceRun(
         "trace completion finalization",
         "completed",
-        sessionId,
+        completedSessionId,
         "Hermes returned a completed response.",
       );
-      if (!sessionId && !resumeSessionId) {
+      if (!completedSessionId) {
         recordMissingSessionDiagnostic();
       }
-      if (sessionId) {
+      if (completedSessionId) {
         const profileUpdated = runBestEffort("session profile update", () =>
-          updateSessionProfile(sessionId, profile),
+          updateSessionProfile(completedSessionId, profile),
         );
         if (profileUpdated === false) {
           console.warn(
             "[chat-service] Hermes returned a session id, but the session cache/profile row was not updated",
             {
-              sessionId,
+              sessionId: completedSessionId,
               profile: profileRuntimeManager.normalizeProfile(profile),
             },
           );
         }
       }
-      notify("chat done callback", () => callbacks?.onDone?.(sessionId));
-      const response = { response: fullResponse, sessionId };
+      notify("chat done callback", () => callbacks?.onDone?.(completedSessionId));
+      const response = { response: fullResponse, sessionId: completedSessionId };
       settleResolved(response);
       notify("chat completion callback", () =>
         callbacks?.onCompleted?.({
@@ -372,6 +394,7 @@ export async function runChatMessage({
       const visibleError = info?.displayMessage || error;
       const metadata: Record<string, unknown> = { source: "chat" };
       if (info?.recovery) metadata.recovery = info.recovery;
+      if (info?.remediation) metadata.remediation = info.remediation;
       const recordedError = recordChatTraceEvent(
         "trace transport error",
         "transport.error",
@@ -406,7 +429,7 @@ export async function runChatMessage({
     },
     onDiagnostic: (diagnostic) => {
       if (shouldIgnoreCallback()) return;
-      if (diagnostic.code === "missing-session-id" && !resumeSessionId) {
+      if (diagnostic.code === "missing-session-id" && !effectiveSessionId) {
         recordMissingSessionDiagnostic(diagnostic);
       }
     },
@@ -435,12 +458,28 @@ export async function runChatMessage({
   };
 
   try {
-    const runtime = await prepareChatBackend(profile, "chat", resumeSessionId);
+    const runtime = await prepareChatBackend(profile, "chat", effectiveSessionId);
+    if (runtime) {
+      const serverSession = effectiveSessionId
+        ? await readHermesSession(runtime, effectiveSessionId)
+        : await createHermesSession(runtime);
+      effectiveSessionId = serverSession.id;
+      projectCachedSession(cachedSessionFromServerSession(serverSession));
+      if (!resumeSessionId) {
+        recordChatTraceEvent(
+          "trace session create",
+          "session.created",
+          "Session created",
+          effectiveSessionId,
+          { sessionId: effectiveSessionId },
+        );
+      }
+    }
     const handle = await sendMessage(
       message,
       transportCallbacks,
       profile,
-      resumeSessionId,
+      effectiveSessionId,
       history,
       runtime,
     );
@@ -462,12 +501,20 @@ export async function runChatMessage({
       : undefined;
     const errorMessage = error instanceof Error ? error.message : String(error);
     const visibleError = code ? `${code}: ${errorMessage}` : errorMessage;
+    const info = {
+      remediation: classifyChatRemediation({
+        source: "chat_setup",
+        error: errorMessage,
+        profile: profileRuntimeManager.normalizeProfile(profile),
+        runtimeErrorCode: code,
+      }),
+    };
     const recordedError = recordChatTraceEvent(
       "trace send setup error",
       "transport.error",
       "Transport error",
       visibleError,
-      { source: "chat-send", code },
+      { source: "chat-send", code, remediation: info.remediation },
     );
     emitLiveTrace(callbacks, recordedError ?? null);
     finishChatTraceRun(
@@ -476,7 +523,9 @@ export async function runChatMessage({
       undefined,
       visibleError,
     );
-    notify("chat setup error callback", () => callbacks?.onError?.(visibleError));
+    notify("chat setup error callback", () =>
+      callbacks?.onError?.(visibleError, info.remediation ? info : undefined),
+    );
     settleRejected(error);
     notify("chat setup failure callback", () => callbacks?.onFailed?.(visibleError));
   }
@@ -500,12 +549,7 @@ export async function generateChatTitleForRequest(
     return title;
   }
 
-  const runtime = await prepareChatBackend(
-    normalizedRequest.profile,
-    "title",
-    normalizedRequest.sessionId,
-  );
-  const title = await resolveChatTitle(normalizedRequest, runtime);
+  const title = await resolveChatTitle(normalizedRequest);
   if (normalizedRequest.sessionId && title) {
     updateSessionTitle(
       normalizedRequest.sessionId,
@@ -514,4 +558,18 @@ export async function generateChatTitleForRequest(
     );
   }
   return title;
+}
+
+export async function resolveChatRunApprovalForRequest({
+  runId,
+  choice,
+  profile,
+  all,
+  resolveAll,
+}: ResolveChatRunApprovalRequest): Promise<RunApprovalResponse> {
+  const runtime = await prepareChatBackend(profile, "chat");
+  if (!runtime) {
+    throw new Error("Synthetic chat mode does not support Hermes run approvals.");
+  }
+  return resolveRunApproval(runtime, runId, { choice, all, resolveAll });
 }

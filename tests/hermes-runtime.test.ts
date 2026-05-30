@@ -31,12 +31,34 @@ function fakeChildProcess(pid: number): ChildProcess {
 
 function noOpTimers(): Pick<
   ProfileRuntimeManagerDeps,
-  "setTimeout" | "setInterval" | "clearInterval"
+  "setTimeout" | "setInterval" | "clearInterval" | "probeHermesCapabilities"
 > {
   return {
     setTimeout: vi.fn(() => 1) as unknown as typeof setTimeout,
     setInterval: vi.fn(() => 1) as unknown as typeof setInterval,
     clearInterval: vi.fn() as unknown as typeof clearInterval,
+    probeHermesCapabilities: vi.fn().mockResolvedValue({
+      ok: true,
+      healthOk: true,
+      descriptor: {
+        authRequired: true,
+        features: {
+          run_submission: true,
+          session_resources: true,
+          run_events_sse: true,
+          run_stop: true,
+          run_approval_response: true,
+        },
+        endpoints: {},
+      },
+      featureSummary: {
+        runSubmission: true,
+        sessionResources: true,
+        runEventsSse: true,
+        runStop: true,
+        runApprovalResponse: true,
+      },
+    }),
   };
 }
 
@@ -667,6 +689,68 @@ describe("ProfileRuntimeManager contract", () => {
       stale: false,
       verified: true,
     });
+  });
+
+  it("records missing Hermes run/session capabilities as an update-required diagnostic", async () => {
+    const root = mkdtempSync(join(tmpdir(), "mercury-profile-runtime-"));
+    const child = fakeChildProcess(4_231);
+    const manager = new ProfileRuntimeManager({
+      baseHermesHome: root,
+      hermesPython: "python",
+      hermesRepo: join(root, "hermes-agent"),
+      hermesScript: "hermes",
+      spawn: vi.fn().mockReturnValue(child),
+      readEnv: vi.fn().mockReturnValue({ API_SERVER_KEY: "alpha-secret" }),
+      getConnectionConfig: vi.fn().mockReturnValue({ mode: "local" }),
+      ensureApiServerConfig: vi.fn(),
+      isApiServerReady: vi.fn().mockResolvedValue(true),
+      ...noOpTimers(),
+      probeHermesCapabilities: vi.fn().mockResolvedValue({
+        ok: false,
+        healthOk: true,
+        problem: "missing-required-features",
+        message:
+          "Hermes must be updated before Mercury can chat. Missing capabilities: run_submission, session_resources.",
+        missingFeatures: ["run_submission", "session_resources"],
+        featureSummary: {
+          runSubmission: false,
+          sessionResources: false,
+        },
+      }),
+      getEnhancedPath: vi.fn().mockReturnValue("/usr/bin"),
+      profileHome: (profile?: string) => profileHomeFor(root, profile),
+      getLocalApiPort: vi.fn().mockReturnValue(19_001),
+      getLocalApiUrl: vi.fn().mockReturnValue("http://127.0.0.1:19001"),
+    });
+
+    manager.startGateway("alpha");
+    writeGatewayPid(root, "alpha", 4_231);
+    try {
+      const runtime = await manager.resolveRuntime({
+        profile: "alpha",
+        mode: "local",
+        purpose: "chat",
+      });
+
+      expect(runtime.identity.capabilityProblem).toBe(
+        "missing-required-features",
+      );
+      expect(manager.getRuntimeDiagnostic("alpha")).toMatchObject({
+        status: "update-required",
+        verified: false,
+        capabilityProblem: "missing-required-features",
+        capabilities: expect.objectContaining({
+          runSubmission: false,
+          sessionResources: false,
+          capabilityProbe: false,
+        }),
+      });
+      await expect(manager.revalidateRuntime("alpha", "chat")).resolves.toBe(
+        false,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("fails closed when a named profile is configured on the default API port", () => {

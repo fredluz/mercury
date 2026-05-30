@@ -1,5 +1,8 @@
 import { existsSync, readFileSync } from "fs";
-import { defaultLocalApiPortForProfile as selectDefaultLocalApiPortForProfile } from "../connection";
+import {
+  defaultLocalApiPortForProfile as selectDefaultLocalApiPortForProfile,
+  probeHermesCapabilities,
+} from "../connection";
 import type { isApiServerReady } from "../connection";
 import type { readEnv } from "../../config";
 import type {
@@ -25,6 +28,7 @@ interface LocalRuntimeContext {
   hermesScript: string;
   readEnv: typeof readEnv;
   isApiServerReady: typeof isApiServerReady;
+  probeHermesCapabilities: typeof probeHermesCapabilities;
   getLocalApiPort: (profile?: string) => number;
   getLocalApiUrl: (profile?: string) => string;
   stateFor: (profile: string) => RuntimeState;
@@ -190,6 +194,28 @@ export async function resolveLocalApiRuntimeAttempt(
         gatewayCommandArgs(ctx, request.profile),
     },
   );
+  const capabilityGate = await ctx.probeHermesCapabilities(
+    identity.apiBaseUrl ?? ctx.getLocalApiUrl(request.profile),
+    localAuthHeaders(ctx, request.profile),
+  );
+  if (capabilityGate.ok) {
+    identity.capabilities = {
+      ...identity.capabilities,
+      ...capabilityGate.featureSummary,
+      apiHealth: true,
+      capabilityProbe: true,
+    };
+  } else {
+    identity.capabilities = {
+      ...identity.capabilities,
+      ...(capabilityGate.featureSummary ?? {}),
+      apiHealth: capabilityGate.healthOk,
+      capabilityProbe: false,
+      gatewayApiKeyValid: capabilityGate.problem !== "invalid-api-key",
+    };
+    identity.capabilityProblem = capabilityGate.problem;
+    identity.mismatchReason = capabilityGate.message;
+  }
   state.lastIdentity = identity;
 
   return {

@@ -1,4 +1,8 @@
-import { defaultLocalApiPortForProfile as selectDefaultLocalApiPortForProfile, getRemoteAuthHeader } from "../connection";
+import {
+  defaultLocalApiPortForProfile as selectDefaultLocalApiPortForProfile,
+  getRemoteAuthHeader,
+  probeHermesCapabilities,
+} from "../connection";
 import type { getConnectionConfig } from "../../config";
 import type { getSshTunnelUrl } from "../../ssh-tunnel";
 import type { sshVerifyProfileRuntime } from "../../ssh/runtime";
@@ -16,6 +20,7 @@ export async function resolveSshApiRuntime(args: {
   getConnectionConfig: typeof getConnectionConfig;
   getSshTunnelUrl: typeof getSshTunnelUrl;
   verifySshRuntime: typeof sshVerifyProfileRuntime;
+  probeHermesCapabilities: typeof probeHermesCapabilities;
   setLastIdentity: (profile: string, identity: RuntimeIdentity) => void;
 }): Promise<ProfileRuntimeHandle> {
   const {
@@ -24,6 +29,7 @@ export async function resolveSshApiRuntime(args: {
     getConnectionConfig,
     getSshTunnelUrl,
     verifySshRuntime,
+    probeHermesCapabilities,
     setLastIdentity,
   } = args;
   const conn = getConnectionConfig();
@@ -70,6 +76,25 @@ export async function resolveSshApiRuntime(args: {
   const authHeaders = getRemoteAuthHeader(request.profile);
   const apiKey = authHeaders.Authorization?.replace(/^Bearer\s+/i, "");
   const identity = createSshIdentity(identityContext, request, apiBaseUrl, evidence, true, apiKey);
+  const capabilityGate = await probeHermesCapabilities(apiBaseUrl, authHeaders);
+  if (capabilityGate.ok) {
+    identity.capabilities = {
+      ...identity.capabilities,
+      ...capabilityGate.featureSummary,
+      apiHealth: true,
+      capabilityProbe: true,
+    };
+  } else {
+    identity.capabilities = {
+      ...identity.capabilities,
+      ...(capabilityGate.featureSummary ?? {}),
+      apiHealth: capabilityGate.healthOk,
+      capabilityProbe: false,
+      gatewayApiKeyValid: capabilityGate.problem !== "invalid-api-key",
+    };
+    identity.capabilityProblem = capabilityGate.problem;
+    identity.mismatchReason = capabilityGate.message;
+  }
   setLastIdentity(request.profile, identity);
   return {
     request,

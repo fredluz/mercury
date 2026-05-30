@@ -41,8 +41,18 @@ Current fragments in `src/preload/api/index.ts` are:
 | `chatApi` | `src/preload/api/chat.ts` | send/abort chat, generated chat titles, local trace recording, chat stream listeners, and live activity trace events |
 | `navigationApi` | `src/preload/api/navigation.ts` | traces, gateway lifecycle/restart, platform toggles, sessions, profiles |
 | `knowledgeApi` | `src/preload/api/knowledge.ts` | memory, user profile, soul, tools, skills, skill content/metadata, Markdown skill import |
-| `modelsApi` | `src/preload/api/models.ts` | session cache/search, credential pool, provider model inventory, direct agent model config, provider inventory, legacy/manual models |
-| `appApi` | `src/preload/api/app.ts` | runtime diagnostics, updates, menu events, cron jobs, shell, backup/import, dump/log/system helpers, local perf telemetry |
+| `modelsApi` | `src/preload/api/models.ts` | session cache/search, Codex app-server OAuth/model auth recovery, credential pool, provider model inventory, direct agent model config, provider inventory, legacy/manual models |
+| `appApi` | `src/preload/api/app.ts` | runtime diagnostics/revalidation/debug agent launch, updates, menu events, cron/schedule jobs, shell, backup/import, dump/log/system helpers, local perf telemetry |
+
+Current `window.hermesAPI` preload methods by fragment are:
+
+- `installApi`: `checkInstall`, `verifyInstall`, `startInstall`, `onInstallProgress`, `getHermesVersion`, `refreshHermesVersion`, `runHermesDoctor`, `getHermesApprovedUpdate`, `runHermesUpdate`, `getMigrationInventory`, `getMigrationPrompt`, `checkOpenClaw`, `runClawMigrate`, `getLocale`, `setLocale`.
+- `configApi`: `getEnv`, `setEnv`, `getConfig`, `setConfig`, `getHermesHome`, `getModelConfig`, `setModelConfig`, `isRemoteMode`, `isRemoteOnlyMode`, `getConnectionConfig`, `setConnectionConfig`, `setSshConfig`, `testRemoteConnection`, `testSshConnection`, `isSshTunnelActive`, `startSshTunnel`, `stopSshTunnel`.
+- `chatApi`: `sendMessage`, `abortChat`, `resolveChatRunApproval`, `generateChatTitle`, `recordLocalChatTrace`, `onChatChunk`, `onChatDone`, `onChatToolProgress`, `onChatTraceEvent`, `onChatUsage`, `onChatError`.
+- `navigationApi`: `listTraceRuns`, `getTraceRun`, `listTraceRunsForSchedule`, `listCompletedScheduledRunsSince`, `listSkillTrainingRuns`, `startGateway`, `stopGateway`, `gatewayStatus`, `restartGateway`, `getPlatformEnabled`, `setPlatformEnabled`, `listSessions`, `getSessionMessages`, `listProfiles`, `createProfile`, `deleteProfile`, `setActiveProfile`.
+- `knowledgeApi`: `readMemory`, `addMemoryEntry`, `updateMemoryEntry`, `removeMemoryEntry`, `writeUserProfile`, `readSoul`, `writeSoul`, `resetSoul`, `getToolsets`, `setToolsetEnabled`, `listInstalledSkills`, `listBundledSkills`, `getSkillContent`, `getSkillMetadata`, `installSkill`, `uninstallSkill`, `importSkillMarkdown`.
+- `modelsApi`: `listCachedSessions`, `syncSessionCache`, `updateSessionTitle`, `searchSessions`, `getCodexAuthStatus`, `startCodexDeviceAuth`, `pollCodexDeviceAuth`, `configureCodexAppServer`, `getCredentialPool`, `setCredentialPool`, `listModels`, `addModel`, `removeModel`, `updateModel`.
+- `appApi`: `getRuntimeDiagnostic`, `revalidateRuntime`, `launchRuntimeDebugAgent`, `checkForUpdates`, `downloadUpdate`, `installUpdate`, `getAppVersion`, `getPerfTelemetryConfig`, `recordPerfEvent`, `onUpdateAvailable`, `onUpdateDownloadProgress`, `onUpdateDownloaded`, `onUpdateNotAvailable`, `onUpdateError`, `onMenuNewChat`, `onMenuSearchSessions`, `listCronJobs`, `createCronJob`, `createScheduleJob`, `updateCronJob`, `removeCronJob`, `pauseCronJob`, `resumeCronJob`, `triggerCronJob`, `openExternal`, `runHermesBackup`, `runHermesImport`, `runHermesDump`, `discoverMemoryProviders`, `listMcpServers`, `readLogs`.
 
 ## IPC composition and handler ownership
 
@@ -52,14 +62,14 @@ Current fragments in `src/preload/api/index.ts` are:
 | --- | --- |
 | `src/main/ipc/install.ts` | installation, verification, Hermes version/doctor/update, migration inventory/prompt, OpenClaw migration, install progress events |
 | `src/main/ipc/config.ts` | profile-aware env/config/model settings, locale, connection mode, remote/SSH tests, SSH tunnel controls |
-| `src/main/ipc/chat.ts` | `send-message`, `generate-chat-title`, `abort-chat`, chat stream events, active-chat abort handling, title persistence, trace run writes, and live chat activity events |
+| `src/main/ipc/chat.ts` | `send-message`, `generate-chat-title`, `abort-chat`, structured runs chat events, active-chat abort handling, heuristic title persistence, trace run writes, and live chat activity events |
 | `src/main/ipc/trace.ts` | trace run reads, skill-training run reads, and local chat trace writes |
 | `src/main/ipc/gateway.ts` | gateway lifecycle, restart, and platform toggles |
 | `src/main/ipc/sessions.ts` | sessions, profiles, session cache sync, session search |
 | `src/main/ipc/knowledge.ts` | memory, user profile, soul, tools, skills, skill content/metadata, skill Markdown import |
-| `src/main/ipc/models.ts` | credential pool and model CRUD |
-| `src/main/ipc/cron.ts` | cron job listing and lifecycle actions |
-| `src/main/ipc/system.ts` | external URLs, runtime diagnostics, backup/import, debug dump, MCP servers, memory providers, logs, local perf telemetry |
+| `src/main/ipc/models.ts` | Codex app-server OAuth/model auth recovery, credential pool, and model CRUD |
+| `src/main/ipc/cron.ts` | cron/schedule job listing, creation, update, and lifecycle actions |
+| `src/main/ipc/system.ts` | external URLs, runtime diagnostics/revalidation/debug agent launch, backup/import, debug dump, MCP servers, memory providers, logs, local perf telemetry |
 
 `src/main/index.ts` also registers updater/version invoke handlers in `setupUpdater()` and sends native menu/update events to the renderer.
 
@@ -71,16 +81,16 @@ Most preload methods use `ipcRenderer.invoke("kebab-case-channel", ...)` and are
 
 Examples by domain:
 
-- Install/version/update: `check-install`, `verify-install`, `start-install`, `get-hermes-version`, `refresh-hermes-version`, `run-hermes-doctor`, `run-hermes-update`, `migration-inventory`, `migration-prompt`, `check-openclaw`, `run-claw-migrate`, `get-locale`, `set-locale`, `get-app-version`, `check-for-updates`, `download-update`, `install-update`.
+- Runtime diagnostics/update/install: `get-runtime-diagnostic`, `revalidate-runtime`, `launch-runtime-debug-agent`, `check-install`, `verify-install`, `start-install`, `get-hermes-version`, `refresh-hermes-version`, `run-hermes-doctor`, `get-hermes-approved-update`, `run-hermes-update`, `migration-inventory`, `migration-prompt`, `check-openclaw`, `run-claw-migrate`, `get-locale`, `set-locale`, `get-app-version`, `check-for-updates`, `download-update`, `install-update`.
 - Config/connection: `get-env`, `set-env`, `get-config`, `set-config`, `get-hermes-home`, `get-model-config`, `set-model-config`, `is-remote-mode`, `is-remote-only-mode`, `get-connection-config`, `set-connection-config`, `set-ssh-config`, `test-remote-connection`, `test-ssh-connection`, `is-ssh-tunnel-active`, `start-ssh-tunnel`, `stop-ssh-tunnel`.
-- Chat: `send-message`, `generate-chat-title`, `abort-chat`. `send-message` uses the selected profile direct model config.
-- Trace Lab: `list-trace-runs`, `get-trace-run`, `list-skill-training-runs`, `record-local-chat-trace`.
+- Chat: `send-message`, `generate-chat-title`, `abort-chat`, `resolve-chat-run-approval`. `send-message` uses the selected profile direct model config.
+- Trace Lab: `list-trace-runs`, `get-trace-run`, `list-trace-runs-for-schedule`, `list-completed-scheduled-runs-since`, `list-skill-training-runs`, `record-local-chat-trace`.
 - Gateway/platform: `start-gateway`, `stop-gateway`, `gateway-status`, `restart-gateway`, `get-platform-enabled`, `set-platform-enabled`.
 - Sessions/profiles/cache/search: `list-sessions`, `get-session-messages`, `list-profiles`, `create-profile`, `delete-profile`, `set-active-profile`, `list-cached-sessions`, `sync-session-cache`, `update-session-title`, `search-sessions`.
   These API names remain profile-based for compatibility and Hermes storage/runtime identity; renderer product copy presents them to users as Agents.
 - Knowledge/skills: `read-memory`, `add-memory-entry`, `update-memory-entry`, `remove-memory-entry`, `write-user-profile`, `read-soul`, `write-soul`, `reset-soul`, `get-toolsets`, `set-toolset-enabled`, `list-installed-skills`, `list-bundled-skills`, `get-skill-content`, `get-skill-metadata`, `install-skill`, `uninstall-skill`, `import-skill-markdown`.
-- Models/credentials: `get-credential-pool`, `set-credential-pool`, `list-models`, `add-model`, `remove-model`, `update-model`.
-- Cron/runtime/system/perf: `list-cron-jobs`, `create-cron-job`, `remove-cron-job`, `pause-cron-job`, `resume-cron-job`, `trigger-cron-job`, `get-runtime-diagnostic`, `open-external`, `run-hermes-backup`, `run-hermes-import`, `run-hermes-dump`, `discover-memory-providers`, `list-mcp-servers`, `read-logs`, `get-perf-telemetry-config`, `record-perf-event`.
+- Codex auth/model recovery and models/credentials: `get-codex-auth-status`, `start-codex-device-auth`, `poll-codex-device-auth`, `configure-codex-app-server`, `get-credential-pool`, `set-credential-pool`, `list-models`, `add-model`, `remove-model`, `update-model`.
+- Cron/schedule/system/perf: `list-cron-jobs`, `create-cron-job`, `create-schedule-job`, `update-cron-job`, `remove-cron-job`, `pause-cron-job`, `resume-cron-job`, `trigger-cron-job`, `open-external`, `run-hermes-backup`, `run-hermes-import`, `run-hermes-dump`, `discover-memory-providers`, `list-mcp-servers`, `read-logs`, `get-perf-telemetry-config`, `record-perf-event`.
 
 ### Chat preload API
 
@@ -90,16 +100,19 @@ Examples by domain:
 | --- | --- | --- |
 | `sendMessage(message, profile?, resumeSessionId?, history?)` | `send-message` | Starts or resumes a Hermes chat run using the selected profile direct model config and streams renderer events while the returned promise settles with `{ response, sessionId? }`. Missing or invalid roles default to Chat. |
 | `abortChat()` | `abort-chat` | Aborts the active run, if any, and finalizes the active trace as aborted. |
-| `generateChatTitle(request)` | `generate-chat-title` | Validates and normalizes a `GenerateChatTitleRequest`, prepares the chat backend, generates or falls back to a sanitized title, and persists it with `updateSessionTitle(sessionId, title, profile)` when a session id is supplied. |
+| `resolveChatRunApproval(request)` | `resolve-chat-run-approval` | Resolves a pending run approval through the verified Hermes runtime using `POST /v1/runs/{run_id}/approval`; accepts `once`, `session`, `always`, `deny`, and Hermes approval aliases. |
+| `generateChatTitle(request)` | `generate-chat-title` | Validates and normalizes a `GenerateChatTitleRequest`, reuses an existing session title when present, otherwise generates a sanitized heuristic title, and persists it with `updateSessionTitle(sessionId, title, profile)` when a session id is supplied. |
 | `recordLocalChatTrace(request)` | `record-local-chat-trace` | Records local slash-command telemetry without calling Hermes. |
 | `onChatChunk(callback)` | `chat-chunk` | Streams assistant text chunks. |
 | `onChatDone(callback)` | `chat-done` | Reports terminal success/abort and the resolved session id when available. |
 | `onChatToolProgress(callback)` | `chat-tool-progress` | Legacy progress-label compatibility channel. Structured activity should prefer `onChatTraceEvent`. |
 | `onChatTraceEvent(callback)` | `chat-trace-event` | Streams persisted live activity `TraceEvent`s for tool, delegation, artifact, approval, and transport-error events. |
 | `onChatUsage(callback)` | `chat-usage` | Streams token/cost/rate-limit usage updates. |
-| `onChatError(callback)` | `chat-error` | Streams visible chat errors. |
+| `onChatError(callback)` | `chat-error` | Streams visible chat errors as `(error: string, info?: ChatErrorInfo)`. `info` is currently used for structured Codex auth recovery and remediation/debug-prompt metadata when available. |
 
 Every listener API returns a cleanup function that removes its `ipcRenderer` listener. Renderer code should register these listeners once per component lifecycle and call all returned cleanups on unmount.
+
+`ChatErrorInfo` is imported from `src/shared/codex-auth-recovery.ts`. Main-side chat callbacks may send `chat-error` with either just the error string or with that optional second metadata argument, including `recovery` and/or `remediation` metadata. Preload preserves both shapes for compatibility.
 
 `generateChatTitle(request)` uses `GenerateChatTitleRequest` from `src/shared/chat-metadata.ts`:
 
@@ -115,10 +128,18 @@ The main handler rejects invalid request shapes before normalization. Title gene
 
 | Preload method | IPC channel | Notes |
 | --- | --- | --- |
+| `getCodexAuthStatus(profile?)` | `get-codex-auth-status` | Returns whether Hermes and the Codex CLI have Codex auth, the selected provider/model, and both auth file paths for the requested profile. |
+| `startCodexDeviceAuth()` | `start-codex-device-auth` | Starts OpenAI/Codex device auth, opens the validated `https://auth.openai.com` verification URL externally, and returns the device session details. |
+| `pollCodexDeviceAuth(sessionId, profile?)` | `poll-codex-device-auth` | Polls device auth until `pending`, `authenticated`, `expired`, or `error`; authenticated responses can include the configured provider/model. |
+| `configureCodexAppServer(profile?)` | `configure-codex-app-server` | Configures the selected profile for Codex app-server model auth and returns `{ provider, model }`. |
+| `getCredentialPool()` | `get-credential-pool` | Returns locally stored credential-pool entries by provider. |
+| `setCredentialPool(provider, entries)` | `set-credential-pool` | Replaces locally stored credential-pool entries for one provider. |
 | `listModels()` | `list-models` | Returns Hermes inventory-backed provider models for the active connection. This is not a hardcoded Mercury catalog. |
 | `addModel(...)` | `add-model` | Adds a manual/legacy saved model entry locally or through SSH helpers. |
 | `removeModel(id)` | `remove-model` | Removes a manual/legacy saved model entry. |
 | `updateModel(id, fields)` | `update-model` | Updates a manual/legacy saved model entry. |
+
+The Codex auth recovery methods support renderer flows that repair missing Codex in-app OAuth/app-server auth without leaving the current agent setup. `startCodexDeviceAuth()` is intentionally Electron-only because it opens the verified auth URL with `shell.openExternal(...)`.
 
 ### Trace Lab local trace API
 

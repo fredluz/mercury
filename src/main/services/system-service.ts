@@ -7,10 +7,7 @@ import {
   readLogs,
 } from "../installer";
 import { getConnectionConfig } from "../config";
-import { getRuntimeDiagnostic, markRuntimeStale } from "../hermes";
-import { probeChatCompletionViaApi } from "../hermes/chat-api";
-import { resolveChatRuntimeModel } from "../hermes/chat-model";
-import { prepareChatBackend } from "./chat-service";
+import { getRuntimeDiagnostic, markRuntimeStale, revalidateRuntime } from "../hermes";
 import type { RuntimeDebugAgentResult } from "../../shared/runtime";
 import {
   sshRunDump,
@@ -25,20 +22,8 @@ export function getRuntimeDiagnosticForProfile(profile?: string) {
 }
 
 export async function revalidateRuntimeForProfile(profile?: string) {
-  let model: Awaited<ReturnType<typeof resolveChatRuntimeModel>>;
   try {
-    model = await resolveChatRuntimeModel(profile);
-  } catch {
-    return false;
-  }
-  if (!model.provider || model.provider === "auto" || !model.model) {
-    return false;
-  }
-  try {
-    const runtime = await prepareChatBackend(profile, "chat");
-    if (!runtime) return true;
-    const probe = await probeChatCompletionViaApi(profile, runtime);
-    return probe.success;
+    return await revalidateRuntime(profile);
   } catch {
     return false;
   }

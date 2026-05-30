@@ -77,7 +77,7 @@ export default {
   modeLocalHint: "Usando Hermes instalado en este dispositivo",
   modeRemoteHint: "Conectarse a un servidor de API de Hermes en tu red o en la nube",
   remoteUrl: "URL remota",
-  remoteUrlHint: "La URL del servidor de API de Hermes (debe exponer /health y /v1/chat/completions)",
+  remoteUrlHint: "La URL del servidor de API de Hermes (debe exponer /health, /v1/capabilities, /api/sessions y /v1/runs)",
   remoteApiKey: "API key",
   remoteApiKeyHint: "Coincide con API_SERVER_KEY en el host remoto. Déjalo vacío si el servidor acepta solicitudes no autenticadas.",
   testingConnection: "Probando...",

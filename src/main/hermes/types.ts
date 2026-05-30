@@ -27,6 +27,9 @@ export type RuntimeErrorCode =
   | "runtime-profile-mismatch"
   | "runtime-profile-unverified"
   | "runtime-unsupported-remote-profile"
+  | "runtime-invalid-api-key"
+  | "runtime-capability-missing"
+  | "runtime-capability-probe-failed"
   | "runtime-port-conflict"
   | "runtime-auth-conflict"
   | "runtime-token-conflict"
@@ -60,6 +63,7 @@ export interface RuntimeIdentity {
   startedByMercury: boolean;
   verifiedAt: number;
   capabilities?: Record<string, boolean>;
+  capabilityProblem?: HermesCapabilityGateProblem;
   command?: string[];
   mismatchReason?: string;
 }
@@ -71,6 +75,40 @@ export interface ProfileRuntimeHandle {
   apiBaseUrl?: string;
   authHeaders?: Record<string, string>;
 }
+
+export interface HermesCapabilityDescriptor {
+  object?: string;
+  platform?: string;
+  model?: string;
+  authRequired: boolean;
+  features: Record<string, boolean>;
+  endpoints: Record<string, { method?: string; path?: string }>;
+  sessionContinuationHeader?: string;
+  sessionKeyHeader?: string;
+}
+
+export type HermesCapabilityGateProblem =
+  | "invalid-api-key"
+  | "missing-required-features"
+  | "network"
+  | "malformed";
+
+export type HermesCapabilityGateResult =
+  | {
+      ok: true;
+      healthOk: true;
+      descriptor: HermesCapabilityDescriptor;
+      featureSummary: Record<string, boolean>;
+    }
+  | {
+      ok: false;
+      healthOk: boolean;
+      problem: HermesCapabilityGateProblem;
+      message: string;
+      statusCode?: number;
+      missingFeatures?: string[];
+      featureSummary?: Record<string, boolean>;
+    };
 
 export class ProfileRuntimeError extends Error {
   readonly code: RuntimeErrorCode;
@@ -143,4 +181,3 @@ export interface ChatCallbacks {
     rateLimitReset?: number;
   }) => void;
 }
-

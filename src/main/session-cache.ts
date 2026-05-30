@@ -78,6 +78,38 @@ function writeCache(data: CacheData): void {
   }
 }
 
+export function projectCachedSession(session: CachedSession): void {
+  const cache = readCache();
+  const normalizedProfile = normalizeSessionProfile(session.profile);
+  const next: CachedSession = {
+    ...session,
+    profile: normalizedProfile,
+  };
+  const idx = matchingCacheIndex(cache.sessions, next.id, normalizedProfile);
+  if (idx >= 0) cache.sessions[idx] = { ...cache.sessions[idx], ...next };
+  else cache.sessions.push(next);
+  cache.sessions = dedupeCacheSessions(cache.sessions);
+  writeCache(cache);
+}
+
+export function removeCachedSession(sessionId: string, profile?: string): boolean {
+  const cleanSessionId = sessionId.trim();
+  if (!cleanSessionId) return false;
+  const requestedProfile = profile?.trim()
+    ? normalizeSessionProfile(profile)
+    : undefined;
+  const cache = readCache();
+  const before = cache.sessions.length;
+  cache.sessions = cache.sessions.filter((session) => {
+    if (session.id !== cleanSessionId) return true;
+    if (!requestedProfile) return false;
+    return normalizeCachedSessionProfile(session) !== requestedProfile;
+  });
+  if (cache.sessions.length === before) return false;
+  writeCache(cache);
+  return true;
+}
+
 function getDb(
   scope: SessionProfileScope,
   readonly = true,

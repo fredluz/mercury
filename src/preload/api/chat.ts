@@ -15,6 +15,22 @@ export const chatApi = {
 
   abortChat: (): Promise<void> => ipcRenderer.invoke("abort-chat"),
 
+  resolveChatRunApproval: (request: {
+    runId: string;
+    choice:
+      | "once"
+      | "session"
+      | "always"
+      | "deny"
+      | "approve"
+      | "approved"
+      | "allow";
+    profile?: string;
+    all?: boolean;
+    resolveAll?: boolean;
+  }): Promise<{ runId: string; choice: string; resolved: number }> =>
+    ipcRenderer.invoke("resolve-chat-run-approval", request),
+
   generateChatTitle: (request: GenerateChatTitleRequest): Promise<string> =>
     ipcRenderer.invoke("generate-chat-title", request),
 

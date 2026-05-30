@@ -3,6 +3,7 @@ export type TraceEventType =
   | "message.user"
   | "message.agent.delta"
   | "message.history.loaded"
+  | "session.created"
   | "session.resumed"
   | "slash.local"
   | "tool.progress"

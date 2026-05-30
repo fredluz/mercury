@@ -162,97 +162,17 @@ describe("direct agent runtime model resolution", () => {
     await expect(resolveChatRuntimeModel("work")).rejects.toThrow("Configure the agent model");
   });
 
-  it("passes the direct agent model to API chat requests", async () => {
+  it("passes the direct agent model to runs API requests", async () => {
     const { sendMessageViaApi, bodies } = await loadChatApiWithModel({ provider: "openai", model: "agent-api-model", baseUrl: "" });
     await sendMessageViaApi("hello", { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() }, "work", undefined, undefined, runtime);
-    expect(bodies[0]).toMatchObject({ model: "agent-api-model", stream: true });
+    expect(bodies[0]).toMatchObject({ input: "hello", model: "agent-api-model" });
+    expect(bodies[0]).not.toHaveProperty("stream");
   });
 
-  it("captures string x-hermes-session-id headers from API chat responses", async () => {
-    const { sendMessageViaApi } = await loadChatApiWithStreamingResponse({
-      "x-hermes-session-id": " session-from-string ",
-    });
-    const onDone = vi.fn();
-    const onDiagnostic = vi.fn();
-
-    await sendMessageViaApi(
-      "hello",
-      { onChunk: vi.fn(), onDone, onError: vi.fn(), onDiagnostic },
-      "work",
-      undefined,
-      undefined,
-      runtime,
-    );
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(onDone).toHaveBeenCalledWith("session-from-string");
-    expect(onDiagnostic).not.toHaveBeenCalled();
-  });
-
-  it("captures array-shaped x-hermes-session-id headers from API chat responses", async () => {
-    const { sendMessageViaApi } = await loadChatApiWithStreamingResponse({
-      "x-hermes-session-id": ["", " session-from-array "],
-    });
-    const onDone = vi.fn();
-    const onDiagnostic = vi.fn();
-
-    await sendMessageViaApi(
-      "hello",
-      { onChunk: vi.fn(), onDone, onError: vi.fn(), onDiagnostic },
-      "work",
-      undefined,
-      undefined,
-      runtime,
-    );
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(onDone).toHaveBeenCalledWith("session-from-array");
-    expect(onDiagnostic).not.toHaveBeenCalled();
-  });
-
-  it("diagnoses successful new API sends that return no session id", async () => {
-    const { sendMessageViaApi } = await loadChatApiWithStreamingResponse({});
-    const onDone = vi.fn();
-    const onDiagnostic = vi.fn();
-
-    await sendMessageViaApi(
-      "hello",
-      { onChunk: vi.fn(), onDone, onError: vi.fn(), onDiagnostic },
-      "work",
-      undefined,
-      undefined,
-      runtime,
-    );
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(onDone).toHaveBeenCalledWith(undefined);
-    expect(onDiagnostic).toHaveBeenCalledWith(
-      expect.objectContaining({
-        code: "missing-session-id",
-        profile: "work",
-        resumed: false,
-        headerShape: "missing",
-      }),
-    );
-  });
-
-  it("uses the resumed session id when API chat responses omit the header", async () => {
-    const { sendMessageViaApi } = await loadChatApiWithStreamingResponse({});
-    const onDone = vi.fn();
-    const onDiagnostic = vi.fn();
-
-    await sendMessageViaApi(
-      "hello",
-      { onChunk: vi.fn(), onDone, onError: vi.fn(), onDiagnostic },
-      "work",
-      "resume-session",
-      undefined,
-      runtime,
-    );
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(onDone).toHaveBeenCalledWith("resume-session");
-    expect(onDiagnostic).not.toHaveBeenCalled();
+  it("binds resumed session ids in runs API requests", async () => {
+    const { sendMessageViaApi, bodies } = await loadChatApiWithModel({ provider: "openai", model: "agent-api-model", baseUrl: "" });
+    await sendMessageViaApi("hello", { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() }, "work", "resume-session", undefined, runtime);
+    expect(bodies[0]).toMatchObject({ session_id: "resume-session" });
   });
 
   it("does not call API transport when direct agent model is unresolved", async () => {
@@ -271,17 +191,21 @@ describe("direct agent runtime model resolution", () => {
     const onError = vi.fn();
     await sendMessageViaApi("hello", { onChunk: vi.fn(), onDone: vi.fn(), onError }, "work", undefined, undefined, runtime);
     expect(request).not.toHaveBeenCalled();
-    expect(onError).toHaveBeenCalledWith(expect.stringContaining("Configure the agent model"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(onError).toHaveBeenCalledWith(
+      expect.stringContaining("Configure the agent model"),
+      undefined,
+    );
   });
 
-  it("passes the direct agent model to title generation requests", async () => {
+  it("uses heuristic title generation without posting model-backed chat requests", async () => {
     const { generateChatTitle, bodies } = await loadTitleWithModel({ provider: "openai", model: "agent-title-model", baseUrl: "" });
     await expect(
       generateChatTitle(
         { profile: "work", messages: [{ role: "user", content: "Summarize this" }] },
         { ...runtime, request: { profile: "work", mode: "local", purpose: "title" } },
       ),
-    ).resolves.toBe("Agent Title");
-    expect(bodies[0]).toMatchObject({ model: "agent-title-model", stream: false });
+    ).resolves.toBe("Fallback: Summarize this");
+    expect(bodies).toEqual([]);
   });
 });

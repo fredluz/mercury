@@ -2,11 +2,31 @@ import { ipcMain, Notification, type WebContents } from "electron";
 import {
   abortActiveChatRun,
   generateChatTitleForRequest,
+  resolveChatRunApprovalForRequest,
   runChatMessage,
 } from "../services/chat-service";
 import type { TraceEvent } from "../../shared/traces";
 import { isGenerateChatTitleRequest } from "../../shared/chat-metadata";
 import type { IpcRegistrationContext } from "./types";
+
+function isRunApprovalChoice(value: unknown): value is
+  | "once"
+  | "session"
+  | "always"
+  | "deny"
+  | "approve"
+  | "approved"
+  | "allow" {
+  return (
+    value === "once" ||
+    value === "session" ||
+    value === "always" ||
+    value === "deny" ||
+    value === "approve" ||
+    value === "approved" ||
+    value === "allow"
+  );
+}
 
 function reportBestEffortFailure(label: string, error: unknown): void {
   console.warn(`[chat-ipc] Non-critical ${label} failed`, error);
@@ -111,4 +131,33 @@ export function registerChatIpc({
   ipcMain.handle("abort-chat", () => {
     abortActiveChatRun("User stopped the active Hermes run.");
   });
+
+  ipcMain.handle(
+    "resolve-chat-run-approval",
+    async (
+      _event,
+      request: {
+        runId?: unknown;
+        choice?: unknown;
+        profile?: unknown;
+        all?: unknown;
+        resolveAll?: unknown;
+      },
+    ) => {
+      if (
+        !request ||
+        typeof request.runId !== "string" ||
+        !isRunApprovalChoice(request.choice)
+      ) {
+        throw new Error("Invalid resolve-chat-run-approval request");
+      }
+      return resolveChatRunApprovalForRequest({
+        runId: request.runId,
+        choice: request.choice,
+        profile: typeof request.profile === "string" ? request.profile : undefined,
+        all: request.all === true,
+        resolveAll: request.resolveAll === true,
+      });
+    },
+  );
 }

@@ -16,8 +16,14 @@ export function buildRuntimeDiagnostic(args: {
     identity.actualProfile && identity.actualProfile !== identity.requestedProfile,
   );
   const unsupported = mode === "remote" || Boolean(identity.mismatchReason?.includes("unsupported"));
+  const invalidAuth = identity.capabilityProblem === "invalid-api-key";
+  const updateRequired = identity.capabilityProblem === "missing-required-features";
   const status: RuntimeDiagnosticStatus = stale
     ? "stale"
+    : invalidAuth
+      ? "invalid-auth"
+      : updateRequired
+        ? "update-required"
     : unsupported
       ? "unsupported"
       : profileMismatch
@@ -30,7 +36,12 @@ export function buildRuntimeDiagnostic(args: {
     selectedProfile,
     requestedProfile: identity.requestedProfile,
     actualProfile: identity.actualProfile,
-    verified: identity.verified && !stale && !profileMismatch && !unsupported,
+    verified:
+      identity.verified &&
+      !stale &&
+      !profileMismatch &&
+      !unsupported &&
+      !identity.capabilityProblem,
     verificationSource: identity.verificationSource,
     mode: identity.mode,
     transport: identity.transport,
@@ -53,6 +64,7 @@ export function buildRuntimeDiagnostic(args: {
     mismatchReason: stale ? state.staleReason ?? modeMismatchReason : identity.mismatchReason,
     unsupportedReason: unsupported ? identity.mismatchReason ?? "Remote runtime identity is not verified." : undefined,
     capabilities: identity.capabilities,
+    capabilityProblem: identity.capabilityProblem,
     command: identity.command,
   };
 }

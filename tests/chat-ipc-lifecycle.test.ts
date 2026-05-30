@@ -57,6 +57,10 @@ const mocks = vi.hoisted(() => {
     isSshTunnelHealthy: vi.fn(),
     updateSessionProfile: vi.fn(),
     updateSessionTitle: vi.fn(),
+    projectCachedSession: vi.fn(),
+    createHermesSession: vi.fn(),
+    readHermesSession: vi.fn(),
+    cachedSessionFromServerSession: vi.fn(),
     generateChatTitle: vi.fn(),
     profileRuntimeManager: {
       normalizeProfile: vi.fn(),
@@ -112,6 +116,13 @@ vi.mock("../src/main/ssh-tunnel", () => ({
 vi.mock("../src/main/session-cache", () => ({
   updateSessionProfile: mocks.updateSessionProfile,
   updateSessionTitle: mocks.updateSessionTitle,
+  projectCachedSession: mocks.projectCachedSession,
+}));
+
+vi.mock("../src/main/services/hermes-sessions-api", () => ({
+  createHermesSession: mocks.createHermesSession,
+  readHermesSession: mocks.readHermesSession,
+  cachedSessionFromServerSession: mocks.cachedSessionFromServerSession,
 }));
 
 vi.mock("../src/main/hermes/title", () => ({
@@ -175,6 +186,38 @@ function resetMockState(): void {
   mocks.isSshTunnelHealthy.mockReset().mockResolvedValue(true);
   mocks.updateSessionProfile.mockReset();
   mocks.updateSessionTitle.mockReset();
+  mocks.projectCachedSession.mockReset();
+  mocks.createHermesSession.mockReset().mockResolvedValue({
+    id: "server-session-1",
+    title: "New Conversation",
+    startedAt: 1,
+    endedAt: null,
+    source: "api",
+    messageCount: 0,
+    model: "",
+    profile: "default",
+    raw: {},
+  });
+  mocks.readHermesSession.mockReset().mockImplementation(async (_runtime, id: string) => ({
+    id,
+    title: "Existing Conversation",
+    startedAt: 1,
+    endedAt: null,
+    source: "api",
+    messageCount: 0,
+    model: "",
+    profile: "default",
+    raw: {},
+  }));
+  mocks.cachedSessionFromServerSession.mockReset().mockImplementation((session) => ({
+    id: session.id,
+    title: session.title || "New Conversation",
+    startedAt: session.startedAt,
+    source: session.source,
+    messageCount: session.messageCount,
+    model: session.model,
+    profile: session.profile,
+  }));
   mocks.generateChatTitle.mockReset();
   mocks.profileRuntimeManager.normalizeProfile
     .mockReset()
@@ -325,7 +368,7 @@ describe("chat IPC lifecycle hardening", () => {
     ]);
   });
 
-  it("diagnoses missing durable session ids without creating false persistence", async () => {
+  it("uses the pre-created server session when the legacy stream returns no header", async () => {
     const handler = await setupHandler();
     const event = createEvent();
 
@@ -347,29 +390,17 @@ describe("chat IPC lifecycle hardening", () => {
 
     await expect(invokePromise).resolves.toEqual({
       response: "complete answer",
-      sessionId: undefined,
+      sessionId: "server-session-1",
     });
-    expect(mocks.updateSessionProfile).not.toHaveBeenCalled();
-    expect(sentChannels(event.sender, "chat-done")).toEqual([
-      ["chat-done", ""],
-    ]);
-    expect(warnSpy).toHaveBeenCalledWith(
-      "[chat-service] Chat completed without a durable Hermes session id",
-      expect.objectContaining({
-        code: "missing-session-id",
-        profile: "alpha",
-        headerShape: "missing",
-      }),
+    expect(mocks.projectCachedSession).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "server-session-1", profile: "default" }),
     );
-    expect(mocks.recordTraceEvent).toHaveBeenCalledWith(
-      "trace-1",
-      "transport.error",
-      "Missing durable session id",
-      expect.stringContaining("x-hermes-session-id"),
-      expect.objectContaining({
-        code: "missing-session-id",
-        profile: "alpha",
-      }),
+    expect(sentChannels(event.sender, "chat-done")).toEqual([
+      ["chat-done", "server-session-1"],
+    ]);
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      "[chat-service] Chat completed without a durable Hermes session id",
+      expect.anything(),
     );
   });
 
@@ -633,8 +664,7 @@ describe("chat IPC lifecycle hardening", () => {
         profile: "research-agent",
         sessionId: "session-title-1",
         messages: [{ role: "user", content: "Summarize this session" }],
-      },
-      expect.any(Object),
+      }
     );
     expect(mocks.updateSessionTitle).toHaveBeenCalledTimes(1);
     expect(mocks.updateSessionTitle).toHaveBeenNthCalledWith(
@@ -678,7 +708,7 @@ describe("chat IPC lifecycle hardening", () => {
       "transport.error",
       "Transport error",
       info.displayMessage,
-      { source: "chat", recovery: info.recovery },
+      expect.objectContaining({ source: "chat", recovery: info.recovery }),
     );
     expect(JSON.stringify(mocks.recordTraceEvent.mock.calls)).not.toContain(
       "already consumed",

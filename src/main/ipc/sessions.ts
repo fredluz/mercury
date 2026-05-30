@@ -5,11 +5,11 @@ import {
   getSessionMessagesForProfile,
   listCachedSessionsForProfile,
   listProfilesForConnection,
-  listSessionsForProfile,
+  listServerSessionsForProfile,
   searchSessionsForProfile,
   setActiveProfileForConnection,
   syncSessionCacheForProfile,
-  updateSessionTitleForProfile,
+  updateServerSessionTitleForProfile,
 } from "../services/sessions-service";
 
 export function registerSessionsIpc(): void {
@@ -22,7 +22,7 @@ export function registerSessionsIpc(): void {
   ipcMain.handle(
     "list-sessions",
     (_event, limit?: number, offset?: number, profile?: string) =>
-      listSessionsForProfile(limit, offset, profile),
+      listServerSessionsForProfile(limit, offset, profile),
   );
 
   ipcMain.handle(
@@ -55,7 +55,7 @@ export function registerSessionsIpc(): void {
   ipcMain.handle(
     "update-session-title",
     (_event, sessionId: string, title: string, profile?: string) =>
-      updateSessionTitleForProfile(sessionId, title, profile),
+      updateServerSessionTitleForProfile(sessionId, title, profile),
   );
   // Session search
   ipcMain.handle(

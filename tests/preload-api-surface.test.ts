@@ -214,6 +214,12 @@ describe("New APIs from v0.8/v0.9 features", () => {
     expect(typeMethods).toContain("generateChatTitle");
   });
 
+  it("has structured chat run approval API", () => {
+    expect(preloadMethods).toContain("resolveChatRunApproval");
+    expect(typeMethods).toContain("resolveChatRunApproval");
+    expect(preloadSrc).toContain('ipcRenderer.invoke("resolve-chat-run-approval", request)');
+  });
+
   it("has local opt-in perf telemetry APIs", () => {
     expect(preloadMethods).toContain("getPerfTelemetryConfig");
     expect(preloadMethods).toContain("recordPerfEvent");
@@ -247,6 +253,7 @@ describe("Legacy APIs preserved (backward compat)", () => {
     // Chat
     "sendMessage",
     "abortChat",
+    "resolveChatRunApproval",
     "onChatChunk",
     "onChatDone",
     "onChatToolProgress",
