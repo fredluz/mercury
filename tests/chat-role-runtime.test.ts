@@ -13,10 +13,16 @@ async function loadChatApiWithModel(model: { provider: string; model: string; ba
   vi.resetModules();
   const bodies: unknown[] = [];
   const request = vi.fn(() => {
-    const req = new EventEmitter() as EventEmitter & { write: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> };
+    const req = new EventEmitter() as EventEmitter & {
+      write: ReturnType<typeof vi.fn>;
+      end: ReturnType<typeof vi.fn>;
+      destroy: ReturnType<typeof vi.fn>;
+      setTimeout: ReturnType<typeof vi.fn>;
+    };
     req.write = vi.fn((body: string) => bodies.push(JSON.parse(body)));
     req.end = vi.fn();
     req.destroy = vi.fn();
+    req.setTimeout = vi.fn();
     return req;
   });
   vi.doMock("http", () => ({ default: { request }, request }));
@@ -51,9 +57,11 @@ async function loadChatApiWithStreamingResponse(
         write: ReturnType<typeof vi.fn>;
         end: ReturnType<typeof vi.fn>;
         destroy: ReturnType<typeof vi.fn>;
+        setTimeout: ReturnType<typeof vi.fn>;
       };
       req.write = vi.fn();
       req.destroy = vi.fn();
+      req.setTimeout = vi.fn();
       req.end = vi.fn(() => {
         const res = new EventEmitter() as EventEmitter & {
           statusCode: number;
@@ -96,9 +104,15 @@ async function loadTitleWithModel(model: { provider: string; model: string; base
   vi.resetModules();
   const bodies: unknown[] = [];
   const request = vi.fn((_url: string, _options: unknown, callback: (res: EventEmitter & { statusCode: number }) => void) => {
-    const req = new EventEmitter() as EventEmitter & { write: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> };
+    const req = new EventEmitter() as EventEmitter & {
+      write: ReturnType<typeof vi.fn>;
+      end: ReturnType<typeof vi.fn>;
+      destroy: ReturnType<typeof vi.fn>;
+      setTimeout: ReturnType<typeof vi.fn>;
+    };
     req.write = vi.fn((body: string) => bodies.push(JSON.parse(body)));
     req.destroy = vi.fn();
+    req.setTimeout = vi.fn();
     req.end = vi.fn(() => {
       const res = new EventEmitter() as EventEmitter & { statusCode: number };
       res.statusCode = 200;
@@ -164,15 +178,19 @@ describe("direct agent runtime model resolution", () => {
 
   it("passes the direct agent model to runs API requests", async () => {
     const { sendMessageViaApi, bodies } = await loadChatApiWithModel({ provider: "openai", model: "agent-api-model", baseUrl: "" });
-    await sendMessageViaApi("hello", { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() }, "work", undefined, undefined, runtime);
-    expect(bodies[0]).toMatchObject({ input: "hello", model: "agent-api-model" });
+    sendMessageViaApi("hello", { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() }, "work", undefined, undefined, runtime);
+    await vi.waitFor(() => {
+      expect(bodies[0]).toMatchObject({ input: "hello", model: "agent-api-model" });
+    });
     expect(bodies[0]).not.toHaveProperty("stream");
   });
 
   it("binds resumed session ids in runs API requests", async () => {
     const { sendMessageViaApi, bodies } = await loadChatApiWithModel({ provider: "openai", model: "agent-api-model", baseUrl: "" });
-    await sendMessageViaApi("hello", { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() }, "work", "resume-session", undefined, runtime);
-    expect(bodies[0]).toMatchObject({ session_id: "resume-session" });
+    sendMessageViaApi("hello", { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() }, "work", "resume-session", undefined, runtime);
+    await vi.waitFor(() => {
+      expect(bodies[0]).toMatchObject({ session_id: "resume-session" });
+    });
   });
 
   it("does not call API transport when direct agent model is unresolved", async () => {

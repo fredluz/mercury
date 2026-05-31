@@ -13,6 +13,21 @@ const mocks = vi.hoisted(() => ({
   execFile: vi.fn(),
   isRemoteMode: vi.fn(),
   resolveRuntime: vi.fn(),
+  bffClientForRuntime: vi.fn(),
+  HermesBffError: class HermesBffError extends Error {
+    responsePreview?: string;
+    constructor(message: string, responsePreview?: string) {
+      super(message);
+      this.responsePreview = responsePreview;
+    }
+  },
+  bffJobs: {
+    list: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    remove: vi.fn(),
+    action: vi.fn(),
+  },
   hermesHome: "/tmp/hermes",
 }));
 
@@ -50,6 +65,11 @@ vi.mock("../src/main/hermes/runtime", () => ({
   },
 }));
 
+vi.mock("../src/main/hermes/bff", () => ({
+  HermesBffError: mocks.HermesBffError,
+  profileHermesBffClientForRuntime: mocks.bffClientForRuntime,
+}));
+
 async function loadCronJobs(): Promise<typeof import("../src/main/cronjobs")> {
   vi.resetModules();
   return import("../src/main/cronjobs");
@@ -63,6 +83,12 @@ beforeEach(() => {
   });
   mocks.isRemoteMode.mockReset().mockReturnValue(false);
   mocks.resolveRuntime.mockReset();
+  mocks.bffClientForRuntime.mockReset().mockReturnValue({ jobs: mocks.bffJobs });
+  mocks.bffJobs.list.mockReset().mockResolvedValue([]);
+  mocks.bffJobs.create.mockReset().mockResolvedValue({});
+  mocks.bffJobs.update.mockReset().mockResolvedValue(undefined);
+  mocks.bffJobs.remove.mockReset().mockResolvedValue(undefined);
+  mocks.bffJobs.action.mockReset().mockResolvedValue(undefined);
   vi.stubGlobal("fetch", vi.fn());
 });
 
@@ -111,7 +137,7 @@ describe("cron runtime routing", () => {
       purpose: "cron",
       preferTransport: "api",
     });
-    expect(fetch).not.toHaveBeenCalled();
+    expect(mocks.bffClientForRuntime).not.toHaveBeenCalled();
   });
 
   it("fails closed when the resolved cron runtime does not match the requested profile", async () => {
@@ -128,16 +154,24 @@ describe("cron runtime routing", () => {
     });
     const { createCronJob } = await loadCronJobs();
 
+    mocks.bffClientForRuntime.mockImplementation(() => {
+      throw new Error("Runtime profile beta does not match requested profile alpha.");
+    });
+
     await expect(
       createCronJob("0 9 * * *", "Daily prompt", "Daily", "local", "alpha"),
     ).resolves.toEqual({
       success: false,
-      error: "Verified cron API runtime is not available for profile alpha",
+      error: "Runtime profile beta does not match requested profile alpha.",
     });
-    expect(fetch).not.toHaveBeenCalled();
+    expect(mocks.bffClientForRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({ apiBaseUrl: "http://127.0.0.1:19002" }),
+      "alpha",
+      "cron",
+    );
   });
 
-  it("routes remote cron API calls through the verified runtime handle", async () => {
+  it("routes remote cron API calls through the verified runtime BFF jobs client", async () => {
     mocks.isRemoteMode.mockReturnValue(true);
     mocks.resolveRuntime.mockResolvedValue({
       request: { profile: "alpha", mode: "local", purpose: "cron" },
@@ -150,20 +184,24 @@ describe("cron runtime routing", () => {
       apiBaseUrl: "http://127.0.0.1:19001",
       authHeaders: { Authorization: "Bearer alpha" },
     });
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ jobs: [] }),
-    } as Response);
+    mocks.bffJobs.list.mockResolvedValue([
+      { id: "remote-1", name: "Remote", schedule: "0 9 * * *" },
+    ]);
     const { listCronJobs } = await loadCronJobs();
 
-    await expect(listCronJobs(true, "alpha")).resolves.toEqual([]);
+    await expect(listCronJobs(true, "alpha")).resolves.toMatchObject([
+      { id: "remote-1", name: "Remote" },
+    ]);
 
-    expect(fetch).toHaveBeenCalledWith(
-      "http://127.0.0.1:19001/api/jobs?include_disabled=true",
+    expect(mocks.bffClientForRuntime).toHaveBeenCalledWith(
       expect.objectContaining({
-        headers: { Authorization: "Bearer alpha" },
+        apiBaseUrl: "http://127.0.0.1:19001",
+        authHeaders: { Authorization: "Bearer alpha" },
       }),
+      "alpha",
+      "cron",
     );
+    expect(mocks.bffJobs.list).toHaveBeenCalledWith(true);
   });
 
   it("preserves completed state for disabled retained one-shot jobs", async () => {
@@ -202,6 +240,31 @@ describe("cron runtime routing", () => {
     ]);
   });
 
+  it("surfaces remote cron backend error details from BFF responses", async () => {
+    mocks.isRemoteMode.mockReturnValue(true);
+    mocks.resolveRuntime.mockResolvedValue({
+      request: { profile: "alpha", mode: "local", purpose: "cron" },
+      identity: {
+        requestedProfile: "alpha",
+        actualProfile: "alpha",
+        verified: true,
+      },
+      transport: "api",
+      apiBaseUrl: "http://127.0.0.1:19001",
+    });
+    mocks.bffJobs.create.mockRejectedValue(
+      new mocks.HermesBffError(
+        "Hermes BFF POST /api/jobs failed with HTTP 422.",
+        JSON.stringify({ error: "invalid schedule" }),
+      ),
+    );
+    const { createCronJob } = await loadCronJobs();
+
+    await expect(
+      createCronJob("bad", "Daily prompt", "Daily", "local", "alpha"),
+    ).resolves.toEqual({ success: false, error: "invalid schedule" });
+  });
+
   it("sends parseable schedule strings for rich remote one-shot jobs", async () => {
     mocks.isRemoteMode.mockReturnValue(true);
     mocks.resolveRuntime.mockResolvedValue({
@@ -215,10 +278,7 @@ describe("cron runtime routing", () => {
       apiBaseUrl: "http://127.0.0.1:19001",
       authHeaders: { Authorization: "Bearer alpha" },
     });
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: "remote-once" }),
-    } as Response);
+    mocks.bffJobs.create.mockResolvedValue({ id: "remote-once" });
     const { createCronJob } = await loadCronJobs();
 
     await expect(
@@ -235,15 +295,14 @@ describe("cron runtime routing", () => {
       ),
     ).resolves.toEqual({ success: true, id: "remote-once" });
 
-    const [, init] = vi.mocked(fetch).mock.calls[0];
-    expect(JSON.parse(String(init?.body))).toMatchObject({
+    expect(mocks.bffJobs.create).toHaveBeenCalledWith(expect.objectContaining({
       id: "remote-once",
       schedule: "2026-05-21T10:30:00.000Z",
       schedule_display: "2026-05-21T10:30:00.000Z",
       schedule_type: "once",
       skills: ["summarizer"],
       context: { sessionId: "session-1" },
-    });
+    }));
   });
 
   it("normalizes cron jobs without dropping schedule metadata", async () => {

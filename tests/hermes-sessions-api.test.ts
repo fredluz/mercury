@@ -1,4 +1,6 @@
 import http from "http";
+import { readFileSync } from "fs";
+import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ProfileRuntimeHandle } from "../src/main/hermes/types";
 import {
@@ -64,6 +66,18 @@ afterEach(async () => {
 });
 
 describe("Hermes Sessions API client", () => {
+  it("delegates transport to the internal BFF sessions client", () => {
+    const source = readFileSync(
+      join(__dirname, "../src/main/services/hermes-sessions-api.ts"),
+      "utf8",
+    );
+    expect(source).toContain("profileHermesBffClientForRuntime");
+    expect(source).not.toContain('from "http"');
+    expect(source).not.toContain('from "https"');
+    expect(source).not.toContain("http.request");
+    expect(source).not.toContain("https.request");
+  });
+
   it("uses the documented create/list/read/messages/fork/title/delete endpoints", async () => {
     const { baseUrl, requests } = await startServer((req, res) => {
       expect(req.headers.authorization).toBe("Bearer test-key");

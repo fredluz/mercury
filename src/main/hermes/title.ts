@@ -1,5 +1,6 @@
 import { generateTitle } from "../session-cache";
 import { getSessionTitle } from "../sessions";
+import { assertVerifiedApiRuntimeHandle } from "./runtime/api-runtime";
 import type { ProfileRuntimeHandle } from "./types";
 import {
   type GenerateChatTitleRequest,
@@ -13,8 +14,13 @@ function fallbackTitle(messages: GenerateChatTitleRequest["messages"]): string {
 
 export async function generateChatTitle(
   request: GenerateChatTitleRequest,
-  _preparedRuntime?: ProfileRuntimeHandle,
+  preparedRuntime?: ProfileRuntimeHandle,
 ): Promise<string> {
+  if (preparedRuntime) {
+    const expectedProfile = request.profile?.trim() || preparedRuntime.request.profile || "default";
+    assertVerifiedApiRuntimeHandle(preparedRuntime, expectedProfile, "title");
+  }
+
   if (request.sessionId) {
     const existingTitle = getSessionTitle(request.sessionId, request.profile);
     if (existingTitle) return sanitizeChatTitle(existingTitle) || existingTitle;

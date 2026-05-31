@@ -1,7 +1,7 @@
-import http from "http";
-import https from "https";
-import type { ClientRequest, IncomingMessage } from "http";
+import type { ClientRequest } from "http";
 import { resolveChatRuntimeModel } from "./chat-model";
+import { profileHermesBffClientForRuntime, HermesBffError } from "./bff";
+import type { HermesRunsBffClient } from "./bff";
 import { hermesRunRegistry } from "./run-registry";
 import type {
   ChatCallbacks,
@@ -9,10 +9,6 @@ import type {
   ChatTraceCallbackEvent,
   ProfileRuntimeHandle,
 } from "./types";
-import {
-  assertVerifiedApiRuntimeHandle,
-  type VerifiedApiRuntimeHandle,
-} from "./runtime/api-runtime";
 import {
   detectCodexAuthRecovery,
   type ChatErrorInfo,
@@ -35,16 +31,6 @@ type SubmittedRun = {
   runId: string;
   sessionId?: string;
 };
-
-class HermesApiRequestError extends Error {
-  readonly statusCode?: number;
-
-  constructor(message: string, statusCode?: number) {
-    super(message);
-    this.name = "HermesApiRequestError";
-    this.statusCode = statusCode;
-  }
-}
 
 export type RunApprovalChoice =
   | "once"
@@ -77,7 +63,11 @@ export function sendMessageViaRunsApi(
 ): ChatHandle {
   const expectedProfile =
     profile?.trim() || runtime?.request.profile || "default";
-  assertVerifiedApiRuntimeHandle(runtime, expectedProfile, "chat");
+  const bff = profileHermesBffClientForRuntime(
+    runtime,
+    expectedProfile,
+    "chat",
+  );
 
   const controller = new AbortController();
   let activeRunId: string | undefined;
@@ -98,7 +88,7 @@ export function sendMessageViaRunsApi(
       expectedProfile,
       resumeSessionId,
       history,
-      runtime as VerifiedApiRuntimeHandle,
+      bff.runs,
       controller.signal,
       (req) => {
         activeRequest = req;
@@ -121,9 +111,7 @@ export function sendMessageViaRunsApi(
       controller.abort();
       activeRequest?.destroy();
       if (activeRunId) {
-        void postRunStop(runtime as VerifiedApiRuntimeHandle, activeRunId).catch(
-          () => undefined,
-        );
+        void postRunStop(bff.runs, activeRunId).catch(() => undefined);
       }
     },
   };
@@ -135,7 +123,7 @@ async function sendMessageViaVerifiedRunsApi(
   profile: string,
   resumeSessionId: string | undefined,
   history: Array<{ role: string; content: string }> | undefined,
-  runtime: VerifiedApiRuntimeHandle,
+  runs: HermesRunsBffClient,
   signal: AbortSignal,
   setActiveRequest: (req: ClientRequest | undefined) => void,
   setActiveRunId: (runId: string) => void,
@@ -150,7 +138,7 @@ async function sendMessageViaVerifiedRunsApi(
   let submitted: SubmittedRun;
   try {
     submitted = await submitRunWithRetry(
-      runtime,
+      runs,
       {
         input: message,
         model: mc.model || "hermes-agent",
@@ -161,7 +149,7 @@ async function sendMessageViaVerifiedRunsApi(
       setActiveRequest,
     );
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = transportErrorMessage(error);
     cb.onError(
       errorMessage,
       buildErrorInfo(errorMessage, profile, {
@@ -176,7 +164,7 @@ async function sendMessageViaVerifiedRunsApi(
   }
   setActiveRunId(submitted.runId);
   await streamRunEvents(
-    runtime,
+    runs,
     submitted.runId,
     submitted.sessionId || resumeSessionId,
     cb,
@@ -189,7 +177,7 @@ async function sendMessageViaVerifiedRunsApi(
 }
 
 async function submitRunWithRetry(
-  runtime: VerifiedApiRuntimeHandle,
+  runs: HermesRunsBffClient,
   body: JsonRecord,
   signal: AbortSignal,
   setActiveRequest: (req: ClientRequest | undefined) => void,
@@ -197,7 +185,7 @@ async function submitRunWithRetry(
   let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      return await submitRun(runtime, body, signal, setActiveRequest);
+      return await submitRun(runs, body, signal, setActiveRequest);
     } catch (error) {
       lastError = error;
       if (!isRunCapError(error) || signal.aborted || attempt === 2) break;
@@ -208,9 +196,11 @@ async function submitRunWithRetry(
 }
 
 function isRunCapError(error: unknown): boolean {
-  if (error instanceof HermesApiRequestError && error.statusCode === 429) return true;
-  const message = error instanceof Error ? error.message : String(error);
-  return /rate[_ -]?limit|too many concurrent|concurrent runs|API error 429/i.test(message);
+  if (statusCodeField(error) === 429) return true;
+  const message = transportErrorMessage(error);
+  return /rate[_ -]?limit|too many concurrent|concurrent runs|API error 429/i.test(
+    message,
+  );
 }
 
 function delay(ms: number, signal: AbortSignal): Promise<void> {
@@ -244,25 +234,16 @@ function normalizeHistory(
 }
 
 async function submitRun(
-  runtime: VerifiedApiRuntimeHandle,
+  runs: HermesRunsBffClient,
   body: JsonRecord,
   signal: AbortSignal,
   setActiveRequest: (req: ClientRequest | undefined) => void,
 ): Promise<SubmittedRun> {
-  const result = await requestJson(runtime, "/v1/runs", {
-    method: "POST",
-    body,
-    signal,
-    setActiveRequest,
-    expectedStatuses: [200, 202],
-  });
-  const runId = stringField(result, "run_id");
-  if (!runId) throw new Error("Hermes run submission did not return run_id.");
-  return { runId, sessionId: stringField(result, "session_id") };
+  return runs.submit(body, { signal, setActiveRequest });
 }
 
 async function streamRunEvents(
-  runtime: VerifiedApiRuntimeHandle,
+  runs: HermesRunsBffClient,
   runId: string,
   sessionId: string | undefined,
   cb: ChatCallbacks,
@@ -280,7 +261,10 @@ async function streamRunEvents(
     terminal = true;
     cb.onDone(doneSessionId || sessionId);
   };
-  const finishError = (error: string): void => {
+  const reportError = (
+    error: string,
+    source: "run_failed" | "run_status" | "transport",
+  ): void => {
     if (terminal) return;
     terminal = true;
     cb.onError(
@@ -288,61 +272,75 @@ async function streamRunEvents(
       buildErrorInfo(error, profile, {
         provider,
         model,
-        source: "run_failed",
+        source,
         runId,
         sessionId,
       }),
     );
   };
+  const finishError = (error: string): void => {
+    reportError(error, "run_failed");
+  };
+  const finishTransportError = (
+    error: unknown,
+    source: "run_status" | "transport",
+  ): void => {
+    reportError(transportErrorMessage(error), source);
+  };
 
-  await requestSse(
-    runtime,
-    `/v1/runs/${encodeURIComponent(runId)}/events`,
-    signal,
-    setActiveRequest,
-    async (payload) => {
-      if (payload.run_id && payload.run_id !== runId) return;
-      const event = payload.event;
-      if (!event) return;
-      if (event === "message.delta") {
-        const delta = typeof payload.delta === "string" ? payload.delta : "";
-        if (delta) {
-          output += delta;
-          cb.onChunk(delta);
+  try {
+    await runs.streamEvents<RunEventPayload>(runId, {
+      signal,
+      setActiveRequest,
+      onEvent: async (payload) => {
+        if (payload.run_id && payload.run_id !== runId) return;
+        const event = payload.event;
+        if (!event) return;
+        if (event === "message.delta") {
+          const delta = typeof payload.delta === "string" ? payload.delta : "";
+          if (delta) {
+            output += delta;
+            cb.onChunk(delta);
+          }
+          return;
         }
-        return;
-      }
-      if (event === "run.completed") {
-        const finalOutput =
-          typeof payload.output === "string" ? payload.output : "";
-        if (!output && finalOutput) cb.onChunk(finalOutput);
-        emitUsage(cb, payload.usage);
-        finishDone(stringField(payload, "session_id"));
-        return;
-      }
-      if (event === "run.failed") {
-        finishError(errorMessage(payload.error) || "Hermes run failed.");
-        return;
-      }
-      if (event === "run.cancelled") {
-        finishError("Hermes run was cancelled.");
-        return;
-      }
-      const traceEvent = traceEventFromRunEvent(event, payload);
-      if (traceEvent) cb.onTraceEvent?.(traceEvent);
-      if (event === "tool.started") {
-        const tool = stringField(payload, "tool") || "tool";
-        cb.onToolProgress?.(tool);
-      }
-    },
-  );
+        if (event === "run.completed") {
+          const finalOutput =
+            typeof payload.output === "string" ? payload.output : "";
+          if (!output && finalOutput) cb.onChunk(finalOutput);
+          emitUsage(cb, payload.usage);
+          finishDone(stringField(payload, "session_id"));
+          return;
+        }
+        if (event === "run.failed") {
+          finishError(errorMessage(payload.error) || "Hermes run failed.");
+          return;
+        }
+        if (event === "run.cancelled") {
+          finishError("Hermes run was cancelled.");
+          return;
+        }
+        const traceEvent = traceEventFromRunEvent(event, payload);
+        if (traceEvent) cb.onTraceEvent?.(traceEvent);
+        if (event === "tool.started") {
+          const tool = stringField(payload, "tool") || "tool";
+          cb.onToolProgress?.(tool);
+        }
+      },
+    });
+  } catch (error) {
+    if (!signal.aborted) finishTransportError(error, "transport");
+    return;
+  }
 
   if (!terminal && !signal.aborted) {
-    const status = await requestJson(
-      runtime,
-      `/v1/runs/${encodeURIComponent(runId)}`,
-      { method: "GET", signal, setActiveRequest, expectedStatuses: [200] },
-    );
+    let status: JsonRecord;
+    try {
+      status = await runs.getStatus(runId, { signal, setActiveRequest });
+    } catch (error) {
+      if (!signal.aborted) finishTransportError(error, "run_status");
+      return;
+    }
     const statusText = stringField(status, "status");
     if (statusText === "completed") {
       const finalOutput = stringField(status, "output");
@@ -354,164 +352,18 @@ async function streamRunEvents(
     } else if (statusText === "cancelled") {
       finishError("Hermes run was cancelled.");
     } else {
-      finishError(`Hermes run ended before a terminal event (${statusText || "unknown"}).`);
+      finishError(
+        `Hermes run ended before a terminal event (${statusText || "unknown"}).`,
+      );
     }
   }
 }
 
-function requestJson(
-  runtime: VerifiedApiRuntimeHandle,
-  path: string,
-  options: {
-    method: "GET" | "POST";
-    body?: JsonRecord;
-    signal?: AbortSignal;
-    setActiveRequest?: (req: ClientRequest | undefined) => void;
-    expectedStatuses: number[];
-  },
-): Promise<JsonRecord> {
-  return new Promise((resolve, reject) => {
-    const url = `${runtime.apiBaseUrl}${path}`;
-    const requester = url.startsWith("https") ? https : http;
-    const req = requester.request(
-      url,
-      {
-        method: options.method,
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          ...(runtime.authHeaders ?? {}),
-        },
-        signal: options.signal,
-        timeout: 120_000,
-      },
-      (res) => {
-        let raw = "";
-        res.on("data", (chunk) => {
-          raw += chunk.toString();
-        });
-        res.on("end", () => {
-          options.setActiveRequest?.(undefined);
-          if (!options.expectedStatuses.includes(res.statusCode || 0)) {
-            reject(
-              new HermesApiRequestError(
-                parseApiError(raw) || `API error ${res.statusCode}`,
-                res.statusCode,
-              ),
-            );
-            return;
-          }
-          try {
-            const parsed = raw ? JSON.parse(raw) : {};
-            if (!isRecord(parsed)) {
-              reject(new Error("Hermes API returned a non-object JSON payload."));
-              return;
-            }
-            resolve(parsed);
-          } catch (error) {
-            reject(error);
-          }
-        });
-      },
-    );
-    options.setActiveRequest?.(req);
-    req.on("error", reject);
-    req.on("timeout", () => {
-      req.destroy(new Error("Hermes API request timed out."));
-    });
-    if (options.body) req.write(JSON.stringify(options.body));
-    req.end();
-  });
-}
-
-function requestSse(
-  runtime: VerifiedApiRuntimeHandle,
-  path: string,
-  signal: AbortSignal,
-  setActiveRequest: (req: ClientRequest | undefined) => void,
-  onEvent: (payload: RunEventPayload) => Promise<void> | void,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const url = `${runtime.apiBaseUrl}${path}`;
-    const requester = url.startsWith("https") ? https : http;
-    const req = requester.request(
-      url,
-      {
-        method: "GET",
-        headers: {
-          Accept: "text/event-stream",
-          ...(runtime.authHeaders ?? {}),
-        },
-        signal,
-        timeout: 120_000,
-      },
-      (res: IncomingMessage) => {
-        if (res.statusCode !== 200) {
-          let raw = "";
-          res.on("data", (chunk) => {
-            raw += chunk.toString();
-          });
-          res.on("end", () => {
-            setActiveRequest(undefined);
-            reject(
-              new HermesApiRequestError(
-                parseApiError(raw) || `API error ${res.statusCode}`,
-                res.statusCode,
-              ),
-            );
-          });
-          return;
-        }
-
-        let buffer = "";
-        res.on("data", (chunk: Buffer) => {
-          buffer += chunk.toString();
-          const blocks = buffer.split("\n\n");
-          buffer = blocks.pop() || "";
-          for (const block of blocks) processSseBlock(block, onEvent);
-        });
-        res.on("end", () => {
-          if (buffer.trim()) processSseBlock(buffer, onEvent);
-          setActiveRequest(undefined);
-          resolve();
-        });
-        res.on("error", reject);
-      },
-    );
-    setActiveRequest(req);
-    req.on("error", reject);
-    req.on("timeout", () => {
-      req.destroy(new Error("Hermes run event stream timed out."));
-    });
-    req.end();
-  });
-}
-
-function processSseBlock(
-  block: string,
-  onEvent: (payload: RunEventPayload) => Promise<void> | void,
-): void {
-  const dataLines = block
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice(5).trimStart());
-  if (dataLines.length === 0) return;
-  try {
-    const parsed = JSON.parse(dataLines.join("\n"));
-    if (isRecord(parsed)) void onEvent(parsed as RunEventPayload);
-  } catch {
-    /* Ignore malformed stream payloads. */
-  }
-}
-
 async function postRunStop(
-  runtime: VerifiedApiRuntimeHandle,
+  runs: HermesRunsBffClient,
   runId: string,
 ): Promise<void> {
-  await requestJson(runtime, `/v1/runs/${encodeURIComponent(runId)}/stop`, {
-    method: "POST",
-    expectedStatuses: [200, 202],
-  });
+  await runs.stop(runId);
 }
 
 export async function resolveRunApproval(
@@ -520,32 +372,18 @@ export async function resolveRunApproval(
   request: RunApprovalRequest,
 ): Promise<RunApprovalResponse> {
   const expectedProfile = runtime.request.profile || "default";
-  assertVerifiedApiRuntimeHandle(runtime, expectedProfile, "chat");
   const cleanRunId = runId.trim();
   if (!cleanRunId) throw new Error("runId is required.");
   if (!isRunApprovalChoice(request.choice)) {
     throw new Error("Invalid Hermes run approval choice.");
   }
 
-  const result = await requestJson(
-    runtime as VerifiedApiRuntimeHandle,
-    `/v1/runs/${encodeURIComponent(cleanRunId)}/approval`,
-    {
-      method: "POST",
-      body: {
-        choice: request.choice,
-        all: request.all === true,
-        resolve_all: request.resolveAll === true,
-      },
-      expectedStatuses: [200],
-    },
+  const bff = profileHermesBffClientForRuntime(
+    runtime,
+    expectedProfile,
+    "chat",
   );
-
-  return {
-    runId: stringField(result, "run_id") || cleanRunId,
-    choice: stringField(result, "choice") || request.choice,
-    resolved: numberField(result, "resolved") ?? 0,
-  };
+  return bff.runs.resolveApproval(cleanRunId, request);
 }
 
 function isRunApprovalChoice(value: unknown): value is RunApprovalChoice {
@@ -610,9 +448,16 @@ function traceEventFromRunEvent(
 
 function emitUsage(cb: ChatCallbacks, usage: unknown): void {
   if (!cb.onUsage || !isRecord(usage)) return;
-  const promptTokens = numberField(usage, "prompt_tokens") ?? numberField(usage, "input_tokens") ?? 0;
-  const completionTokens = numberField(usage, "completion_tokens") ?? numberField(usage, "output_tokens") ?? 0;
-  const totalTokens = numberField(usage, "total_tokens") ?? promptTokens + completionTokens;
+  const promptTokens =
+    numberField(usage, "prompt_tokens") ??
+    numberField(usage, "input_tokens") ??
+    0;
+  const completionTokens =
+    numberField(usage, "completion_tokens") ??
+    numberField(usage, "output_tokens") ??
+    0;
+  const totalTokens =
+    numberField(usage, "total_tokens") ?? promptTokens + completionTokens;
   cb.onUsage({
     promptTokens,
     completionTokens,
@@ -623,10 +468,28 @@ function emitUsage(cb: ChatCallbacks, usage: unknown): void {
   });
 }
 
+function transportErrorMessage(error: unknown): string {
+  if (error instanceof HermesBffError) {
+    const apiMessage = parseApiError(error.responsePreview || "");
+    if (apiMessage) return apiMessage;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
+function statusCodeField(error: unknown): number | undefined {
+  if (error instanceof HermesBffError) return error.statusCode;
+  if (!isRecord(error)) return undefined;
+  const statusCode = error.statusCode;
+  return typeof statusCode === "number" && Number.isFinite(statusCode)
+    ? statusCode
+    : undefined;
+}
+
 function parseApiError(raw: string): string {
+  if (!raw.trim()) return "";
   try {
     const parsed = JSON.parse(raw);
-    return errorMessage(parsed.error) || "";
+    return errorMessage(parsed.error) || stringField(parsed, "message") || "";
   } catch {
     return raw.slice(0, 200);
   }
@@ -668,7 +531,8 @@ function buildErrorInfo(
 
 function errorMessage(value: unknown): string {
   if (typeof value === "string") return value;
-  if (isRecord(value) && typeof value.message === "string") return value.message;
+  if (isRecord(value) && typeof value.message === "string")
+    return value.message;
   return "";
 }
 
@@ -680,7 +544,9 @@ function stringField(record: unknown, field: string): string | undefined {
 
 function numberField(record: JsonRecord, field: string): number | undefined {
   const value = record[field];
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -690,7 +556,9 @@ function isRecord(value: unknown): value is JsonRecord {
 function sanitizeRunMetadata(value: JsonRecord): JsonRecord {
   const metadata: JsonRecord = {};
   for (const [key, raw] of Object.entries(value)) {
-    if (/api[_-]?key|token|authorization|secret|password|credential/i.test(key)) {
+    if (
+      /api[_-]?key|token|authorization|secret|password|credential/i.test(key)
+    ) {
       continue;
     }
     metadata[key] = raw;

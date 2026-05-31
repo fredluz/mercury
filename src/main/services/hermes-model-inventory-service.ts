@@ -1,5 +1,3 @@
-import http from "http";
-import https from "https";
 import { execFile } from "child_process";
 import { existsSync } from "fs";
 import { getConnectionConfig } from "../config";
@@ -10,12 +8,7 @@ import {
   getEnhancedPath,
 } from "../install/paths";
 import { profileHome } from "../utils";
-import {
-  ensureSshTunnelIfNeeded,
-  getApiUrl,
-  getRemoteAuthHeader,
-  isApiServerReady,
-} from "../hermes/connection";
+import { HermesBffError, profileHermesBffClientForRuntime } from "../hermes/bff";
 import { sshPython } from "../ssh/transport";
 import { inferContextWindow } from "../../shared/chat-metadata";
 import {
@@ -25,7 +18,6 @@ import {
   type SavedModelDescriptor,
 } from "../../shared/models";
 
-const INVENTORY_TIMEOUT_MS = 3_000;
 const DIRECT_INVENTORY_TIMEOUT_MS = 5_000;
 
 export interface HermesModelInventoryResult {
@@ -164,55 +156,20 @@ export function mapHermesModelOptionsToDescriptors(
   );
 }
 
-function requestJson(
-  url: string,
-  headers: Record<string, string>,
-  timeoutMs: number,
-): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const mod = url.startsWith("https") ? https : http;
-    const req = mod.request(
-      url,
-      { method: "GET", timeout: timeoutMs, headers },
-      (res) => {
-        let body = "";
-        res.setEncoding("utf-8");
-        res.on("data", (chunk) => {
-          body += chunk;
-        });
-        res.on("end", () => {
-          if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
-            reject(new Error(`Hermes inventory HTTP ${res.statusCode ?? "unknown"}`));
-            return;
-          }
-          try {
-            resolve(JSON.parse(body || "{}"));
-          } catch (error) {
-            reject(error);
-          }
-        });
-      },
-    );
-    req.on("error", reject);
-    req.on("timeout", () => {
-      req.destroy(new Error("Hermes inventory request timed out"));
-    });
-    req.end();
-  });
-}
-
 async function loadFromRuntimeApi(profile?: string): Promise<SavedModelDescriptor[]> {
-  await ensureSshTunnelIfNeeded(profile);
-  const apiUrl = getApiUrl(profile);
-  const headers = getRemoteAuthHeader(profile);
-  if (!(await isApiServerReady(apiUrl, headers))) {
-    throw new Error("Hermes runtime API is not ready");
-  }
-  const payload = await requestJson(
-    `${apiUrl}/api/model/options`,
-    headers,
-    INVENTORY_TIMEOUT_MS,
+  const { profileRuntimeManager } = await import("../hermes/runtime");
+  const requestedProfile = profileRuntimeManager.normalizeProfile(profile);
+  const runtime = await profileRuntimeManager.resolveRuntime({
+    profile: requestedProfile,
+    purpose: "models",
+    preferTransport: "api",
+  });
+  const client = profileHermesBffClientForRuntime(
+    runtime,
+    requestedProfile,
+    "models",
   );
+  const payload = await client.models.options();
   return mapHermesModelOptionsToDescriptors(payload as HermesOptionsPayload);
 }
 
@@ -341,7 +298,7 @@ export async function getHermesModelInventory(
     const models = await loadFromRuntimeApi(profile);
     return { models, availability: availability(true, "runtime-api") };
   } catch (runtimeError) {
-    if (conn.mode === "remote") {
+    if (runtimeError instanceof HermesBffError || conn.mode === "remote") {
       return {
         models: [],
         availability: availability(

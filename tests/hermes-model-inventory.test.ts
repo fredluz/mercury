@@ -18,6 +18,8 @@ describe("Hermes model inventory mapping", () => {
     vi.doUnmock("fs");
     vi.doUnmock("../src/main/config");
     vi.doUnmock("../src/main/hermes/connection");
+    vi.doUnmock("../src/main/hermes/runtime");
+    vi.doUnmock("../src/main/hermes/bff");
     vi.doUnmock("../src/main/install/paths");
     vi.doUnmock("../src/main/utils");
     vi.resetModules();
@@ -68,6 +70,101 @@ describe("Hermes model inventory mapping", () => {
         ],
       }),
     ).toEqual([]);
+  });
+
+  it("loads runtime inventory through the verified BFF models client", async () => {
+    vi.resetModules();
+    const runtime = {
+      request: { profile: "story-scout", mode: "local", purpose: "models" },
+      identity: { requestedProfile: "story-scout", actualProfile: "story-scout", verified: true },
+      transport: "api",
+      apiBaseUrl: "http://127.0.0.1:19001",
+    };
+    const resolveRuntime = vi.fn().mockResolvedValue(runtime);
+    const options = vi.fn().mockResolvedValue({
+      providers: [
+        {
+          slug: "openai-codex",
+          name: "Codex App Server",
+          models: ["gpt-5.5"],
+        },
+      ],
+    });
+    const profileHermesBffClientForRuntime = vi.fn(() => ({
+      models: { options },
+    }));
+
+    vi.doMock("../src/main/config", () => ({
+      getConnectionConfig: () => ({ mode: "local" }),
+    }));
+    vi.doMock("../src/main/hermes/runtime", () => ({
+      profileRuntimeManager: {
+        normalizeProfile: (profile?: string) => profile?.trim() || "default",
+        resolveRuntime,
+      },
+    }));
+    vi.doMock("../src/main/hermes/bff", () => ({
+      HermesBffError: class HermesBffError extends Error {},
+      profileHermesBffClientForRuntime,
+    }));
+
+    const { getHermesModelInventory } = await import(
+      "../src/main/services/hermes-model-inventory-service"
+    );
+    const result = await getHermesModelInventory("story-scout");
+
+    expect(result.availability).toMatchObject({ ok: true, source: "runtime-api" });
+    expect(result.models).toEqual([
+      expect.objectContaining({ provider: "openai-codex", model: "gpt-5.5" }),
+    ]);
+    expect(resolveRuntime).toHaveBeenCalledWith({
+      profile: "story-scout",
+      purpose: "models",
+      preferTransport: "api",
+    });
+    expect(profileHermesBffClientForRuntime).toHaveBeenCalledWith(
+      runtime,
+      "story-scout",
+      "models",
+    );
+    expect(options).toHaveBeenCalledWith();
+  });
+
+  it("does not fall back to direct metadata after a verified BFF model failure", async () => {
+    vi.resetModules();
+    class TestHermesBffError extends Error {}
+    const runtime = {
+      request: { profile: "story-scout", mode: "local", purpose: "models" },
+      identity: { requestedProfile: "story-scout", actualProfile: "story-scout", verified: true },
+      transport: "api",
+      apiBaseUrl: "http://127.0.0.1:19001",
+    };
+
+    vi.doMock("../src/main/config", () => ({
+      getConnectionConfig: () => ({ mode: "local" }),
+    }));
+    vi.doMock("../src/main/hermes/runtime", () => ({
+      profileRuntimeManager: {
+        normalizeProfile: (profile?: string) => profile?.trim() || "default",
+        resolveRuntime: vi.fn().mockResolvedValue(runtime),
+      },
+    }));
+    vi.doMock("../src/main/hermes/bff", () => ({
+      HermesBffError: TestHermesBffError,
+      profileHermesBffClientForRuntime: vi.fn(() => ({
+        models: { options: vi.fn().mockRejectedValue(new TestHermesBffError("gateway down")) },
+      })),
+    }));
+
+    const { getHermesModelInventory } = await import(
+      "../src/main/services/hermes-model-inventory-service"
+    );
+    const result = await getHermesModelInventory("story-scout");
+
+    expect(result).toMatchObject({
+      models: [],
+      availability: { ok: false, source: "unavailable", error: "gateway down" },
+    });
   });
 
   it("builds local metadata fallback with Hermes venv Python and HERMES_HOME", async () => {
@@ -133,11 +230,15 @@ process.stdout.write(JSON.stringify({
     vi.doMock("../src/main/config", () => ({
       getConnectionConfig: () => ({ mode: "local" }),
     }));
-    vi.doMock("../src/main/hermes/connection", () => ({
-      ensureSshTunnelIfNeeded: vi.fn(),
-      getApiUrl: () => "http://127.0.0.1:8642",
-      getRemoteAuthHeader: () => ({}),
-      isApiServerReady: vi.fn().mockResolvedValue(false),
+    vi.doMock("../src/main/hermes/runtime", () => ({
+      profileRuntimeManager: {
+        normalizeProfile: (profile?: string) => profile?.trim() || "default",
+        resolveRuntime: vi.fn().mockRejectedValue(new Error("runtime unavailable")),
+      },
+    }));
+    vi.doMock("../src/main/hermes/bff", () => ({
+      HermesBffError: class HermesBffError extends Error {},
+      profileHermesBffClientForRuntime: vi.fn(),
     }));
     vi.doMock("../src/main/install/paths", () => ({
       HERMES_HOME: home,

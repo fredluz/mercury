@@ -10,7 +10,11 @@ import {
   buildHermesProfileCommandArgs,
   profileRuntimeManager,
 } from "./hermes/runtime";
-import type { ProfileRuntimeHandle } from "./hermes/types";
+import {
+  HermesBffError,
+  profileHermesBffClientForRuntime,
+  type HermesJobsBffClient,
+} from "./hermes/bff";
 import type {
   CronJob,
   CronMutationResult,
@@ -123,48 +127,32 @@ function normalizeJob(job: RawJob): CronJob | null {
   };
 }
 
-async function resolveCronApiRuntime(
+async function resolveCronJobsClient(
   profile?: string,
-): Promise<ProfileRuntimeHandle> {
+): Promise<HermesJobsBffClient> {
   const requestedProfile = profileRuntimeManager.normalizeProfile(profile);
   const runtime = await profileRuntimeManager.resolveRuntime({
     profile: requestedProfile,
     purpose: "cron",
     preferTransport: "api",
   });
-  if (
-    (runtime.transport !== "api" && runtime.transport !== "ssh-api") ||
-    !runtime.apiBaseUrl ||
-    runtime.request.profile !== requestedProfile ||
-    !runtime.identity.verified ||
-    runtime.identity.actualProfile !== requestedProfile
-  ) {
-    throw new Error(
-      `Verified cron API runtime is not available for profile ${requestedProfile}`,
-    );
-  }
-  return runtime;
+  return profileHermesBffClientForRuntime(runtime, requestedProfile, "cron").jobs;
 }
 
-async function remoteFetch(
-  runtime: ProfileRuntimeHandle,
-  path: string,
-  init: RequestInit = {},
-): Promise<Response> {
-  const headers: Record<string, string> = {
-    ...(runtime.authHeaders ?? {}),
-    ...((init.headers as Record<string, string>) || {}),
-  };
-  return fetch(`${runtime.apiBaseUrl}${path}`, { ...init, headers });
-}
-
-async function remoteJsonError(res: Response): Promise<string> {
-  try {
-    const body = (await res.json()) as { error?: string };
-    return body.error || `HTTP ${res.status}`;
-  } catch {
-    return `HTTP ${res.status}`;
+function remoteCronErrorMessage(error: unknown): string {
+  if (error instanceof HermesBffError && error.responsePreview) {
+    try {
+      const body = JSON.parse(error.responsePreview) as {
+        error?: unknown;
+        message?: unknown;
+      };
+      if (typeof body.error === "string" && body.error.trim()) return body.error;
+      if (typeof body.message === "string" && body.message.trim()) return body.message;
+    } catch {
+      // Use the structured BFF message below when the preview is not JSON.
+    }
   }
+  return error instanceof Error ? error.message : "Remote cron operation failed";
 }
 
 async function readJobsShape(profile?: string): Promise<JobsShape> {
@@ -230,15 +218,8 @@ export async function listCronJobs(
 ): Promise<CronJob[]> {
   if (isRemoteMode()) {
     try {
-      const runtime = await resolveCronApiRuntime(profile);
-      const qs = includeDisabled ? "?include_disabled=true" : "";
-      const res = await remoteFetch(runtime, `/api/jobs${qs}`);
-      if (!res.ok) {
-        console.error("[CRON] remote list failed:", await remoteJsonError(res));
-        return [];
-      }
-      const body = (await res.json()) as { jobs?: Record<string, unknown>[] };
-      const raw = body.jobs || [];
+      const jobsClient = await resolveCronJobsClient(profile);
+      const raw = await jobsClient.list(includeDisabled);
       const jobs: CronJob[] = [];
       for (const job of raw) {
         const normalized = normalizeJob(job);
@@ -599,19 +580,14 @@ export async function createCronJob(
   if (typeof scheduleOrPayload !== "string") {
     if (isRemoteMode()) {
       try {
-        const runtime = await resolveCronApiRuntime(promptOrProfile);
-        const res = await remoteFetch(runtime, "/api/jobs", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payloadToRemoteJob(scheduleOrPayload)),
-        });
-        if (!res.ok) {
-          return { success: false, error: await remoteJsonError(res) };
-        }
-        const body = (await res.json().catch(() => ({}))) as { id?: string };
-        return { success: true, id: body.id || scheduleOrPayload.id };
+        const jobsClient = await resolveCronJobsClient(promptOrProfile);
+        const body = await jobsClient.create(payloadToRemoteJob(scheduleOrPayload));
+        return {
+          success: true,
+          id: typeof body.id === "string" ? body.id : scheduleOrPayload.id,
+        };
       } catch (err) {
-        return { success: false, error: (err as Error).message };
+        return { success: false, error: remoteCronErrorMessage(err) };
       }
     }
     return createRichCronJob(scheduleOrPayload, promptOrProfile);
@@ -621,23 +597,16 @@ export async function createCronJob(
   const prompt = promptOrProfile;
   if (isRemoteMode()) {
     try {
-      const runtime = await resolveCronApiRuntime(profile);
-      const res = await remoteFetch(runtime, "/api/jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name || "",
-          schedule,
-          prompt: prompt || "",
-          deliver: deliver || "local",
-        }),
+      const jobsClient = await resolveCronJobsClient(profile);
+      await jobsClient.create({
+        name: name || "",
+        schedule,
+        prompt: prompt || "",
+        deliver: deliver || "local",
       });
-      if (!res.ok) {
-        return { success: false, error: await remoteJsonError(res) };
-      }
       return { success: true };
     } catch (err) {
-      return { success: false, error: (err as Error).message };
+      return { success: false, error: remoteCronErrorMessage(err) };
     }
   }
 
@@ -662,22 +631,11 @@ export async function updateCronJob(
   if (!jobId) return { success: false, error: "Missing job ID" };
   if (isRemoteMode()) {
     try {
-      const runtime = await resolveCronApiRuntime(profile);
-      const res = await remoteFetch(
-        runtime,
-        `/api/jobs/${encodeURIComponent(jobId)}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payloadToRemoteJob(payload)),
-        },
-      );
-      if (!res.ok) {
-        return { success: false, error: await remoteJsonError(res) };
-      }
+      const jobsClient = await resolveCronJobsClient(profile);
+      await jobsClient.update(jobId, payloadToRemoteJob(payload));
       return { success: true, id: jobId };
     } catch (err) {
-      return { success: false, error: (err as Error).message };
+      return { success: false, error: remoteCronErrorMessage(err) };
     }
   }
   return updateLocalCronJob(jobId, payload, profile);
@@ -690,20 +648,11 @@ export async function removeCronJob(
   if (!jobId) return { success: false, error: "Missing job ID" };
   if (isRemoteMode()) {
     try {
-      const runtime = await resolveCronApiRuntime(profile);
-      const res = await remoteFetch(
-        runtime,
-        `/api/jobs/${encodeURIComponent(jobId)}`,
-        {
-          method: "DELETE",
-        },
-      );
-      if (!res.ok) {
-        return { success: false, error: await remoteJsonError(res) };
-      }
+      const jobsClient = await resolveCronJobsClient(profile);
+      await jobsClient.remove(jobId);
       return { success: true };
     } catch (err) {
-      return { success: false, error: (err as Error).message };
+      return { success: false, error: remoteCronErrorMessage(err) };
     }
   }
   const result = await runCronCommand(["remove", jobId], profile);
@@ -716,18 +665,11 @@ async function remoteJobAction(
   profile?: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const runtime = await resolveCronApiRuntime(profile);
-    const res = await remoteFetch(
-      runtime,
-      `/api/jobs/${encodeURIComponent(jobId)}/${action}`,
-      { method: "POST" },
-    );
-    if (!res.ok) {
-      return { success: false, error: await remoteJsonError(res) };
-    }
+    const jobsClient = await resolveCronJobsClient(profile);
+    await jobsClient.action(jobId, action);
     return { success: true };
   } catch (err) {
-    return { success: false, error: (err as Error).message };
+    return { success: false, error: remoteCronErrorMessage(err) };
   }
 }
 

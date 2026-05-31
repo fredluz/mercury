@@ -8,6 +8,7 @@ export type RuntimePurpose =
   | "title"
   | "cron"
   | "gateway"
+  | "models"
   | "tools"
   | "skills"
   | "memory"
