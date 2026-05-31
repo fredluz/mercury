@@ -23,6 +23,7 @@ Every section describes current behavior **except** the clearly marked [remainin
 - Agent model config resolution: `src/main/hermes/chat-model.ts`, `src/main/services/config-service.ts`, [Agent model configuration and provider inventory](model-roles-and-provider-inventory.md)
 - Profile runtime manager/identity contract: `src/main/hermes/runtime.ts`, `src/main/hermes/types.ts`, `src/shared/runtime.ts`
 - API transport: `src/main/hermes/chat-api.ts`
+- Internal Hermes BFF client and typed subclients: `src/main/hermes/bff/*`
 - Stream trace normalization: `src/main/hermes/trace-events.ts`
 - Toolset writes/runtime staleness: `src/main/services/knowledge-service.ts`, `src/main/ipc/knowledge.ts`
 - Codex image generation and image artifact behavior: [Codex image generation](codex-image-generation.md)
@@ -164,6 +165,14 @@ Manual Verify uses the same repair path. If verification still fails, the card k
 
 `RuntimeDiagnosticNotice` labels stale diagnostics as "Runtime updating" and explains that Mercury is applying runtime setting changes automatically. Ordinary toolset toggles no longer create this stale state: `setToolsetEnabledForProfile(...)` writes the profile's `platform_toolsets` config for local or SSH profiles, then returns without calling `markRuntimeStale`, restarting, or revalidating the gateway. Hermes API-server toolsets are hot-read when the next request constructs its agent, so the change applies on the next message instead of blocking chat behind runtime repair.
 
+## Internal Hermes BFF boundary
+
+Hermes Gateway HTTP access is centralized inside the main process through `ProfileHermesBffClient` and typed subclients in `src/main/hermes/bff/*`. The BFF client is constructed from a verified API runtime handle, injects the runtime's profile-scoped auth headers, records redacted diagnostics, and owns JSON/SSE request mechanics for runs, sessions, jobs, models, capabilities, and health. Mercury treats the combined `/v1/runs` + `/api/sessions` surface as the supported chat/session contract; runs-only compatibility is not considered sufficient for the desktop runtime.
+
+Chat still enters through typed preload/IPC (`send-message`) and `src/main/services/chat-service.ts`. The transport path then uses `sendMessage(...)` -> `sendMessageViaApi(...)` -> `runs-api.ts`, where run submission, SSE event streaming, stop, approval, and terminal status polling delegate to `bff.runs`. Session create/read/list/message/title/delete calls delegate through `hermes-sessions-api.ts` to `bff.sessions`. Runtime model inventory uses the verified runtime plus `bff.models.options()`, and remote cron operations use `bff.jobs` while local cron file/CLI behavior remains separate.
+
+`src/main/hermes/connection.ts` remains the pre-verification probe boundary for health/capability evidence needed before a verified handle exists. After verification, migrated runtime paths should not call `getApiUrl(...)`, `getRemoteAuthHeader(...)`, raw `fetch`, or Node `http`/`https` request helpers directly. Renderer/preload APIs remain typed; Mercury does not expose a generic raw `/v1/*` or `/api/*` proxy.
+
 ## Preload chat contract
 
 `src/preload/api/chat.ts` exposes:
@@ -243,9 +252,10 @@ Pure remote HTTP profile execution still fails closed before dispatch. Local mod
 7. Create a new trace run with `createTraceRun(message, profile)`.
 8. Record session resume and history metadata when supplied.
 9. Resolve the direct agent model config through `getModelConfigForProfile(profile)`. If provider/model is missing, fail before transport with setup guidance.
-10. Call `sendMessage(...)` from `src/main/hermes/gateway.ts`, passing the prepared runtime handle, and callbacks for chunks, done, error, structured diagnostics, trace events, tool progress, and usage.
-11. Store the returned chat handle and trace run metadata as `activeChatRun`.
-12. Return a promise that resolves with `{ response, sessionId }` on completion/abort or rejects on error.
+10. With a verified runtime, create or read the server session through the BFF sessions client (`/api/sessions` or `/api/sessions/{id}`) before dispatch; Mercury does not downgrade to a runs-only chat path when session resources are missing.
+11. Call `sendMessage(...)` from `src/main/hermes/gateway.ts`, passing the prepared runtime handle, effective session id, and callbacks for chunks, done, error, structured diagnostics, trace events, tool progress, and usage.
+12. Store the returned chat handle and trace run metadata as `activeChatRun`.
+13. Return a promise that resolves with `{ response, sessionId }` on completion/abort or rejects on error.
 
 The main handler tracks only one active chat at a time through `activeChatRun`.
 
@@ -441,7 +451,7 @@ The classifier records structured diagnostics (profile, provider, model, error s
 
 ### No fallback
 
-There is deliberately no `/v1/chat/completions` fallback for older Hermes. Mercury has no external users and targets the current Hermes surface; capability mismatch fails loudly via the gate rather than degrading.
+There is deliberately no `/v1/chat/completions` fallback for older Hermes, and no runs-only compatibility mode when `/api/sessions`/`session_resources` are absent. Mercury has no external users and targets the current Hermes surface; capability mismatch fails loudly via the gate rather than degrading.
 
 ## Verification guidance
 

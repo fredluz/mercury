@@ -30,6 +30,8 @@ Implementation is split across three layers:
 
 The type contract lives in `src/preload/index.d.ts` as `interface HermesAPI` and `window.hermesAPI` declarations. Renderer code should treat that interface as the stable API surface.
 
+Mercury's Hermes Gateway BFF is an internal main-process boundary, not a renderer contract. Main services construct `ProfileHermesBffClient` only after runtime verification and then call typed subclients such as `runs`, `sessions`, `jobs`, and `models`. Do not add preload methods or IPC handlers that accept arbitrary Hermes paths, headers, auth tokens, or `/v1/*` / `/api/*` proxy requests from the renderer.
+
 ## Preload fragments
 
 Current fragments in `src/preload/api/index.ts` are:
@@ -90,17 +92,17 @@ Examples by domain:
   These API names remain profile-based for compatibility and Hermes storage/runtime identity; renderer product copy presents them to users as Agents.
 - Knowledge/skills: `read-memory`, `add-memory-entry`, `update-memory-entry`, `remove-memory-entry`, `write-user-profile`, `read-soul`, `write-soul`, `reset-soul`, `get-toolsets`, `set-toolset-enabled`, `list-installed-skills`, `list-bundled-skills`, `get-skill-content`, `get-skill-metadata`, `install-skill`, `uninstall-skill`, `import-skill-markdown`.
 - Codex auth/model recovery and models/credentials: `get-codex-auth-status`, `start-codex-device-auth`, `poll-codex-device-auth`, `configure-codex-app-server`, `get-credential-pool`, `set-credential-pool`, `list-models`, `add-model`, `remove-model`, `update-model`.
-- Cron/schedule/system/perf: `list-cron-jobs`, `create-cron-job`, `create-schedule-job`, `update-cron-job`, `remove-cron-job`, `pause-cron-job`, `resume-cron-job`, `trigger-cron-job`, `open-external`, `run-hermes-backup`, `run-hermes-import`, `run-hermes-dump`, `discover-memory-providers`, `list-mcp-servers`, `read-logs`, `get-perf-telemetry-config`, `record-perf-event`.
+- Cron/schedule/system/perf: `list-cron-jobs`, `create-cron-job`, `create-schedule-job`, `update-cron-job`, `remove-cron-job`, `pause-cron-job`, `resume-cron-job`, `trigger-cron-job`, `open-external`, `run-hermes-backup`, `run-hermes-import`, `run-hermes-dump`, `discover-memory-providers`, `list-mcp-servers`, `read-logs`, `get-perf-telemetry-config`, `record-perf-event`. Remote cron HTTP is handled by the internal BFF jobs subclient; local cron file/CLI behavior remains local to main.
 
 ### Chat preload API
 
-`window.hermesAPI` exposes these chat methods from `src/preload/api/chat.ts` and `src/preload/index.d.ts`:
+`window.hermesAPI` exposes these chat methods from `src/preload/api/chat.ts` and `src/preload/index.d.ts`. Run transport details remain hidden in the main-process BFF; the renderer never receives direct Hermes Gateway credentials or endpoint-level proxy access:
 
 | Preload method | IPC channel | Notes |
 | --- | --- | --- |
 | `sendMessage(message, profile?, resumeSessionId?, history?)` | `send-message` | Starts or resumes a Hermes chat run using the selected profile direct model config and streams renderer events while the returned promise settles with `{ response, sessionId? }`. Missing or invalid roles default to Chat. |
 | `abortChat()` | `abort-chat` | Aborts the active run, if any, and finalizes the active trace as aborted. |
-| `resolveChatRunApproval(request)` | `resolve-chat-run-approval` | Resolves a pending run approval through the verified Hermes runtime using `POST /v1/runs/{run_id}/approval`; accepts `once`, `session`, `always`, `deny`, and Hermes approval aliases. |
+| `resolveChatRunApproval(request)` | `resolve-chat-run-approval` | Resolves a pending run approval through the verified Hermes runtime using the internal BFF runs subclient; accepts `once`, `session`, `always`, `deny`, and Hermes approval aliases. |
 | `generateChatTitle(request)` | `generate-chat-title` | Validates and normalizes a `GenerateChatTitleRequest`, reuses an existing session title when present, otherwise generates a sanitized heuristic title, and persists it with `updateSessionTitle(sessionId, title, profile)` when a session id is supplied. |
 | `recordLocalChatTrace(request)` | `record-local-chat-trace` | Records local slash-command telemetry without calling Hermes. |
 | `onChatChunk(callback)` | `chat-chunk` | Streams assistant text chunks. |
@@ -134,7 +136,7 @@ The main handler rejects invalid request shapes before normalization. Title gene
 | `configureCodexAppServer(profile?)` | `configure-codex-app-server` | Configures the selected profile for Codex app-server model auth and returns `{ provider, model }`. |
 | `getCredentialPool()` | `get-credential-pool` | Returns locally stored credential-pool entries by provider. |
 | `setCredentialPool(provider, entries)` | `set-credential-pool` | Replaces locally stored credential-pool entries for one provider. |
-| `listModels()` | `list-models` | Returns Hermes inventory-backed provider models for the active connection. This is not a hardcoded Mercury catalog. |
+| `listModels()` | `list-models` | Returns Hermes inventory-backed provider models for the active connection. Runtime API inventory is loaded through a verified runtime plus the internal BFF models subclient; direct metadata is an explicit offline fallback when no verified runtime exists. |
 | `addModel(...)` | `add-model` | Adds a manual/legacy saved model entry locally or through SSH helpers. |
 | `removeModel(id)` | `remove-model` | Removes a manual/legacy saved model entry. |
 | `updateModel(id, fields)` | `update-model` | Updates a manual/legacy saved model entry. |
@@ -187,6 +189,7 @@ Current event channels exposed through preload listeners include:
 Connection-mode behavior is distributed across IPC handlers and main services:
 
 - `src/main/ipc/config.ts` exposes `is-remote-mode`, `is-remote-only-mode`, `get-connection-config`, remote connection tests, SSH connection tests, and tunnel start/stop controls.
+- `start-gateway`, `stop-gateway`, `gateway-status`, and `restart-gateway` are profile-targeted renderer controls. `stop-gateway` without a profile targets the default profile; it is not the all-profile shutdown path. Electron app shutdown uses the internal `stopAllGateways()` path, which walks profile runtime state plus default/profile `gateway.pid` files and clears stale local gateways explicitly.
 - Several handlers branch on `getConnectionConfig()`:
   - `config.ts` uses SSH implementations for remote env/config/model/Hermes-home reads and writes when mode is `ssh`.
   - `install.ts` uses SSH implementations for Hermes version/doctor/update when mode is `ssh`.
