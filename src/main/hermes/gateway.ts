@@ -69,6 +69,10 @@ export function stopGateway(force = false, profile?: string): void {
   profileRuntimeManager.stopGateway(force, profile);
 }
 
+export function stopAllGateways(): void {
+  profileRuntimeManager.stopAllGateways();
+}
+
 export function isGatewayRunning(profile?: string): boolean {
   return profileRuntimeManager.isGatewayRunning(profile);
 }

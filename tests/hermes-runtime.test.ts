@@ -1,5 +1,6 @@
 import { EventEmitter } from "events";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -807,6 +808,160 @@ describe("ProfileRuntimeManager contract", () => {
     expect(manager.startGateway("alpha")).toBe(true);
     expect(() => manager.startGateway("beta")).toThrow(ProfileRuntimeError);
     expect(spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes pid-file-only gateways instead of reusing stale old processes", () => {
+    const root = mkdtempSync(join(tmpdir(), "mercury-profile-runtime-"));
+    const stalePid = 9_001;
+    const child = fakeChildProcess(4_321);
+    writeGatewayPid(root, "alpha", stalePid);
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+    const spawn = vi.fn().mockReturnValue(child);
+    const manager = new ProfileRuntimeManager({
+      baseHermesHome: root,
+      hermesPython: "python",
+      hermesRepo: join(root, "hermes-agent"),
+      hermesScript: "hermes",
+      spawn,
+      readEnv: vi.fn().mockReturnValue({}),
+      getConnectionConfig: vi.fn().mockReturnValue({ mode: "local" }),
+      ensureApiServerConfig: vi.fn(),
+      getEnhancedPath: vi.fn().mockReturnValue("/usr/bin"),
+      profileHome: (profile?: string) => profileHomeFor(root, profile),
+      getLocalApiPort: vi.fn().mockReturnValue(19_001),
+      getLocalApiUrl: vi.fn().mockReturnValue("http://127.0.0.1:19001"),
+      ...noOpTimers(),
+    });
+
+    try {
+      expect(manager.startGateway("alpha")).toBe(true);
+      expect(killSpy).toHaveBeenCalledWith(stalePid, "SIGTERM");
+      expect(spawn).toHaveBeenCalledTimes(1);
+      expect(child.unref).toHaveBeenCalled();
+    } finally {
+      killSpy.mockRestore();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("generates a profile API server key before fresh local gateway startup", () => {
+    const root = mkdtempSync(join(tmpdir(), "mercury-profile-runtime-"));
+    const spawn = vi.fn().mockReturnValue(fakeChildProcess(4_321));
+    const setEnvValue = vi.fn();
+    const manager = new ProfileRuntimeManager({
+      baseHermesHome: root,
+      hermesPython: "python",
+      hermesRepo: join(root, "hermes-agent"),
+      hermesScript: "hermes",
+      spawn,
+      readEnv: vi.fn().mockReturnValue({}),
+      setEnvValue,
+      getConnectionConfig: vi.fn().mockReturnValue({ mode: "local" }),
+      ensureApiServerConfig: vi.fn(),
+      getEnhancedPath: vi.fn().mockReturnValue("/usr/bin"),
+      profileHome: (profile?: string) => profileHomeFor(root, profile),
+      getLocalApiPort: vi.fn().mockReturnValue(19_001),
+      getLocalApiUrl: vi.fn().mockReturnValue("http://127.0.0.1:19001"),
+      ...noOpTimers(),
+    });
+
+    try {
+      expect(manager.startGateway("alpha")).toBe(true);
+      expect(setEnvValue).toHaveBeenCalledWith(
+        "API_SERVER_KEY",
+        expect.stringMatching(/^mercury_[a-f0-9]{32}$/),
+        "alpha",
+      );
+      expect(spawn).toHaveBeenCalledWith(
+        "python",
+        ["hermes", "-p", "alpha", "gateway"],
+        expect.objectContaining({
+          env: expect.objectContaining({
+            API_SERVER_KEY: expect.stringMatching(/^mercury_[a-f0-9]{32}$/),
+          }),
+        }),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("lets Mercury-forced API server env override profile .env values", () => {
+    const root = mkdtempSync(join(tmpdir(), "mercury-profile-runtime-"));
+    const spawn = vi.fn().mockReturnValue(fakeChildProcess(4_321));
+    const manager = new ProfileRuntimeManager({
+      baseHermesHome: root,
+      hermesPython: "python",
+      hermesRepo: join(root, "hermes-agent"),
+      hermesScript: "hermes",
+      spawn,
+      readEnv: vi.fn().mockReturnValue({
+        API_SERVER_ENABLED: "false",
+        API_SERVER_HOST: "0.0.0.0",
+        API_SERVER_PORT: "9999",
+        API_SERVER_KEY: "alpha-secret",
+      }),
+      getConnectionConfig: vi.fn().mockReturnValue({ mode: "local" }),
+      ensureApiServerConfig: vi.fn(),
+      getEnhancedPath: vi.fn().mockReturnValue("/usr/bin"),
+      profileHome: (profile?: string) => profileHomeFor(root, profile),
+      getLocalApiPort: vi.fn().mockReturnValue(19_001),
+      getLocalApiUrl: vi.fn().mockReturnValue("http://127.0.0.1:19001"),
+      ...noOpTimers(),
+    });
+
+    try {
+      expect(manager.startGateway("alpha")).toBe(true);
+      expect(spawn).toHaveBeenCalledWith(
+        "python",
+        ["hermes", "-p", "alpha", "gateway"],
+        expect.objectContaining({
+          env: expect.objectContaining({
+            API_SERVER_ENABLED: "true",
+            API_SERVER_HOST: "127.0.0.1",
+            API_SERVER_PORT: "19001",
+            API_SERVER_KEY: "alpha-secret",
+          }),
+        }),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("stops every known local profile gateway during app shutdown", () => {
+    const root = mkdtempSync(join(tmpdir(), "mercury-profile-runtime-"));
+    writeGatewayPid(root, undefined, 8_001);
+    writeGatewayPid(root, "alpha", 8_002);
+    writeGatewayPid(root, "beta", 8_003);
+    const killed: Array<[number, NodeJS.Signals | number | undefined]> = [];
+    const killSpy = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      killed.push([pid as number, signal]);
+      return true;
+    });
+    const manager = new ProfileRuntimeManager({
+      baseHermesHome: root,
+      hermesScript: "hermes",
+      profileHome: (profile?: string) => profileHomeFor(root, profile),
+      ...noOpTimers(),
+    });
+
+    try {
+      manager.stopAllGateways();
+      expect(killed).toEqual(
+        expect.arrayContaining([
+          [8_001, "SIGTERM"],
+          [8_002, "SIGTERM"],
+          [8_003, "SIGTERM"],
+        ]),
+      );
+      expect(existsSync(join(root, "gateway.pid"))).toBe(false);
+      expect(existsSync(join(root, "profiles", "alpha", "gateway.pid"))).toBe(false);
+      expect(existsSync(join(root, "profiles", "beta", "gateway.pid"))).toBe(false);
+    } finally {
+      killSpy.mockRestore();
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("fails closed for named SSH profiles tunneled through the default remote API port", async () => {

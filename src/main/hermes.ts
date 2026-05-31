@@ -20,6 +20,7 @@ export {
   stopHealthPolling,
   startGateway,
   stopGateway,
+  stopAllGateways,
   isGatewayRunning,
   isApiReady,
   restartGateway,

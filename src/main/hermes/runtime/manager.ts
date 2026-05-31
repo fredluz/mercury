@@ -1,8 +1,13 @@
+import { randomUUID } from "crypto";
 import { spawn as defaultSpawn } from "child_process";
-import { existsSync, readFileSync, unlinkSync } from "fs";
+import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
-import { getConnectionConfig, readEnv } from "../../config";
+import {
+  getConnectionConfig,
+  readEnv,
+  setEnvValue as defaultSetEnvValue,
+} from "../../config";
 import {
   HERMES_HOME,
   HERMES_PYTHON,
@@ -63,6 +68,7 @@ export interface ProfileRuntimeManagerDeps {
   hermesScript?: string;
   spawn?: SpawnLike;
   readEnv?: typeof readEnv;
+  setEnvValue?: typeof defaultSetEnvValue;
   getConnectionConfig?: typeof getConnectionConfig;
   ensureApiServerConfig?: typeof ensureApiServerConfig;
   isApiServerReady?: typeof isApiServerReady;
@@ -88,6 +94,8 @@ export class ProfileRuntimeManager {
   private readonly hermesScript: string;
   private readonly spawn: SpawnLike;
   private readonly readEnv: typeof readEnv;
+  private readonly setEnvValue: typeof defaultSetEnvValue;
+  private readonly canPersistGeneratedEnv: boolean;
   private readonly getConnectionConfig: typeof getConnectionConfig;
   private readonly ensureApiServerConfig: typeof ensureApiServerConfig;
   private readonly isApiServerReady: typeof isApiServerReady;
@@ -113,6 +121,8 @@ export class ProfileRuntimeManager {
     this.hermesScript = deps.hermesScript ?? HERMES_SCRIPT;
     this.spawn = deps.spawn ?? defaultSpawn;
     this.readEnv = deps.readEnv ?? readEnv;
+    this.setEnvValue = deps.setEnvValue ?? defaultSetEnvValue;
+    this.canPersistGeneratedEnv = !deps.readEnv || Boolean(deps.setEnvValue);
     this.getConnectionConfig = deps.getConnectionConfig ?? getConnectionConfig;
     this.ensureApiServerConfig =
       deps.ensureApiServerConfig ?? ensureApiServerConfig;
@@ -184,7 +194,13 @@ export class ProfileRuntimeManager {
   startGateway(profile?: string): boolean {
     const normalizedProfile = normalizeProfile(profile);
     this.ensureInitialized(normalizedProfile);
-    if (this.isGatewayRunning(normalizedProfile)) return false;
+    if (stateHasLiveChild(this.stateFor(normalizedProfile))) return false;
+    if (this.isGatewayRunning(normalizedProfile)) {
+      // A pid-file-only gateway may be an old Hermes process launched before
+      // Mercury's current API contract. Refresh it instead of attaching to an
+      // unknown/stale API surface.
+      this.stopGateway(true, normalizedProfile);
+    }
     assertNoLocalPortConflict(
       {
         ...this.localRuntimeContext(),
@@ -195,6 +211,7 @@ export class ProfileRuntimeManager {
     );
 
     const state = this.stateFor(normalizedProfile);
+    const generatedApiServerKey = this.ensureLocalApiServerKey(normalizedProfile);
     const profileEnv = this.readEnv(normalizedProfile);
     const localApiPort = this.getLocalApiPort(normalizedProfile);
     const localApiHost = "127.0.0.1";
@@ -203,14 +220,17 @@ export class ProfileRuntimeManager {
       PATH: this.getEnhancedPath(),
       HOME: homedir(),
       HERMES_HOME: this.baseHermesHome,
-      API_SERVER_ENABLED: "true",
-      API_SERVER_HOST: localApiHost,
-      API_SERVER_PORT: String(localApiPort),
     };
 
     for (const [key, value] of Object.entries(profileEnv)) {
       if (value) gatewayEnv[key] = value;
     }
+
+    gatewayEnv.API_SERVER_ENABLED = "true";
+    gatewayEnv.API_SERVER_HOST = localApiHost;
+    gatewayEnv.API_SERVER_PORT = String(localApiPort);
+    const apiServerKey = generatedApiServerKey ?? profileEnv.API_SERVER_KEY;
+    if (apiServerKey) gatewayEnv.API_SERVER_KEY = apiServerKey;
 
     const args = this.gatewayCommandArgs(normalizedProfile);
     const child = this.spawn(this.hermesPython, args, {
@@ -259,8 +279,17 @@ export class ProfileRuntimeManager {
   }
 
   stopGateway(force = false, profile?: string): void {
-    const normalizedProfile = normalizeProfile(profile);
-    const state = this.stateFor(normalizedProfile);
+    this.stopGatewayForProfile(normalizeProfile(profile), force);
+  }
+
+  stopAllGateways(): void {
+    for (const profile of this.knownGatewayProfiles()) {
+      this.stopGatewayForProfile(profile, true);
+    }
+  }
+
+  private stopGatewayForProfile(profile: string, force: boolean): void {
+    const state = this.stateFor(profile);
     if (!force && !state.gatewayStartedByApp) return;
 
     if (state.gatewayProcess && !state.gatewayProcess.killed) {
@@ -268,7 +297,7 @@ export class ProfileRuntimeManager {
       state.gatewayProcess = null;
     }
 
-    const pid = this.readPidFile(normalizedProfile);
+    const pid = this.readPidFile(profile);
     if (pid) {
       try {
         process.kill(pid, "SIGTERM");
@@ -277,7 +306,7 @@ export class ProfileRuntimeManager {
       }
     }
 
-    const pidFile = this.pidFileFor(normalizedProfile);
+    const pidFile = this.pidFileFor(profile);
     if (existsSync(pidFile)) {
       try {
         unlinkSync(pidFile);
@@ -537,6 +566,36 @@ export class ProfileRuntimeManager {
     }
   }
 
+  private ensureLocalApiServerKey(profile: string): string | undefined {
+    const existing = this.readEnv(profile).API_SERVER_KEY;
+    if (existing) return existing;
+    if (!this.canPersistGeneratedEnv) return undefined;
+
+    const key = `mercury_${randomUUID().replace(/-/g, "")}`;
+    this.setEnvValue("API_SERVER_KEY", key, profile);
+    return key;
+  }
+
+  private knownGatewayProfiles(): string[] {
+    const profiles = new Set<string>(this.states.keys());
+    if (existsSync(this.pidFileFor("default"))) profiles.add("default");
+
+    const profilesDir = join(this.baseHermesHome, "profiles");
+    try {
+      for (const entry of readdirSync(profilesDir)) {
+        const profileDir = join(profilesDir, entry);
+        if (!statSync(profileDir).isDirectory()) continue;
+        if (existsSync(join(profileDir, "gateway.pid"))) {
+          profiles.add(normalizeProfile(entry));
+        }
+      }
+    } catch {
+      // Missing or unreadable profiles directory is fine.
+    }
+
+    return [...profiles];
+  }
+
   private localRuntimeContext(): Parameters<
     typeof resolveLocalApiRuntimeAttempt
   >[0] {
@@ -584,4 +643,8 @@ export class ProfileRuntimeManager {
   private homeFor(profile: string): string {
     return this.profileHome(profile);
   }
+}
+
+function stateHasLiveChild(state: RuntimeState): boolean {
+  return Boolean(state.gatewayProcess && !state.gatewayProcess.killed);
 }

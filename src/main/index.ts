@@ -6,7 +6,7 @@ import type { AppUpdater } from "electron-updater";
 import icon from "../../resources/icon.png?asset";
 import nightlyIcon from "../../resources/nightly-icon.png?asset";
 import { getConnectionConfig } from "./config";
-import { stopGateway, stopHealthPolling, setSshRemoteApiKey } from "./hermes";
+import { stopAllGateways, stopHealthPolling, setSshRemoteApiKey } from "./hermes";
 import { startSshTunnel, stopSshTunnel } from "./ssh-tunnel";
 import {
   sshGatewayStatus,
@@ -393,7 +393,7 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
-    stopGateway();
+    stopAllGateways();
     stopSshTunnel();
     app.quit();
   }
@@ -402,6 +402,6 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   stopHealthPolling();
   abortActiveChat();
-  stopGateway();
+  stopAllGateways();
   stopSshTunnel();
 });

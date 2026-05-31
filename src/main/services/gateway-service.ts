@@ -1,6 +1,7 @@
 import {
   startGateway as startLocalGateway,
   stopGateway as stopLocalGateway,
+  stopAllGateways as stopAllLocalGateways,
   isGatewayRunning,
   restartGateway as restartLocalGateway,
   markRuntimeStale,
@@ -88,6 +89,18 @@ export async function stopGateway(profile?: string): Promise<boolean> {
   }
   if (conn.mode === "remote") return false;
   stopLocalGateway(true, profile);
+  return true;
+}
+
+export async function stopAllGateways(): Promise<boolean> {
+  const conn = getConnectionConfig();
+  if (conn.mode === "remote") return false;
+  if (conn.mode === "ssh") {
+    // SSH gateways are profile-targeted remotely; local shutdown only owns local
+    // pid-file backed gateways and tunnels.
+    return false;
+  }
+  stopAllLocalGateways();
   return true;
 }
 

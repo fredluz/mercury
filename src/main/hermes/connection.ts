@@ -41,7 +41,10 @@ function readConfiguredApiPort(profile?: string): number | null {
     const configPath = configPathForProfile(profile);
     if (!existsSync(configPath)) return null;
     const content = readFileSync(configPath, "utf-8");
-    const apiBlock = content.match(/api_server:[\s\S]*?(?:\n\S|$)/i)?.[0] ?? content;
+    const apiBlocks = [...content.matchAll(/api_server:[\s\S]*?(?=\n\S|$)/gi)].map(
+      (match) => match[0],
+    );
+    const apiBlock = apiBlocks.at(-1) ?? content;
     const portMatch = apiBlock.match(/\bport:\s*(\d+)/i);
     if (!portMatch) return null;
     const port = Number(portMatch[1]);
@@ -328,15 +331,19 @@ export async function probeHermesCapabilities(
 //  Ensure API server is enabled in config
 // ────────────────────────────────────────────────────
 
+const MERCURY_API_SERVER_CONFIG_START = "# Mercury desktop API server config start";
+const MERCURY_API_SERVER_CONFIG_END = "# Mercury desktop API server config end";
+
 function apiServerConfigBlock(profile?: string): string {
   return `
-# Desktop app API server (auto-configured)
+${MERCURY_API_SERVER_CONFIG_START}
 platforms:
   api_server:
     enabled: true
     extra:
       port: ${defaultLocalApiPortForProfile(profile)}
       host: "${LOCAL_API_HOST}"
+${MERCURY_API_SERVER_CONFIG_END}
 `;
 }
 
@@ -350,12 +357,25 @@ export function ensureApiServerConfig(profile?: string): void {
       return;
     }
     const content = readFileSync(configPath, "utf-8");
-    // If api_server is already configured, preserve the user's explicit config.
-    if (/api_server/i.test(content)) return;
+    const managedBlock = new RegExp(
+      `${escapeRegExp(MERCURY_API_SERVER_CONFIG_START)}[\\s\\S]*?${escapeRegExp(MERCURY_API_SERVER_CONFIG_END)}\\n?`,
+      "m",
+    );
+    if (managedBlock.test(content)) {
+      writeFileSync(configPath, content.replace(managedBlock, addition.trimStart()), "utf-8");
+      return;
+    }
+    // A stale/disabled api_server block can leave Mercury attached to an old
+    // gateway surface. Append Mercury's managed block so our enabled host/port
+    // wins without deleting user-authored config.
     appendFileSync(configPath, addition, "utf-8");
   } catch {
     /* non-fatal */
   }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 
