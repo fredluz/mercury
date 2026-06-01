@@ -558,17 +558,6 @@ function Layout(): React.JSX.Element {
               </button>
             ))}
           </nav>
-
-          <div className="sidebar-footer">
-            <div className="sidebar-footer-text">
-              {activeProfile === "default"
-                ? t("common.appName")
-                : activeProfile}
-              {runtimeDiagnostic && runtimeDiagnostic.status !== "verified"
-                ? ` · runtime ${runtimeDiagnostic.status}`
-                : ""}
-            </div>
-          </div>
         </aside>
       )}
 
