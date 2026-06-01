@@ -42,7 +42,7 @@ Current fragments in `src/preload/api/index.ts` are:
 | `configApi` | `src/preload/api/config.ts` | env/config/model config, connection mode, remote/SSH tests, SSH tunnel controls |
 | `chatApi` | `src/preload/api/chat.ts` | send/abort chat, generated chat titles, local trace recording, chat stream listeners, and live activity trace events |
 | `navigationApi` | `src/preload/api/navigation.ts` | traces, gateway lifecycle/restart, platform toggles, sessions, profiles |
-| `knowledgeApi` | `src/preload/api/knowledge.ts` | memory, user profile, soul, tools, skills, skill content/metadata, batch skill mutation, Markdown skill import |
+| `knowledgeApi` | `src/preload/api/knowledge.ts` | memory, user profile, soul, tools, skills, skill content/metadata, batch skill mutation, Markdown skill import, skill source preview/import |
 | `modelsApi` | `src/preload/api/models.ts` | session cache/search, Codex app-server OAuth/model auth recovery, credential pool, provider model inventory, direct agent model config, provider inventory, legacy/manual models |
 | `appApi` | `src/preload/api/app.ts` | runtime diagnostics/revalidation/debug agent launch, updates, menu events, cron/schedule jobs, shell, backup/import, dump/log/system helpers, local perf telemetry |
 
@@ -52,7 +52,7 @@ Current `window.hermesAPI` preload methods by fragment are:
 - `configApi`: `getEnv`, `setEnv`, `getConfig`, `setConfig`, `getHermesHome`, `getModelConfig`, `setModelConfig`, `isRemoteMode`, `isRemoteOnlyMode`, `getConnectionConfig`, `setConnectionConfig`, `setSshConfig`, `testRemoteConnection`, `testSshConnection`, `isSshTunnelActive`, `startSshTunnel`, `stopSshTunnel`.
 - `chatApi`: `sendMessage`, `abortChat`, `resolveChatRunApproval`, `generateChatTitle`, `recordLocalChatTrace`, `onChatChunk`, `onChatDone`, `onChatToolProgress`, `onChatTraceEvent`, `onChatUsage`, `onChatError`.
 - `navigationApi`: `listTraceRuns`, `getTraceRun`, `listTraceRunsForSchedule`, `listCompletedScheduledRunsSince`, `listSkillTrainingRuns`, `startGateway`, `stopGateway`, `gatewayStatus`, `restartGateway`, `getPlatformEnabled`, `setPlatformEnabled`, `listSessions`, `getSessionMessages`, `listProfiles`, `createProfile`, `deleteProfile`, `setActiveProfile`.
-- `knowledgeApi`: `readMemory`, `addMemoryEntry`, `updateMemoryEntry`, `removeMemoryEntry`, `writeUserProfile`, `readSoul`, `writeSoul`, `resetSoul`, `getToolsets`, `setToolsetEnabled`, `listInstalledSkills`, `listBundledSkills`, `getSkillContent`, `getSkillMetadata`, `installSkill`, `uninstallSkill`, `mutateSkills`, `importSkillMarkdown`.
+- `knowledgeApi`: `readMemory`, `addMemoryEntry`, `updateMemoryEntry`, `removeMemoryEntry`, `writeUserProfile`, `readSoul`, `writeSoul`, `resetSoul`, `getToolsets`, `setToolsetEnabled`, `listInstalledSkills`, `listBundledSkills`, `getSkillContent`, `getSkillMetadata`, `installSkill`, `uninstallSkill`, `mutateSkills`, `importSkillMarkdown`, `previewSkillSource`, `importSkillSource`.
 - `modelsApi`: `listCachedSessions`, `syncSessionCache`, `updateSessionTitle`, `searchSessions`, `getCodexAuthStatus`, `startCodexDeviceAuth`, `pollCodexDeviceAuth`, `configureCodexAppServer`, `getCredentialPool`, `setCredentialPool`, `listModels`, `addModel`, `removeModel`, `updateModel`.
 - `appApi`: `getRuntimeDiagnostic`, `revalidateRuntime`, `launchRuntimeDebugAgent`, `checkForUpdates`, `downloadUpdate`, `installUpdate`, `getAppVersion`, `getPerfTelemetryConfig`, `recordPerfEvent`, `onUpdateAvailable`, `onUpdateDownloadProgress`, `onUpdateDownloaded`, `onUpdateNotAvailable`, `onUpdateError`, `onMenuNewChat`, `onMenuSearchSessions`, `listCronJobs`, `createCronJob`, `createScheduleJob`, `updateCronJob`, `removeCronJob`, `pauseCronJob`, `resumeCronJob`, `triggerCronJob`, `openExternal`, `runHermesBackup`, `runHermesImport`, `runHermesDump`, `discoverMemoryProviders`, `listMcpServers`, `readLogs`.
 
@@ -68,7 +68,7 @@ Current `window.hermesAPI` preload methods by fragment are:
 | `src/main/ipc/trace.ts` | trace run reads, skill-training run reads, and local chat trace writes |
 | `src/main/ipc/gateway.ts` | gateway lifecycle, restart, and platform toggles |
 | `src/main/ipc/sessions.ts` | sessions, profiles, session cache sync, session search |
-| `src/main/ipc/knowledge.ts` | memory, user profile, soul, tools, skills, skill content/metadata, batch skill mutation, skill Markdown import |
+| `src/main/ipc/knowledge.ts` | memory, user profile, soul, tools, skills, skill content/metadata, batch skill mutation, skill Markdown import, skill source preview/import |
 | `src/main/ipc/models.ts` | Codex app-server OAuth/model auth recovery, credential pool, and model CRUD |
 | `src/main/ipc/cron.ts` | cron/schedule job listing, creation, update, and lifecycle actions |
 | `src/main/ipc/system.ts` | external URLs, runtime diagnostics/revalidation/debug agent launch, backup/import, debug dump, MCP servers, memory providers, logs, local perf telemetry |
@@ -90,7 +90,7 @@ Examples by domain:
 - Gateway/platform: `start-gateway`, `stop-gateway`, `gateway-status`, `restart-gateway`, `get-platform-enabled`, `set-platform-enabled`.
 - Sessions/profiles/cache/search: `list-sessions`, `get-session-messages`, `list-profiles`, `create-profile`, `delete-profile`, `set-active-profile`, `list-cached-sessions`, `sync-session-cache`, `update-session-title`, `search-sessions`.
   These API names remain profile-based for compatibility and Hermes storage/runtime identity; renderer product copy presents them to users as Agents.
-- Knowledge/skills: `read-memory`, `add-memory-entry`, `update-memory-entry`, `remove-memory-entry`, `write-user-profile`, `read-soul`, `write-soul`, `reset-soul`, `get-toolsets`, `set-toolset-enabled`, `list-installed-skills`, `list-bundled-skills`, `get-skill-content`, `get-skill-metadata`, `install-skill`, `uninstall-skill`, `mutate-skills`, `import-skill-markdown`.
+- Knowledge/skills: `read-memory`, `add-memory-entry`, `update-memory-entry`, `remove-memory-entry`, `write-user-profile`, `read-soul`, `write-soul`, `reset-soul`, `get-toolsets`, `set-toolset-enabled`, `list-installed-skills`, `list-bundled-skills`, `get-skill-content`, `get-skill-metadata`, `install-skill`, `uninstall-skill`, `mutate-skills`, `import-skill-markdown`, `preview-skill-source`, `import-skill-source`.
 - Codex auth/model recovery and models/credentials: `get-codex-auth-status`, `start-codex-device-auth`, `poll-codex-device-auth`, `configure-codex-app-server`, `get-credential-pool`, `set-credential-pool`, `list-models`, `add-model`, `remove-model`, `update-model`.
 - Cron/schedule/system/perf: `list-cron-jobs`, `create-cron-job`, `create-schedule-job`, `update-cron-job`, `remove-cron-job`, `pause-cron-job`, `resume-cron-job`, `trigger-cron-job`, `open-external`, `run-hermes-backup`, `run-hermes-import`, `run-hermes-dump`, `discover-memory-providers`, `list-mcp-servers`, `read-logs`, `get-perf-telemetry-config`, `record-perf-event`. Remote cron HTTP is handled by the internal BFF jobs subclient; local cron file/CLI behavior remains local to main.
 
@@ -215,7 +215,7 @@ Connection-mode behavior is distributed across IPC handlers and main services:
 - Several handlers branch on `getConnectionConfig()`:
   - `config.ts` uses SSH implementations for remote env/config/model/Hermes-home reads and writes when mode is `ssh`.
   - `install.ts` uses SSH implementations for Hermes version/doctor/update when mode is `ssh`.
-  - `knowledge.ts` uses SSH implementations for memory/soul/tools/skills when mode is `ssh`, rejects skill mutations and manual Markdown skill import in pure `remote` mode, and returns a gateway restart warning after successful local/SSH skill import when the gateway is running.
+  - `knowledge.ts` uses SSH implementations for memory/soul/tools/skills when mode is `ssh`, rejects skill mutations, manual Markdown skill import, and source import in pure `remote` mode because they write to the selected profile filesystem, keeps `preview-skill-source` as a read-only GitHub fetch, and returns a gateway restart warning after successful local/SSH skill import when the gateway is running.
   - `chat.ts` ensures SSH tunnel/gateway readiness for SSH chat and lazy-starts the local gateway when not remote and not already running.
 - `src/renderer/src/screens/Layout/Layout.tsx` uses `window.hermesAPI.isRemoteOnlyMode()` to gate filesystem-backed screens in pure remote HTTP mode. The source comment notes that SSH tunnel mode has full access and is not treated as remote-only by that renderer check.
 

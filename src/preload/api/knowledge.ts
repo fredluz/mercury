@@ -5,6 +5,10 @@ import type {
   SkillMetadata,
   SkillMutationBatchResult,
   SkillMutationTarget,
+  SkillSourceImportRequest,
+  SkillSourceImportResult,
+  SkillSourcePreviewRequest,
+  SkillSourcePreviewResult,
 } from "../../shared/skills";
 
 export const knowledgeApi = {
@@ -97,4 +101,13 @@ export const knowledgeApi = {
     profile?: string,
   ): Promise<SkillMarkdownImportResult> =>
     ipcRenderer.invoke("import-skill-markdown", request, profile),
+  previewSkillSource: (
+    request: SkillSourcePreviewRequest,
+  ): Promise<SkillSourcePreviewResult> =>
+    ipcRenderer.invoke("preview-skill-source", request),
+  importSkillSource: (
+    request: SkillSourceImportRequest,
+    profile?: string,
+  ): Promise<SkillSourceImportResult> =>
+    ipcRenderer.invoke("import-skill-source", request, profile),
 };

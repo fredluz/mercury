@@ -26,8 +26,12 @@ export {
   restartGateway,
   getRuntimeIdentity,
   getRuntimeDiagnostic,
+  getGatewayDetailedHealth,
   markRuntimeStale,
   markAllRuntimesStale,
   clearRuntimeStale,
+  setRuntimeApplyState,
+  clearRuntimeApplyState,
+  clearRuntimeStaleIfApplySource,
   revalidateRuntime,
 } from "./hermes/gateway";

@@ -137,6 +137,28 @@ describe("ProfileHermesBffClient", () => {
     ).rejects.toMatchObject({ code: "invalid-json", requestId: "req-json-bad" });
   });
 
+  it("reads detailed health including active agent counts", async () => {
+    const { baseUrl, seen } = await fakeHermes((req, res) => {
+      expect(req.method).toBe("GET");
+      expect(req.url).toBe("/health/detailed");
+      json(res, {
+        status: "ok",
+        gateway_state: "running",
+        active_agents: 2,
+        pid: 1234,
+      });
+    });
+    const client = new ProfileHermesBffClient(runtime(baseUrl), {
+      requestId: () => "req-health-detailed",
+    });
+
+    await expect(client.detailedHealth()).resolves.toMatchObject({
+      active_agents: 2,
+      pid: 1234,
+    });
+    expect(seen.map((request) => request.url)).toEqual(["/health/detailed"]);
+  });
+
   it("retries safe transient GETs once after health recovers", async () => {
     let valueAttempts = 0;
     let healthAttempts = 0;

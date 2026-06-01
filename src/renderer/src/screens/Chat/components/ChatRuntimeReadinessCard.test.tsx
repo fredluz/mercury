@@ -32,6 +32,21 @@ const t = (key: string): string => {
     "chat.runtimeDebugStarted":
       "Debugging agent launched in a terminal window.",
     "chat.runtimeDebugFailed": "Could not launch debugging agent.",
+    "chat.runtimeApplyConfirmTitle": "Skill changes are ready",
+    "chat.runtimeApplyConfirmCopy":
+      "Skill changes are ready, but a background task is still running. Applying now will stop it.",
+    "chat.runtimeApplyNow": "Apply now",
+    "chat.runtimeApplyLater": "Later",
+    "chat.runtimeApplyApplying": "Applying runtime update...",
+    "chat.runtimeApplyApplyingShort": "Applying...",
+    "chat.runtimeApplyNowQueued": "Runtime update started.",
+    "chat.runtimeApplyNoPendingUpdate": "No pending runtime update found.",
+    "chat.runtimeApplyNowFailed": "Could not apply runtime update.",
+    "chat.runtimeApplyDeferring": "Deferring runtime update...",
+    "chat.runtimeApplyDeferringShort": "Deferring...",
+    "chat.runtimeApplyDeferred":
+      "Runtime update deferred. Mercury will apply it when gateway work is idle.",
+    "chat.runtimeApplyDeferFailed": "Could not defer runtime update.",
   };
   return dictionary[key] || key;
 };
@@ -73,6 +88,8 @@ function installHermesApiMock(): void {
       startGateway: vi.fn().mockResolvedValue(true),
       restartGateway: vi.fn().mockResolvedValue(true),
       revalidateRuntime: vi.fn().mockResolvedValue(true),
+      applyPendingRuntimeUpdateNow: vi.fn().mockResolvedValue(true),
+      deferPendingRuntimeUpdate: vi.fn().mockResolvedValue(true),
       launchRuntimeDebugAgent: vi
         .fn()
         .mockResolvedValue({ success: true, agent: "codex" }),
@@ -241,5 +258,139 @@ describe("ChatRuntimeReadinessCard", () => {
       agent: "codex",
       profile: "default",
     });
+  });
+
+  const staleFailedDiagnostic: RuntimeDiagnostic = {
+    ...unverifiedDiagnostic,
+    status: "stale",
+    stale: true,
+    staleReason: "Skills changed for profile runtime.",
+    runtimeApplyStatus: "failed",
+    runtimeApplyFailureReason: "gateway exited with code 1",
+    mismatchReason: undefined,
+  };
+
+  const stalePendingDiagnostic: RuntimeDiagnostic = {
+    ...unverifiedDiagnostic,
+    status: "stale",
+    stale: true,
+    staleReason: "Skills changed for profile runtime.",
+    runtimeApplyStatus: "pending-idle",
+    mismatchReason: undefined,
+  };
+
+  const stalePendingConfirmDiagnostic: RuntimeDiagnostic = {
+    ...unverifiedDiagnostic,
+    status: "stale",
+    stale: true,
+    staleReason: "Skills changed for profile runtime.",
+    runtimeApplyStatus: "pending-confirm",
+    mismatchReason: undefined,
+  };
+
+  it("surfaces a manual repair with the failure reason for a failed apply", () => {
+    installHermesApiMock();
+    render(
+      <ChatRuntimeReadinessCard
+        diagnostic={staleFailedDiagnostic}
+        profile="default"
+        t={t}
+      />,
+    );
+
+    expect(
+      screen.getByText("Chat requires a verified API runtime"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("gateway exited with code 1")).toBeInTheDocument();
+    // Failed apply must not auto-trigger a repair; the user drives it manually.
+    expect(window.hermesAPI.startGateway).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: /Verify API runtime/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("repairs the runtime when the failed-apply Verify button is clicked", async () => {
+    installHermesApiMock();
+    render(
+      <ChatRuntimeReadinessCard
+        diagnostic={staleFailedDiagnostic}
+        profile="default"
+        t={t}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Verify API runtime/i }),
+    );
+
+    await waitFor(() =>
+      expect(window.hermesAPI.startGateway).toHaveBeenCalledWith("default"),
+    );
+    expect(window.hermesAPI.revalidateRuntime).toHaveBeenCalledWith("default");
+  });
+
+  it("shows apply-now and later actions when background gateway work blocks auto-apply", async () => {
+    installHermesApiMock();
+    const onRuntimeDiagnosticRefresh = vi.fn();
+    render(
+      <ChatRuntimeReadinessCard
+        diagnostic={stalePendingConfirmDiagnostic}
+        profile="default"
+        onRuntimeDiagnosticRefresh={onRuntimeDiagnosticRefresh}
+        t={t}
+      />,
+    );
+
+    expect(screen.getByText("Skill changes are ready")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Skill changes are ready, but a background task is still running. Applying now will stop it.",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Apply now/i }));
+
+    await waitFor(() =>
+      expect(window.hermesAPI.applyPendingRuntimeUpdateNow).toHaveBeenCalledWith(
+        "default",
+      ),
+    );
+    expect(onRuntimeDiagnosticRefresh).toHaveBeenCalled();
+  });
+
+  it("defers pending-confirm skill applies when Later is clicked", async () => {
+    installHermesApiMock();
+    render(
+      <ChatRuntimeReadinessCard
+        diagnostic={stalePendingConfirmDiagnostic}
+        profile="default"
+        t={t}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Later/i }));
+
+    await waitFor(() =>
+      expect(window.hermesAPI.deferPendingRuntimeUpdate).toHaveBeenCalledWith(
+        "default",
+      ),
+    );
+  });
+
+  it("hides the readiness card while a skill apply is pending idle", async () => {
+    installHermesApiMock();
+    render(
+      <ChatRuntimeReadinessCard
+        diagnostic={stalePendingDiagnostic}
+        profile="default"
+        t={t}
+      />,
+    );
+
+    expect(
+      screen.queryByText("Chat requires a verified API runtime"),
+    ).not.toBeInTheDocument();
+    // Backend owns the auto-apply; the card must not race it with a verify.
+    await Promise.resolve();
+    expect(window.hermesAPI.startGateway).not.toHaveBeenCalled();
   });
 });

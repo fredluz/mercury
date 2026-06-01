@@ -2,15 +2,13 @@ import { execFileSync } from "child_process";
 import {
   cpSync,
   existsSync,
-  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   rmSync,
   statSync,
 } from "fs";
-import { dirname, isAbsolute, join, relative, resolve } from "path";
+import { dirname, join, relative, resolve } from "path";
 import type {
   InstalledSkillSummary,
   SkillAssociatedFile,
@@ -23,7 +21,14 @@ import type {
 import { homedir } from "os";
 import { HERMES_HOME, HERMES_PYTHON, HERMES_SCRIPT, HERMES_REPO, getEnhancedPath } from "./install/paths";
 import { profileHome } from "./utils";
+import {
+  isInside,
+  isSafeSegment,
+  safeDestinationParent,
+  safeExistingMutationPath,
+} from "./skills/path-safety";
 export { prepareSkillMarkdownImport, isValidSkillImportProfile, importSkillMarkdown } from "./skills/importer";
+export { importSkillDirectory } from "./skills/directory-importer";
 
 export interface InstalledSkill extends InstalledSkillSummary {}
 
@@ -379,59 +384,6 @@ function bundledSkillsWithPaths(): InstalledSkill[] {
     path: join(HERMES_REPO, "skills", skill.category, skill.directoryName),
     directoryName: skill.directoryName,
   }));
-}
-
-function isInside(parent: string, child: string): boolean {
-  const rel = relative(parent, child);
-  return rel === "" || (Boolean(rel) && !rel.startsWith("..") && !isAbsolute(rel));
-}
-
-function isInsideReal(parent: string, child: string): boolean {
-  return isInside(realpathSync.native(parent), realpathSync.native(child));
-}
-
-function hasSymlinkInPath(root: string, target: string): boolean {
-  if (!existsSync(root)) return false;
-  let current = resolve(root);
-  try {
-    if (lstatSync(current).isSymbolicLink()) return true;
-  } catch {
-    return false;
-  }
-
-  const rel = relative(current, resolve(target));
-  if (!rel || rel.startsWith("..") || isAbsolute(rel)) return false;
-  for (const part of rel.split(/[\\/]/)) {
-    current = join(current, part);
-    if (!existsSync(current)) return false;
-    if (lstatSync(current).isSymbolicLink()) return true;
-  }
-  return false;
-}
-
-function safeExistingMutationPath(root: string, target: string): boolean {
-  return (
-    existsSync(root) &&
-    existsSync(target) &&
-    isInside(root, target) &&
-    isInsideReal(root, target) &&
-    !hasSymlinkInPath(root, target)
-  );
-}
-
-function safeDestinationParent(root: string, destination: string): boolean {
-  const parent = dirname(destination);
-  return (
-    existsSync(root) &&
-    existsSync(parent) &&
-    isInside(root, destination) &&
-    isInsideReal(root, parent) &&
-    !hasSymlinkInPath(root, parent)
-  );
-}
-
-function isSafeSegment(value: string | undefined): boolean {
-  return Boolean(value && !value.includes("/") && !value.includes("\\") && !value.includes("\0"));
 }
 
 function failure(

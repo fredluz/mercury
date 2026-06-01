@@ -13,12 +13,12 @@
     "lint": "eslint --cache .",
     "check:loc": "node scripts/check-loc.mjs",
     "check:docs": "node scripts/check-docs.mjs",
-    "test": "vitest run",
+    "test": "ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs run",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck:cli": "tsc --noEmit -p tsconfig.cli.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web && npm run typecheck:cli",
-    "test:cli": "vitest run tests/cli-*.test.ts",
+    "test:cli": "ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs run tests/cli-*.test.ts",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "dev:fresh": "HERMES_HOME=$(mktemp -d -t hermes-fresh) electron-vite dev",
@@ -51,7 +51,7 @@
     "build:rpm": "npm run build && electron-builder --linux rpm",
     "open:latest:mac": "node scripts/open-latest-mac-build.mjs",
     "install:dock:mac": "node scripts/install-mac-dock-launcher.mjs --dock",
-    "test:watch": "vitest"
+    "test:watch": "ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

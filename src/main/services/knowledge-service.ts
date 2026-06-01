@@ -15,6 +15,7 @@ import {
   getSkillMetadata,
   mutateLocalSkills,
   importSkillMarkdown,
+  importSkillDirectory,
 } from "../skills";
 import type {
   SkillMarkdownImportRequest,
@@ -22,8 +23,11 @@ import type {
   SkillMutationBatchResult,
   SkillMutationItemResult,
   SkillMutationTarget,
+  SkillSourceImportRequest,
+  SkillSourcePreviewRequest,
 } from "../../shared/skills";
-import { isGatewayRunning, markRuntimeStale } from "../hermes";
+import { markRuntimeStale } from "../hermes";
+import { requestSkillRuntimeApply } from "./runtime-apply-service";
 import {
   sshReadMemory,
   sshAddMemoryEntry,
@@ -41,14 +45,21 @@ import {
   sshGetSkillMetadata,
   sshMutateSkills,
   sshImportSkillMarkdown,
-  sshGatewayStatus,
+  sshImportSkillDirectory,
 } from "../ssh-remote";
+import {
+  fetchSkillSourceDirectory,
+  previewSkillSource,
+} from "../skills/source-service";
 
 function markProfileMutation(profile: string | undefined, area: string): void {
   markRuntimeStale(profile, `${area} changed for profile runtime.`);
 }
 
-const skillMutationQueues = new Map<string, Promise<SkillMutationBatchResult>>();
+const skillMutationQueues = new Map<
+  string,
+  Promise<SkillMutationBatchResult>
+>();
 
 function skillQueueKey(profile: string | undefined): string {
   return profile?.trim() || "default";
@@ -59,18 +70,22 @@ async function enqueueSkillMutation(
   task: () => Promise<SkillMutationBatchResult>,
 ): Promise<SkillMutationBatchResult> {
   const key = skillQueueKey(profile);
-  const previous = skillMutationQueues.get(key) ?? Promise.resolve({
-    success: true,
-    updated: 0,
-    failed: 0,
-    results: [],
-  });
-  const current = previous.catch(() => ({
-    success: false,
-    updated: 0,
-    failed: 0,
-    results: [],
-  })).then(task);
+  const previous =
+    skillMutationQueues.get(key) ??
+    Promise.resolve({
+      success: true,
+      updated: 0,
+      failed: 0,
+      results: [],
+    });
+  const current = previous
+    .catch(() => ({
+      success: false,
+      updated: 0,
+      failed: 0,
+      results: [],
+    }))
+    .then(task);
   skillMutationQueues.set(key, current);
   try {
     return await current;
@@ -81,7 +96,9 @@ async function enqueueSkillMutation(
   }
 }
 
-function isSkillMutationTargetLike(target: unknown): target is SkillMutationTarget {
+function isSkillMutationTargetLike(
+  target: unknown,
+): target is SkillMutationTarget {
   return (
     Boolean(target) &&
     typeof target === "object" &&
@@ -116,9 +133,16 @@ function remoteSkillMutationFailure(target: unknown): SkillMutationItemResult {
   };
 }
 
-function remoteSkillMutationBatch(targets: SkillMutationTarget[]): SkillMutationBatchResult {
+function remoteSkillMutationBatch(
+  targets: SkillMutationTarget[],
+): SkillMutationBatchResult {
   const results = targets.map(remoteSkillMutationFailure);
-  return { success: results.length === 0, updated: 0, failed: results.length, results };
+  return {
+    success: results.length === 0,
+    updated: 0,
+    failed: results.length,
+    results,
+  };
 }
 
 export function readMemoryForProfile(profile?: string) {
@@ -286,7 +310,10 @@ export async function mutateSkillsForProfile(
         ? await sshMutateSkills(conn.ssh, safeTargets, profile)
         : await mutateLocalSkills(safeTargets, profile);
     if (result.results.some((item) => item.success && item.changed)) {
-      markProfileMutation(profile, "Skills");
+      await requestSkillRuntimeApply(
+        profile,
+        "Skills changed for profile runtime.",
+      );
     }
     return result;
   });
@@ -301,7 +328,9 @@ export async function installSkillForProfile(
     profile,
   );
   const item = result.results[0];
-  return item?.success ? { success: true } : { success: false, error: item?.error || "Failed to install skill." };
+  return item?.success
+    ? { success: true }
+    : { success: false, error: item?.error || "Failed to install skill." };
 }
 
 export async function uninstallSkillForProfile(name: string, profile?: string) {
@@ -310,7 +339,9 @@ export async function uninstallSkillForProfile(name: string, profile?: string) {
     profile,
   );
   const item = result.results[0];
-  return item?.success ? { success: true } : { success: false, error: item?.error || "Failed to uninstall skill." };
+  return item?.success
+    ? { success: true }
+    : { success: false, error: item?.error || "Failed to uninstall skill." };
 }
 
 export async function importSkillMarkdownForProfile(
@@ -320,9 +351,11 @@ export async function importSkillMarkdownForProfile(
   const conn = getConnectionConfig();
   if (conn.mode === "ssh" && conn.ssh) {
     const result = await sshImportSkillMarkdown(conn.ssh, request, profile);
-    if (result.success) markProfileMutation(profile, "Skills");
-    if (result.success && (await sshGatewayStatus(conn.ssh, profile))) {
-      return { ...result, warning: "gateway-restart-required" as const };
+    if (result.success) {
+      await requestSkillRuntimeApply(
+        profile,
+        "Skills changed for profile runtime.",
+      );
     }
     return result;
   }
@@ -335,9 +368,71 @@ export async function importSkillMarkdownForProfile(
     };
   }
   const result = importSkillMarkdown(request, profile);
-  if (result.success) markProfileMutation(profile, "Skills");
-  if (result.success && isGatewayRunning(profile)) {
-    return { ...result, warning: "gateway-restart-required" as const };
+  if (result.success) {
+    await requestSkillRuntimeApply(
+      profile,
+      "Skills changed for profile runtime.",
+    );
+  }
+  return result;
+}
+
+export function previewSkillSourceForProfile(
+  request: SkillSourcePreviewRequest,
+  _profile?: string,
+) {
+  return previewSkillSource(request);
+}
+
+export async function importSkillSourceForProfile(
+  request: SkillSourceImportRequest,
+  profile?: string,
+) {
+  const conn = getConnectionConfig();
+  if (conn.mode === "remote") {
+    return {
+      success: false,
+      code: "write-failed",
+      error:
+        "Skill source import is only available in local and SSH modes because it writes to the selected profile's filesystem.",
+    };
+  }
+
+  const fetched = await fetchSkillSourceDirectory(request);
+  if (!fetched.success) return fetched;
+
+  const importRequest = {
+    files: fetched.files,
+    name: request.name,
+    category: request.category,
+    description: request.description,
+    directoryName: request.directoryName,
+    overwrite: request.overwrite,
+    source: fetched.source,
+    candidate: fetched.candidate,
+  };
+
+  if (conn.mode === "ssh" && conn.ssh) {
+    const result = await sshImportSkillDirectory(
+      conn.ssh,
+      importRequest,
+      profile,
+    );
+    if (result.success) {
+      await requestSkillRuntimeApply(
+        profile,
+        "Skills changed for profile runtime.",
+      );
+    }
+    return result;
+  }
+
+  const result = importSkillDirectory(importRequest, profile);
+  if (result.success) {
+    await requestSkillRuntimeApply(
+      profile,
+      "Skills changed for profile runtime.",
+    );
   }
   return result;
 }

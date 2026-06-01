@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, memo } from "react";
 import { Activity, Plus, Search, X, ChatBubble } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
 import { useCachedSessions } from "./useCachedSessions";
+import { useSessionRuntimeActivity } from "./useSessionRuntimeActivity";
 import {
   formatSessionFullDate,
   formatSessionModel,
@@ -42,6 +43,8 @@ function highlightSnippet(snippet: string): React.JSX.Element {
 const SessionCard = memo(function SessionCard({
   session,
   isActive,
+  isRunActive,
+  runActiveLabel,
   showFullDate,
   onClick,
   onOpenTrace,
@@ -50,6 +53,8 @@ const SessionCard = memo(function SessionCard({
 }: {
   session: CachedSession;
   isActive: boolean;
+  isRunActive: boolean;
+  runActiveLabel: string;
   showFullDate: boolean;
   onClick: () => void;
   onOpenTrace: () => void;
@@ -61,6 +66,13 @@ const SessionCard = memo(function SessionCard({
       <button className="sessions-card-primary" onClick={onClick}>
         <div className="sessions-card-main">
           <span className="sessions-card-title">
+            {isRunActive ? (
+              <span
+                className="session-activity-dot"
+                title={runActiveLabel}
+                aria-label={runActiveLabel}
+              />
+            ) : null}
             {session.title || "New conversation"}
           </span>
           <span className="sessions-card-time">
@@ -113,6 +125,7 @@ function Sessions({
     limit: 50,
     refreshToken,
   });
+  const { activeBySessionKey } = useSessionRuntimeActivity();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -214,7 +227,18 @@ function Sessions({
                     onClick={() => onResumeSession(r.sessionId, r.title, r.profile)}
                   >
                     <div className="sessions-card-main">
-                      <span className="sessions-card-title">{title}</span>
+                      <span className="sessions-card-title">
+                        {activeBySessionKey.has(
+                          sessionRowKey(r.sessionId, r.profile),
+                        ) ? (
+                          <span
+                            className="session-activity-dot"
+                            title={t("sessions.runActive")}
+                            aria-label={t("sessions.runActive")}
+                          />
+                        ) : null}
+                        {title}
+                      </span>
                       <span className="sessions-card-time">
                         {formatSessionFullDate(r.startedAt)}
                       </span>
@@ -280,6 +304,10 @@ function Sessions({
                   key={sessionRowKey(s.id, s.profile)}
                   session={s}
                   isActive={isActiveSession(currentSessionId, currentSessionProfile, s.id, s.profile)}
+                  isRunActive={activeBySessionKey.has(
+                    sessionRowKey(s.id, s.profile),
+                  )}
+                  runActiveLabel={t("sessions.runActive")}
                   showFullDate={
                     group.label === "thisWeek" || group.label === "earlier"
                   }

@@ -1,6 +1,7 @@
 import { ipcRenderer } from "electron";
 import type { PerfTelemetryConfig, RendererPerfEvent } from "../../shared/perf";
 import type {
+  ProfileSessionRuntimeActivitySnapshot,
   RuntimeDebugAgentRequest,
   RuntimeDebugAgentResult,
   RuntimeDiagnostic,
@@ -16,8 +17,16 @@ export const appApi = {
   // Runtime diagnostics
   getRuntimeDiagnostic: (profile?: string): Promise<RuntimeDiagnostic> =>
     ipcRenderer.invoke("get-runtime-diagnostic", profile),
+  getSessionRuntimeActivity: (
+    profile?: string,
+  ): Promise<ProfileSessionRuntimeActivitySnapshot[]> =>
+    ipcRenderer.invoke("get-session-runtime-activity", profile),
   revalidateRuntime: (profile?: string): Promise<boolean> =>
     ipcRenderer.invoke("revalidate-runtime", profile),
+  applyPendingRuntimeUpdateNow: (profile?: string): Promise<boolean> =>
+    ipcRenderer.invoke("apply-pending-runtime-update-now", profile),
+  deferPendingRuntimeUpdate: (profile?: string): Promise<boolean> =>
+    ipcRenderer.invoke("defer-pending-runtime-update", profile),
   launchRuntimeDebugAgent: (
     request: RuntimeDebugAgentRequest,
   ): Promise<RuntimeDebugAgentResult> =>

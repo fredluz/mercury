@@ -91,6 +91,108 @@ export type PreparedSkillMarkdownImport = {
   markdown: string;
 };
 
+export type ParsedSkillSource = {
+  kind: "github";
+  owner: string;
+  repo: string;
+  originalSource: string;
+  pathKind: "repo" | "tree" | "blob" | "raw";
+  rawRefAndPath?: string[];
+  ref?: string;
+  path?: string;
+  skillSelector?: string;
+};
+
+export type SkillSourceCandidateId =
+  `github:${string}/${string}@${string}:${string}`;
+
+export type SkillSourceCandidate = {
+  candidateId: SkillSourceCandidateId;
+  name: string;
+  category: string;
+  directoryName: string;
+  description: string;
+  skillPath: string;
+  sourceLabel: string;
+  commitSha: string;
+  treeSha?: string;
+  valid: boolean;
+  error?: string;
+};
+
+export type SkillSourcePreviewRequest = {
+  source: string;
+  skillSelector?: string;
+};
+
+export type SkillSourceFailureCode =
+  | "invalid-source"
+  | "unsupported-source"
+  | "fetch-failed"
+  | "rate-limited"
+  | "source-too-large"
+  | "multiple-candidates"
+  | "not-found"
+  | "invalid-markdown"
+  | "invalid-name"
+  | "invalid-category"
+  | "duplicate"
+  | "write-failed"
+  | "unsupported-remote-mode";
+
+export type SkillSourcePreviewResult =
+  | {
+      success: true;
+      source: ParsedSkillSource;
+      candidates: SkillSourceCandidate[];
+    }
+  | {
+      success: false;
+      code: Extract<
+        SkillSourceFailureCode,
+        | "invalid-source"
+        | "unsupported-source"
+        | "fetch-failed"
+        | "rate-limited"
+        | "source-too-large"
+        | "not-found"
+      >;
+      error: string;
+    };
+
+export type SkillSourceImportRequest = {
+  source: string;
+  candidateId?: string;
+  skillSelector?: string;
+  name?: string;
+  category?: string;
+  description?: string;
+  directoryName?: string;
+  overwrite?: boolean;
+};
+
+export type SkillSourceImportResult =
+  | {
+      success: true;
+      skill: {
+        name: string;
+        category: string;
+        description: string;
+        path: string;
+        directoryName: string;
+      };
+      source: ParsedSkillSource;
+      candidate: SkillSourceCandidate;
+      warning?: "gateway-restart-required";
+    }
+  | {
+      success: false;
+      code: SkillSourceFailureCode;
+      error: string;
+      source?: ParsedSkillSource;
+      candidates?: SkillSourceCandidate[];
+    };
+
 export type SkillAssociatedFile = {
   name: string;
   relativePath: string;

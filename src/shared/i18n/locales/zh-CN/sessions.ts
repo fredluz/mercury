@@ -20,4 +20,5 @@ export default {
   emptyHint: "开始聊天以创建第一条会话",
   messages: "条消息",
   messageSingular: "条消息",
+  runActive: "运行中",
 } as const;

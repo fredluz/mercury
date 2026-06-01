@@ -57,6 +57,8 @@ export default {
   sidebarEmptyAgents: "No agent chats yet",
   sidebarEmptyAgent: "No chats yet",
   sidebarUnknownAgent: "Unknown agent",
+  sidebarSessionActive: "Active run",
+  sidebarAgentActive: "Agent has an active run",
   sidebarStartWithAgent: "Start chat with {{agent}}",
   sidebarChatCount: "{{count}} chats",
   sidebarChatCountOne: "1 chat",
@@ -101,6 +103,37 @@ export default {
   runtimeDebugLaunchingShort: "Launching...",
   runtimeDebugStarted: "Debugging agent launched in a terminal window.",
   runtimeDebugFailed: "Could not launch debugging agent.",
+  runtimeNoticeVerified: "Runtime verified",
+  runtimeNoticeUpdatePending: "Runtime update pending",
+  runtimeNoticeConfirmPending: "Runtime update waiting",
+  runtimeNoticeUpdating: "Runtime updating",
+  runtimeNoticeUpdateFailed: "Runtime update failed",
+  runtimeNoticeUpdateNeeded: "Runtime update needed",
+  runtimeNoticeNeedsAttention: "Runtime needs attention",
+  runtimeNoticePendingIdleMessage:
+    "Skill changes saved. Mercury will apply them when chat and gateway work are idle.",
+  runtimeNoticeApplyingMessage:
+    "Skill changes saved. Mercury is restarting the runtime now.",
+  runtimeNoticeFailedWithReason: "Runtime update failed: {{reason}}",
+  runtimeNoticeFailedMessage:
+    "Runtime update failed. Open chat to retry applying the changes.",
+  runtimeNoticeGenericStaleMessage:
+    "Runtime settings changed. Restart the runtime to apply the update.",
+  runtimeApplyConfirmTitle: "Skill changes are ready",
+  runtimeApplyConfirmCopy:
+    "Skill changes are ready, but a background task is still running. Applying now will stop it.",
+  runtimeApplyNow: "Apply now",
+  runtimeApplyLater: "Later",
+  runtimeApplyApplying: "Applying runtime update...",
+  runtimeApplyApplyingShort: "Applying...",
+  runtimeApplyNowQueued: "Runtime update started.",
+  runtimeApplyNoPendingUpdate: "No pending runtime update found.",
+  runtimeApplyNowFailed: "Could not apply runtime update.",
+  runtimeApplyDeferring: "Deferring runtime update...",
+  runtimeApplyDeferringShort: "Deferring...",
+  runtimeApplyDeferred:
+    "Runtime update deferred. Mercury will apply it when gateway work is idle.",
+  runtimeApplyDeferFailed: "Could not defer runtime update.",
   codexAuthRecoveryTitle: "Codex sign-in needs refresh",
   codexAuthRecoveryCopy:
     "Mercury can reconnect Codex here with the same browser login used in Providers. No terminal commands required.",

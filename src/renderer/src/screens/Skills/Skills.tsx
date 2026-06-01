@@ -15,6 +15,8 @@ import { useI18n } from "../../components/useI18n";
 import type {
   SkillMarkdownImportRequest,
   SkillMutationTarget,
+  SkillSourceCandidate,
+  SkillSourceImportRequest,
 } from "../../../../shared/skills";
 
 interface BundledSkill {
@@ -36,6 +38,7 @@ interface SkillsProps {
 }
 
 type Tab = "installed" | "browse";
+type AddSkillMode = "markdown" | "github" | "command";
 
 type PendingSkillChange = {
   key: string;
@@ -238,10 +241,17 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [importOpen, setImportOpen] = useState(false);
+  const [importMode, setImportMode] = useState<AddSkillMode>("markdown");
   const [importName, setImportName] = useState("");
   const [importCategory, setImportCategory] = useState("custom");
   const [importDescription, setImportDescription] = useState("");
   const [importMarkdown, setImportMarkdown] = useState("");
+  const [importSource, setImportSource] = useState("");
+  const [sourceCandidates, setSourceCandidates] = useState<SkillSourceCandidate[]>([]);
+  const [selectedSourceCandidateId, setSelectedSourceCandidateId] = useState<string>("");
+  const [previewingSource, setPreviewingSource] = useState(false);
+  const [sourcePreviewed, setSourcePreviewed] = useState(false);
+  const [remoteOnlyMode, setRemoteOnlyMode] = useState<boolean | null>(null);
   const [importOverwrite, setImportOverwrite] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
@@ -297,6 +307,27 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
     setSelectedDetail(null);
     void Promise.resolve().then(() => loadAll());
   }, [loadAll]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.hermesAPI
+      .isRemoteOnlyMode()
+      .then((isRemoteOnly) => {
+        if (!cancelled) setRemoteOnlyMode(isRemoteOnly);
+      })
+      .catch(() => {
+        if (!cancelled) setRemoteOnlyMode(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (remoteOnlyMode === true && importMode !== "markdown") {
+      setImportMode("markdown");
+    }
+  }, [importMode, remoteOnlyMode]);
 
   const installedByKey = useMemo(() => {
     const map = new Map<string, InstalledSkill>();
@@ -593,6 +624,83 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
     }
   }
 
+  function resetImportModal(): void {
+    setImportOpen(false);
+    setImportMode("markdown");
+    setImportName("");
+    setImportCategory("custom");
+    setImportDescription("");
+    setImportMarkdown("");
+    setImportSource("");
+    setSourceCandidates([]);
+    setSelectedSourceCandidateId("");
+    setSourcePreviewed(false);
+    setImportOverwrite(false);
+    setImportError("");
+  }
+
+  async function finishSuccessfulImport(warning?: "gateway-restart-required", sourceImport = false): Promise<void> {
+    resetImportModal();
+    setSelectedDetail(null);
+    setTab("installed");
+    setPendingSkillChanges({});
+    await loadInstalled();
+    setNotice(
+      warning === "gateway-restart-required"
+        ? t(sourceImport ? "skills.sourceImportRestartWarning" : "skills.importRestartWarning")
+        : t(sourceImport ? "skills.sourceImportSuccess" : "skills.importSuccess"),
+    );
+  }
+
+  function handleImportSourceChange(value: string): void {
+    setImportSource(value);
+    setSourceCandidates([]);
+    setSelectedSourceCandidateId("");
+    setSourcePreviewed(false);
+  }
+
+  function handleSourceCandidateSelection(candidateId: string): void {
+    setSelectedSourceCandidateId(candidateId);
+    const candidate = sourceCandidates.find((item) => item.candidateId === candidateId);
+    if (candidate) {
+      setImportCategory(candidate.category || "custom");
+    }
+  }
+
+  async function handlePreviewSkillSource(): Promise<void> {
+    const source = importSource.trim();
+    if (!source) {
+      setImportError(t("skills.sourceRequired"));
+      return;
+    }
+
+    setPreviewingSource(true);
+    setSourcePreviewed(false);
+    setSourceCandidates([]);
+    setSelectedSourceCandidateId("");
+    setImportError("");
+
+    try {
+      const result = await window.hermesAPI.previewSkillSource({ source });
+      if (!result.success) {
+        setImportError(result.error || t("skills.sourcePreviewFailed"));
+        return;
+      }
+
+      setSourceCandidates(result.candidates);
+      setSourcePreviewed(true);
+      if (result.candidates.length === 1) {
+        const [candidate] = result.candidates;
+        setSelectedSourceCandidateId(candidate.candidateId);
+        setImportCategory(candidate.category || "custom");
+      }
+    } catch (err) {
+      setImportError(errorMessage(err, t("skills.sourcePreviewFailed")));
+    } finally {
+      setPreviewingSource(false);
+    }
+  }
+
   async function handleImportMarkdown(): Promise<void> {
     setImporting(true);
     setError("");
@@ -623,24 +731,72 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
         return;
       }
 
-      setImportOpen(false);
-      setImportName("");
-      setImportCategory("custom");
-      setImportDescription("");
-      setImportMarkdown("");
-      setImportOverwrite(false);
-      setImportError("");
-      setSelectedDetail(null);
-      setTab("installed");
-      setPendingSkillChanges({});
-      await loadInstalled();
-      setNotice(
-        result.warning === "gateway-restart-required"
-          ? t("skills.importRestartWarning")
-          : t("skills.importSuccess"),
-      );
+      await finishSuccessfulImport(result.warning);
     } catch (err) {
       setImportError((err as Error).message || t("skills.importFailed"));
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function handleImportSkillSource(): Promise<void> {
+    const source = importSource.trim();
+    if (!source) {
+      setImportError(t("skills.sourceRequired"));
+      return;
+    }
+
+    if (!sourcePreviewed || sourceCandidates.length === 0) {
+      setImportError(t("skills.sourcePreviewRequired"));
+      return;
+    }
+
+    const candidateId =
+      sourceCandidates.length === 1 ? sourceCandidates[0]?.candidateId : selectedSourceCandidateId;
+    if (sourceCandidates.length > 1 && !candidateId) {
+      setImportError(t("skills.candidateRequired"));
+      return;
+    }
+
+    setImporting(true);
+    setError("");
+    setNotice("");
+    setImportError("");
+
+    if (Object.keys(pendingSkillChanges).length > 0) {
+      const saved = await savePendingChanges();
+      if (!saved) {
+        setImportError(t("skills.importPendingSaveFailed"));
+        setImporting(false);
+        return;
+      }
+    }
+
+    const request: SkillSourceImportRequest = {
+      source,
+      candidateId: candidateId || undefined,
+      name: importName.trim() || undefined,
+      category: importCategory.trim() || undefined,
+      description: importDescription.trim() || undefined,
+      overwrite: importOverwrite,
+    };
+
+    try {
+      const result = await window.hermesAPI.importSkillSource(request, profile);
+
+      if (!result.success) {
+        if (result.code === "multiple-candidates" && result.candidates) {
+          setSourceCandidates(result.candidates);
+          setSourcePreviewed(true);
+          setSelectedSourceCandidateId("");
+        }
+        setImportError(result.error);
+        return;
+      }
+
+      await finishSuccessfulImport(result.warning, true);
+    } catch (err) {
+      setImportError(errorMessage(err, t("skills.sourceImportFailed")));
     } finally {
       setImporting(false);
     }
@@ -730,6 +886,9 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
 
   const visibleGroups = groupSkills(tab === "installed" ? filteredInstalled : filteredBundled);
   const selectedKey = selectedDetail ? skillActionKey(selectedDetail.skill) : null;
+  const importCategoryOptions = Array.from(
+    new Set([...installedSkills, ...bundledSkills].map((s) => s.category).filter(Boolean)),
+  ).sort();
   const categories = Array.from(new Set(bundledSkills.map((s) => s.category))).sort();
 
   function toggleCategory(category: string): void {
@@ -756,20 +915,34 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
           t,
           importOpen,
           setImportOpen,
+          importMode,
+          setImportMode,
+          remoteOnlyMode: remoteOnlyMode === true,
+          sourceTabsAvailable: remoteOnlyMode === false,
           importName,
           setImportName,
           importCategory,
           setImportCategory,
+          importCategoryOptions,
           importDescription,
           setImportDescription,
           importMarkdown,
           setImportMarkdown,
+          importSource,
+          setImportSource: handleImportSourceChange,
+          sourceCandidates,
+          selectedSourceCandidateId,
+          sourcePreviewed,
+          previewingSource,
           importOverwrite,
           setImportOverwrite,
           importing,
           importError,
           setImportError,
           handleImportMarkdown,
+          handlePreviewSkillSource,
+          handleImportSkillSource,
+          handleSourceCandidateSelection,
         }}
       />
 
@@ -782,13 +955,13 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
           <button
             className="btn btn-secondary btn-sm"
             onClick={() => {
-              setImportError("");
+              resetImportModal();
               setImportOpen(true);
             }}
             disabled={savingDraft}
           >
             <Plus size={14} />
-            {t("skills.importMarkdownAction")}
+            {t("skills.addSkillAction")}
           </button>
           <button className="btn btn-secondary btn-sm" onClick={loadAll} disabled={savingDraft}>
             <Refresh size={14} />

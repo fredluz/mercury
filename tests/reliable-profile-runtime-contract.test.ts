@@ -34,6 +34,11 @@ describe("reliable profile runtime contract sentinels", () => {
       "authSource",
       "verifiedAt",
       "staleReason",
+      "runtimeApplyStatus",
+      "runtimeApplySource",
+      "runtimeApplyReason",
+      "runtimeApplyPendingSince",
+      "runtimeApplyFailureReason",
       "mismatchReason",
       "unsupportedReason",
     ]) {
@@ -133,7 +138,9 @@ describe("reliable profile runtime contract sentinels", () => {
     const runsApi = src("src/main/hermes/runs-api.ts");
     const title = src("src/main/hermes/title.ts");
     const cron = src("src/main/cronjobs.ts");
-    const modelInventory = src("src/main/services/hermes-model-inventory-service.ts");
+    const modelInventory = src(
+      "src/main/services/hermes-model-inventory-service.ts",
+    );
     const preloadApi = [
       src("src/preload/index.ts"),
       src("src/preload/api/index.ts"),
@@ -210,10 +217,16 @@ describe("reliable profile runtime contract sentinels", () => {
       "requestHermesApi",
       "fetchHermesApi",
     ]) {
-      expect(preloadApi, `no renderer raw proxy method ${rawProxyName}`).not.toContain(rawProxyName);
+      expect(
+        preloadApi,
+        `no renderer raw proxy method ${rawProxyName}`,
+      ).not.toContain(rawProxyName);
     }
     for (const rawProxyChannel of ["hermes-raw", "hermes-proxy", "api-proxy"]) {
-      expect(ipcIndex, `no raw Hermes IPC proxy channel ${rawProxyChannel}`).not.toContain(rawProxyChannel);
+      expect(
+        ipcIndex,
+        `no raw Hermes IPC proxy channel ${rawProxyChannel}`,
+      ).not.toContain(rawProxyChannel);
     }
   });
 
@@ -288,6 +301,9 @@ describe("reliable profile runtime contract sentinels", () => {
     );
 
     expect(ipcSystem).toContain('ipcMain.handle("get-runtime-diagnostic"');
+    expect(ipcSystem).toContain(
+      'ipcMain.handle("get-session-runtime-activity"',
+    );
     expect(ipcSystem).toContain("getRuntimeDiagnostic(profile)");
     expect(ipcSystem).toContain(
       'markRuntimeStale(profile, "Profile import changed profile runtime files.")',
@@ -299,16 +315,26 @@ describe("reliable profile runtime contract sentinels", () => {
     expect(preloadApp).toContain(
       'ipcRenderer.invoke("get-runtime-diagnostic", profile)',
     );
+    expect(preloadApp).toContain(
+      'ipcRenderer.invoke("get-session-runtime-activity", profile)',
+    );
+    expect(preloadApp).toContain(
+      'ipcRenderer.invoke("apply-pending-runtime-update-now", profile)',
+    );
+    expect(preloadApp).toContain(
+      'ipcRenderer.invoke("defer-pending-runtime-update", profile)',
+    );
     expect(preloadTypes).toContain(
       "getRuntimeDiagnostic: (profile?: string) => Promise<RuntimeDiagnostic>",
     );
+    expect(preloadTypes).toContain("getSessionRuntimeActivity");
 
     expect(layout).toContain("getRuntimeDiagnostic(requestedProfile)");
     expect(layout).toContain("activeProfileRef.current === requestedProfile");
     expect(layout).toContain("showGlobalRuntimeDiagnostic");
     expect(layout).toContain("isIdleLocalUnverifiedRuntime");
-    expect(diagnosticNotice).toContain("Runtime updating");
-    expect(diagnosticNotice).toContain("Runtime verified");
+    expect(diagnosticNotice).toContain("runtimeNoticeUpdating");
+    expect(diagnosticNotice).toContain("runtimeNoticeVerified");
     expect(diagnosticNotice).toContain("runtimeDiagnosticMessage");
     const chatEmpty = src(
       "src/renderer/src/screens/Chat/components/ChatEmpty.tsx",

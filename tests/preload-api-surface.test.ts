@@ -133,12 +133,18 @@ describe("New APIs from v0.8/v0.9 features", () => {
   it("has runtime diagnostic APIs", () => {
     expect(preloadMethods).toContain("getRuntimeDiagnostic");
     expect(preloadMethods).toContain("revalidateRuntime");
+    expect(preloadMethods).toContain("applyPendingRuntimeUpdateNow");
+    expect(preloadMethods).toContain("deferPendingRuntimeUpdate");
     expect(preloadMethods).toContain("launchRuntimeDebugAgent");
     expect(typeMethods).toContain("getRuntimeDiagnostic");
     expect(typeMethods).toContain("revalidateRuntime");
+    expect(typeMethods).toContain("applyPendingRuntimeUpdateNow");
+    expect(typeMethods).toContain("deferPendingRuntimeUpdate");
     expect(typeMethods).toContain("launchRuntimeDebugAgent");
     expect(preloadSrc).toContain('ipcRenderer.invoke("get-runtime-diagnostic", profile)');
     expect(preloadSrc).toContain('ipcRenderer.invoke("revalidate-runtime", profile)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("apply-pending-runtime-update-now", profile)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("defer-pending-runtime-update", profile)');
     expect(preloadSrc).toContain('ipcRenderer.invoke("launch-runtime-debug-agent", request)');
     expect(preloadTypes).toContain("RuntimeDiagnostic");
     expect(preloadTypes).toContain("RuntimeDebugAgentRequest");
@@ -197,9 +203,17 @@ describe("New APIs from v0.8/v0.9 features", () => {
     expect(preloadTypes).toContain("SkillMetadata");
   });
 
-  it("has manual Markdown skill import API", () => {
+  it("has manual Markdown and source skill import APIs", () => {
     expect(preloadMethods).toContain("importSkillMarkdown");
+    expect(preloadMethods).toContain("previewSkillSource");
+    expect(preloadMethods).toContain("importSkillSource");
     expect(typeMethods).toContain("importSkillMarkdown");
+    expect(typeMethods).toContain("previewSkillSource");
+    expect(typeMethods).toContain("importSkillSource");
+    expect(preloadSrc).toContain('ipcRenderer.invoke("preview-skill-source", request)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("import-skill-source", request, profile)');
+    expect(preloadTypes).toContain("SkillSourcePreviewRequest");
+    expect(preloadTypes).toContain("SkillSourceImportResult");
   });
 
   it("has batch skill mutation API", () => {
@@ -306,6 +320,8 @@ describe("Legacy APIs preserved (backward compat)", () => {
     "uninstallSkill",
     "mutateSkills",
     "importSkillMarkdown",
+    "previewSkillSource",
+    "importSkillSource",
     // Models
     "listModels",
     "addModel",

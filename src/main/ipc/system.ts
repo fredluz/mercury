@@ -1,8 +1,11 @@
 import { ipcMain, shell } from "electron";
 import type { RendererPerfEvent } from "../../shared/perf";
 import {
+  deferPendingRuntimeApplyForProfile,
   discoverMemoryProvidersForConnection,
+  forcePendingRuntimeApplyForProfile,
   getRuntimeDiagnosticForProfile,
+  getSessionRuntimeActivityForProfile,
   launchRuntimeDebugAgentForProfile,
   listMcpServersForConnection,
   readLogsForConnection,
@@ -31,8 +34,17 @@ export function registerSystemIpc(): void {
   ipcMain.handle("get-runtime-diagnostic", (_event, profile?: string) =>
     getRuntimeDiagnosticForProfile(profile),
   );
+  ipcMain.handle("get-session-runtime-activity", (_event, profile?: string) =>
+    getSessionRuntimeActivityForProfile(profile),
+  );
   ipcMain.handle("revalidate-runtime", (_event, profile?: string) =>
     revalidateRuntimeForProfile(profile),
+  );
+  ipcMain.handle("apply-pending-runtime-update-now", (_event, profile?: string) =>
+    forcePendingRuntimeApplyForProfile(profile),
+  );
+  ipcMain.handle("defer-pending-runtime-update", (_event, profile?: string) =>
+    deferPendingRuntimeApplyForProfile(profile),
   );
   ipcMain.handle("launch-runtime-debug-agent", (_event, request: unknown) =>
     launchRuntimeDebugAgentForProfile(request),

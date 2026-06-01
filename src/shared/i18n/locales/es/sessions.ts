@@ -20,4 +20,5 @@ export default {
   emptyHint: "Empieza a chatear para crear tu primera sesión",
   messages: "msg",
   messageSingular: "msg",
+  runActive: "Ejecución activa",
 } as const;

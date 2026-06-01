@@ -351,6 +351,134 @@
   overflow-y: auto;
 }
 
+.skills-source-tabs {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 2px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+
+.skills-source-tab {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  transition: all var(--transition);
+}
+
+.skills-source-tab:hover {
+  color: var(--text-primary);
+}
+
+.skills-source-tab.active {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.skills-source-input {
+  min-height: 104px;
+}
+
+.skills-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.skills-validation-text,
+.skills-field-hint {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.skills-candidate-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skills-candidate-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.skills-candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skills-candidate-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-sans);
+  transition: all var(--transition);
+}
+
+.skills-candidate-item:hover:not(:disabled) {
+  border-color: var(--border-bright);
+  background: var(--bg-tertiary);
+}
+
+.skills-candidate-item.selected {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.skills-candidate-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.64;
+}
+
+.skills-candidate-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.skills-candidate-name {
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.skills-candidate-path {
+  color: var(--accent-text);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.skills-candidate-description {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .skills-import-field {
   display: flex;
   flex-direction: column;

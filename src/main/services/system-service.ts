@@ -7,8 +7,16 @@ import {
   readLogs,
 } from "../installer";
 import { getConnectionConfig } from "../config";
-import { getRuntimeDiagnostic, markRuntimeStale, revalidateRuntime } from "../hermes";
-import type { RuntimeDebugAgentResult } from "../../shared/runtime";
+import {
+  getRuntimeDiagnostic,
+  markRuntimeStale,
+  revalidateRuntime,
+} from "../hermes";
+import { chatSessionActivityTracker } from "../hermes/session-activity";
+import type {
+  ProfileSessionRuntimeActivitySnapshot,
+  RuntimeDebugAgentResult,
+} from "../../shared/runtime";
 import {
   sshRunDump,
   sshDiscoverMemoryProviders,
@@ -16,9 +24,19 @@ import {
   sshListMcpServers,
 } from "../ssh-remote";
 import { launchRuntimeDebugAgent } from "./runtime-debug-service";
+import {
+  deferPendingSkillRuntimeApply,
+  forcePendingSkillRuntimeApply,
+} from "./runtime-apply-service";
 
 export function getRuntimeDiagnosticForProfile(profile?: string) {
   return getRuntimeDiagnostic(profile);
+}
+
+export function getSessionRuntimeActivityForProfile(
+  profile?: string,
+): ProfileSessionRuntimeActivitySnapshot[] {
+  return chatSessionActivityTracker.getSnapshot(profile);
 }
 
 export async function revalidateRuntimeForProfile(profile?: string) {
@@ -33,6 +51,14 @@ export function launchRuntimeDebugAgentForProfile(
   request: unknown,
 ): RuntimeDebugAgentResult {
   return launchRuntimeDebugAgent(request);
+}
+
+export function forcePendingRuntimeApplyForProfile(profile?: string) {
+  return forcePendingSkillRuntimeApply(profile);
+}
+
+export function deferPendingRuntimeApplyForProfile(profile?: string) {
+  return deferPendingSkillRuntimeApply(profile);
 }
 
 export function runHermesBackupForProfile(profile?: string) {

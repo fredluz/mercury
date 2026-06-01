@@ -7,6 +7,7 @@ import {
   markRuntimeStale,
   revalidateRuntime,
   setSshRemoteApiKey,
+  getGatewayDetailedHealth as readGatewayDetailedHealth,
 } from "../hermes";
 import { startSshTunnel } from "../ssh-tunnel";
 import {
@@ -14,6 +15,7 @@ import {
   getPlatformEnabled,
   setPlatformEnabled,
 } from "../config";
+import type { HermesDetailedHealthPayload } from "../hermes/bff";
 import {
   sshGatewayStatus,
   sshStartGateway,
@@ -48,6 +50,14 @@ async function restartSshGatewayAndRevalidate(profile?: string): Promise<void> {
   const key = await sshReadRemoteApiKey(conn.ssh, profile);
   setSshRemoteApiKey(key, profile);
   await revalidateRuntimeWithRetry(profile);
+}
+
+export async function readGatewayHealthDetailed(
+  profile?: string,
+): Promise<HermesDetailedHealthPayload | null> {
+  const conn = getConnectionConfig();
+  if (conn.mode === "remote") return null;
+  return readGatewayDetailedHealth(profile);
 }
 
 export async function restartGatewayAndRevalidate(

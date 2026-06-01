@@ -656,7 +656,7 @@ mercury tools set web false --profile work
 
 ### `skills`
 
-Source anchors: `src/main/services/knowledge-service.ts`, `src/main/skills.ts`, `src/main/skills/importer.ts`, `src/main/ssh/skills.ts`, `src/shared/skills.ts`.
+Source anchors: `src/main/services/knowledge-service.ts`, `src/main/skills.ts`, `src/main/skills/importer.ts`, `src/main/skills/source-service.ts`, `src/main/ssh/skills.ts`, `src/shared/skills.ts`.
 
 Implemented read commands:
 
@@ -673,6 +673,7 @@ Implemented mutation commands:
 mercury skills install <identifier> [--profile <name>]
 mercury skills uninstall <name> [--profile <name>]
 mercury skills import --file <markdownPath> [--name <name>] [--category <category>] [--description <text>] [--overwrite] [--profile <name>]
+mercury skills add <source-or-command> [--skill <name>] [--category <category>] [--name <name>] [--description <text>] [--directoryName <directoryName>] [--overwrite] [--profile <name>]
 ```
 
 Output:
@@ -683,13 +684,15 @@ Output:
 - `skills metadata`: `SkillMetadata` with scripts/references and availability flags.
 - `skills install` / `skills uninstall`: legacy single-target service result with success/error fields; internally these route through the batch mutation service.
 - `skills import`: `SkillMarkdownImportResult`; successful local/SSH imports may include `warning: "gateway-restart-required"` inside the data result when a gateway is running.
+- `skills add`: `SkillSourceImportResult`; accepts a GitHub URL/shorthand source, raw/tree/blob narrowed source, or pasted `npx skills add ...` / `gh skill install ...` command as data. Successful local/SSH imports may include `warning: "gateway-restart-required"` inside the data result when a gateway is running.
 
 Mode notes:
 
-- Local and SSH modes support installed/bundled/content/metadata/install/uninstall/import through the shared service.
+- Local and SSH modes support installed/bundled/content/metadata/install/uninstall/import/add through the shared service.
+- `skills add` resolves source candidates from GitHub, uses commit-pinned `candidateId` values (`github:owner/repo@sha:path`), writes the selected source directory into the selected profile filesystem on import, and marks the profile runtime stale on success.
 - Batch skill mutations preserve per-target failure details and mark the selected profile runtime stale once when at least one target changes installed skills.
 - Pure remote `skills metadata` returns unavailable metadata with `unavailableReason` because remote HTTP cannot inspect arbitrary skill files.
-- Pure remote skill install/uninstall and Markdown import return failed service results because they write to the selected profile filesystem; the CLI converts unsuccessful service results into validation failures.
+- Pure remote skill install/uninstall, Markdown import, and source import return failed service results because they write to the selected profile filesystem; the CLI converts unsuccessful service results into validation failures.
 
 Examples:
 
@@ -699,6 +702,7 @@ mercury skills content ~/.hermes/skills/custom/demo/SKILL.md
 mercury skills metadata ~/.hermes/skills/custom/demo
 mercury skills install github:org/repo/path --profile work
 mercury --json skills import --file ./my-skill.md --name my_skill --category custom --overwrite
+mercury --json skills add vercel-labs/agent-skills --skill pdf --category custom --overwrite --profile work
 ```
 
 ### `models`
@@ -1360,7 +1364,7 @@ Current CLI behavior:
 - `connection get` and `connection set --mode remote` can view/set remote URL and API key.
 - Profile-bound chat/title execution fails closed through runtime verification because Mercury cannot prove the configured remote HTTP API is executing the requested profile. The canonical failure code is `runtime-unsupported-remote-profile`, mapped to exit `3`.
 - Gateway start/stop/restart and platform mutation are unsupported in pure remote mode; status returns `false` and platform list returns `{}`.
-- Skill Markdown import explicitly rejects pure remote mode because it writes to a profile filesystem.
+- Skill Markdown import and source import explicitly reject pure remote mode because they write to a profile filesystem.
 - Some filesystem-backed commands still call local services when no SSH branch exists. This is current adapter/service parity with IPC and should not be documented or used as remote filesystem support.
 
 ## Preload/IPC parity matrix
@@ -1377,7 +1381,7 @@ This matrix maps major `window.hermesAPI` domains to CLI coverage. Rows are inte
 | `user-profile` | `writeUserProfile` | `user-profile write` | `knowledge-service.ts` | Profile-scoped `USER.md` memory write. |
 | `soul` | `readSoul`, `writeSoul`, `resetSoul` | `soul read/write/reset` | `knowledge-service.ts` | Local/SSH support; mutations mark runtime stale. |
 | `tools` | `getToolsets`, `setToolsetEnabled` | `tools list/set` | `knowledge-service.ts` | Boolean strings accepted for `set`. |
-| `skills` | `listInstalledSkills`, `listBundledSkills`, `getSkillContent`, `getSkillMetadata`, `installSkill`, `uninstallSkill`, `importSkillMarkdown` | `skills installed/bundled/content/metadata/install/uninstall/import` | `knowledge-service.ts` | Pure remote Markdown import rejected; SSH supported. |
+| `skills` | `listInstalledSkills`, `listBundledSkills`, `getSkillContent`, `getSkillMetadata`, `installSkill`, `uninstallSkill`, `importSkillMarkdown`, `previewSkillSource`, `importSkillSource` | `skills installed/bundled/content/metadata/install/uninstall/import/add` | `knowledge-service.ts` | Pure remote Markdown/source import rejected; SSH supported. |
 | `models` | `listModels`, `addModel`, `removeModel`, `updateModel` | `models list/add/remove/update` | `models-service.ts`, `hermes-model-inventory-service.ts`, `src/main/models.ts` | Listing uses Hermes inventory; mutations currently use legacy/manual model storage. |
 | `credentials` | `getCredentialPool`, `setCredentialPool` | `credentials get/set` | `models-service.ts`, `src/main/config.ts` | Set expects a JSON array in `--entries-file`. |
 | `cron` | `listCronJobs`, `createCronJob`, `removeCronJob`, `pauseCronJob`, `resumeCronJob`, `triggerCronJob` | `cron list/create/remove/pause/resume/run` | `cron-service.ts` | `--active-only` flips include-disabled behavior. |

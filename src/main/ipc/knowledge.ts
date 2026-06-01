@@ -1,11 +1,18 @@
 import { ipcMain } from "electron";
-import type { SkillMarkdownImportRequest, SkillMutationTarget } from "../../shared/skills";
+import type {
+  SkillMarkdownImportRequest,
+  SkillMutationTarget,
+  SkillSourceImportRequest,
+  SkillSourcePreviewRequest,
+} from "../../shared/skills";
 import {
   addMemoryEntryForProfile,
   getSkillContentForConnection,
   getSkillMetadataForConnection,
   getToolsetsForProfile,
   importSkillMarkdownForProfile,
+  importSkillSourceForProfile,
+  previewSkillSourceForProfile,
   installSkillForProfile,
   mutateSkillsForProfile,
   listBundledSkillsForConnection,
@@ -100,5 +107,15 @@ export function registerKnowledgeIpc(): void {
     "import-skill-markdown",
     (_event, request: SkillMarkdownImportRequest, profile?: string) =>
       importSkillMarkdownForProfile(request, profile),
+  );
+  ipcMain.handle(
+    "preview-skill-source",
+    (_event, request: SkillSourcePreviewRequest, profile?: string) =>
+      previewSkillSourceForProfile(request, profile),
+  );
+  ipcMain.handle(
+    "import-skill-source",
+    (_event, request: SkillSourceImportRequest, profile?: string) =>
+      importSkillSourceForProfile(request, profile),
   );
 }

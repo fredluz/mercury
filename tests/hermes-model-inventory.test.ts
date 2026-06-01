@@ -201,10 +201,15 @@ describe("Hermes model inventory mapping", () => {
     const previousCapturePath = process.env.MERCURY_TEST_CAPTURE_PATH;
 
     mkdirSync(join(hermesRepo, "venv", "bin"), { recursive: true });
+    // The fake "python" must run under whatever runtime executes the suite
+    // (plain Node or Electron-as-Node). A bare `#!/usr/bin/env node` shebang
+    // breaks under Electron, where no `node` binary is on PATH, so re-exec the
+    // current runtime explicitly against a JS helper. ELECTRON_RUN_AS_NODE makes
+    // the Electron binary behave as Node; it is harmless under plain Node.
+    const fakePythonImpl = join(hermesRepo, "venv", "bin", "python.impl.cjs");
     writeFileSync(
-      fakePython,
-      `#!/usr/bin/env node
-const fs = require("fs");
+      fakePythonImpl,
+      `const fs = require("fs");
 fs.writeFileSync(process.env.MERCURY_TEST_CAPTURE_PATH, JSON.stringify({
   argv: process.argv.slice(2),
   cwd: process.cwd(),
@@ -222,6 +227,12 @@ process.stdout.write(JSON.stringify({
     models: ["gpt-5.5"],
   }],
 }));
+`,
+    );
+    writeFileSync(
+      fakePython,
+      `#!/bin/sh
+ELECTRON_RUN_AS_NODE=1 exec "${process.execPath}" "${fakePythonImpl}" "$@"
 `,
     );
     chmodSync(fakePython, 0o755);

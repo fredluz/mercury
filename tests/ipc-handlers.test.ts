@@ -93,6 +93,12 @@ describe("IPC Handler ↔ Preload Consistency", () => {
   it("runtime diagnostics are exposed and mutation handlers mark stale runtimes", () => {
     expect(mainChannels).toContain("get-runtime-diagnostic");
     expect(preloadChannels).toContain("get-runtime-diagnostic");
+    expect(mainChannels).toContain("get-session-runtime-activity");
+    expect(preloadChannels).toContain("get-session-runtime-activity");
+    expect(mainChannels).toContain("apply-pending-runtime-update-now");
+    expect(preloadChannels).toContain("apply-pending-runtime-update-now");
+    expect(mainChannels).toContain("defer-pending-runtime-update");
+    expect(preloadChannels).toContain("defer-pending-runtime-update");
     expect(mainSrc).toContain("getRuntimeDiagnostic(profile)");
     expect(mainSrc).toContain("markRuntimeStale(profile");
   });
@@ -154,7 +160,10 @@ describe("IPC Handler ↔ Preload Consistency", () => {
 describe("New IPC handlers from v0.8/v0.9 features", () => {
   const newChannels = [
     "get-runtime-diagnostic",
+    "get-session-runtime-activity",
     "revalidate-runtime",
+    "apply-pending-runtime-update-now",
+    "defer-pending-runtime-update",
     "launch-runtime-debug-agent",
     "run-hermes-backup",
     "run-hermes-import",
@@ -166,6 +175,8 @@ describe("New IPC handlers from v0.8/v0.9 features", () => {
     "discover-memory-providers",
     "get-skill-metadata",
     "import-skill-markdown",
+    "preview-skill-source",
+    "import-skill-source",
     "mutate-skills",
     "record-local-chat-trace",
     "resolve-chat-run-approval",

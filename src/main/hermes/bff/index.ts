@@ -1,4 +1,8 @@
-export { ProfileHermesBffClient, profileHermesBffClientForRuntime } from "./client";
+export {
+  ProfileHermesBffClient,
+  profileHermesBffClientForRuntime,
+  type HermesDetailedHealthPayload,
+} from "./client";
 export { HermesBffError, type HermesBffErrorCode } from "./errors";
 export {
   clearHermesBffDiagnostics,

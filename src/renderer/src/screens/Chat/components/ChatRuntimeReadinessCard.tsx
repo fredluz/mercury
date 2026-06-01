@@ -19,10 +19,32 @@ interface ChatRuntimeReadinessCardProps {
   t: (key: string) => string;
 }
 
+function isAutoApplyInProgress(diagnostic?: RuntimeDiagnostic | null): boolean {
+  return (
+    diagnostic?.runtimeApplyStatus === "pending-idle" ||
+    diagnostic?.runtimeApplyStatus === "applying"
+  );
+}
+
+function isPendingApplyConfirmation(
+  diagnostic?: RuntimeDiagnostic | null,
+): boolean {
+  return (
+    diagnostic?.status === "stale" &&
+    diagnostic.runtimeApplyStatus === "pending-confirm"
+  );
+}
+
 function shouldShowChatRuntimeReadiness(
   diagnostic?: RuntimeDiagnostic | null,
 ): boolean {
-  return diagnostic?.status === "unverified";
+  if (isPendingApplyConfirmation(diagnostic)) return true;
+  if (diagnostic?.status === "unverified") return true;
+  // Stale runtime: only surface a manual repair when nothing is auto-applying.
+  // While the backend auto-applies skill changes (pending-idle/applying) the
+  // global banner communicates progress and we avoid fighting the restart.
+  if (diagnostic?.status === "stale") return !isAutoApplyInProgress(diagnostic);
+  return false;
 }
 
 function wait(ms: number): Promise<void> {
@@ -57,7 +79,7 @@ export function ChatRuntimeReadinessCard({
   t,
 }: ChatRuntimeReadinessCardProps): React.JSX.Element | null {
   const [busyAction, setBusyAction] = useState<
-    "verify" | RuntimeDebugAgent | null
+    "verify" | "apply-now" | "later" | RuntimeDebugAgent | null
   >(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [verificationFailed, setVerificationFailed] = useState(false);
@@ -74,6 +96,7 @@ export function ChatRuntimeReadinessCard({
 
   useEffect(() => {
     if (
+      isAutoApplyInProgress(diagnostic) ||
       diagnostic?.status !== "unverified" ||
       diagnostic.mode !== "local" ||
       verificationFailed ||
@@ -87,6 +110,7 @@ export function ChatRuntimeReadinessCard({
   }, [
     autoVerifyProfile,
     busyAction,
+    diagnostic,
     diagnostic?.mode,
     diagnostic?.status,
     selectedProfile,
@@ -97,8 +121,19 @@ export function ChatRuntimeReadinessCard({
     return null;
   }
 
+  const pendingApplyConfirmation = isPendingApplyConfirmation(diagnostic);
+
   const reason =
-    diagnostic?.mismatchReason || t("chat.runtimeReadinessReasonFallback");
+    diagnostic?.runtimeApplyStatus === "failed"
+      ? diagnostic.runtimeApplyFailureReason ||
+        diagnostic.staleReason ||
+        t("chat.runtimeReadinessReasonFallback")
+      : diagnostic?.status === "stale"
+        ? diagnostic.staleReason ||
+          diagnostic.mismatchReason ||
+          t("chat.runtimeReadinessReasonFallback")
+        : diagnostic?.mismatchReason ||
+          t("chat.runtimeReadinessReasonFallback");
 
   async function handleVerify(): Promise<void> {
     if (busyAction) return;
@@ -119,6 +154,52 @@ export function ChatRuntimeReadinessCard({
       setVerificationFailed(true);
       setStatusMessage(
         `${t("chat.runtimeVerifyFailed")} ${(err as Error).message}`.trim(),
+      );
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleApplyNow(): Promise<void> {
+    if (busyAction) return;
+    setBusyAction("apply-now");
+    setStatusMessage(t("chat.runtimeApplyApplying"));
+    try {
+      const started = await window.hermesAPI.applyPendingRuntimeUpdateNow(
+        selectedProfile,
+      );
+      setStatusMessage(
+        started
+          ? t("chat.runtimeApplyNowQueued")
+          : t("chat.runtimeApplyNoPendingUpdate"),
+      );
+      onRuntimeDiagnosticRefresh?.();
+    } catch (err) {
+      setStatusMessage(
+        `${t("chat.runtimeApplyNowFailed")} ${(err as Error).message}`.trim(),
+      );
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleLater(): Promise<void> {
+    if (busyAction) return;
+    setBusyAction("later");
+    setStatusMessage(t("chat.runtimeApplyDeferring"));
+    try {
+      const deferred = await window.hermesAPI.deferPendingRuntimeUpdate(
+        selectedProfile,
+      );
+      setStatusMessage(
+        deferred
+          ? t("chat.runtimeApplyDeferred")
+          : t("chat.runtimeApplyNoPendingUpdate"),
+      );
+      onRuntimeDiagnosticRefresh?.();
+    } catch (err) {
+      setStatusMessage(
+        `${t("chat.runtimeApplyDeferFailed")} ${(err as Error).message}`.trim(),
       );
     } finally {
       setBusyAction(null);
@@ -155,28 +236,58 @@ export function ChatRuntimeReadinessCard({
       </div>
       <div className="chat-runtime-card-body">
         <div className="chat-runtime-card-title">
-          {t("chat.runtimeReadinessTitle")}
+          {pendingApplyConfirmation
+            ? t("chat.runtimeApplyConfirmTitle")
+            : t("chat.runtimeReadinessTitle")}
         </div>
         <div className="chat-runtime-card-copy">
-          {t("chat.runtimeReadinessCopy")}
+          {pendingApplyConfirmation
+            ? t("chat.runtimeApplyConfirmCopy")
+            : t("chat.runtimeReadinessCopy")}
         </div>
-        <div className="chat-runtime-card-reason">{reason}</div>
+        {!pendingApplyConfirmation && (
+          <div className="chat-runtime-card-reason">{reason}</div>
+        )}
         <div className="chat-runtime-card-actions">
-          <button
-            className="btn btn-secondary chat-runtime-action"
-            disabled={Boolean(busyAction)}
-            onClick={handleVerify}
-          >
-            {busyAction === "verify" ? (
-              <CheckCircle2 size={14} />
-            ) : (
-              <Wrench size={14} />
-            )}
-            {busyAction === "verify"
-              ? t("chat.runtimeVerifyingShort")
-              : t("chat.runtimeVerify")}
-          </button>
-          {verificationFailed && (
+          {pendingApplyConfirmation ? (
+            <>
+              <button
+                className="btn btn-secondary chat-runtime-action"
+                disabled={Boolean(busyAction)}
+                onClick={() => void handleApplyNow()}
+              >
+                <Wrench size={14} />
+                {busyAction === "apply-now"
+                  ? t("chat.runtimeApplyApplyingShort")
+                  : t("chat.runtimeApplyNow")}
+              </button>
+              <button
+                className="btn-ghost chat-runtime-action"
+                disabled={Boolean(busyAction)}
+                onClick={() => void handleLater()}
+              >
+                {busyAction === "later"
+                  ? t("chat.runtimeApplyDeferringShort")
+                  : t("chat.runtimeApplyLater")}
+              </button>
+            </>
+          ) : (
+            <button
+              className="btn btn-secondary chat-runtime-action"
+              disabled={Boolean(busyAction)}
+              onClick={handleVerify}
+            >
+              {busyAction === "verify" ? (
+                <CheckCircle2 size={14} />
+              ) : (
+                <Wrench size={14} />
+              )}
+              {busyAction === "verify"
+                ? t("chat.runtimeVerifyingShort")
+                : t("chat.runtimeVerify")}
+            </button>
+          )}
+          {!pendingApplyConfirmation && verificationFailed && (
             <div
               className="chat-runtime-debug-actions"
               aria-label={t("chat.runtimeDebugGroup")}

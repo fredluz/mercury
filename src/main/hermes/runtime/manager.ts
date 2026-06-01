@@ -1,6 +1,12 @@
 import { randomUUID } from "crypto";
 import { spawn as defaultSpawn } from "child_process";
-import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from "fs";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  unlinkSync,
+} from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import {
@@ -25,7 +31,10 @@ import {
   isApiServerReady,
   probeHermesCapabilities,
 } from "../connection";
-import type { RuntimeDiagnostic } from "../../../shared/runtime";
+import type {
+  RuntimeApplySource,
+  RuntimeDiagnostic,
+} from "../../../shared/runtime";
 import type {
   ProfileRuntimeHandle,
   ProfileRuntimeRequest,
@@ -47,7 +56,11 @@ import {
   type RuntimeIdentityContext,
 } from "./identity";
 import { normalizeProfile } from "./profile";
-import { createInitialRuntimeState, type RuntimeState } from "./state";
+import {
+  createInitialRuntimeState,
+  type RuntimeApplyState,
+  type RuntimeState,
+} from "./state";
 import { resolveSshApiRuntime } from "./ssh-runtime";
 
 const HEALTH_POLL_INTERVAL_MS = 15_000;
@@ -185,6 +198,34 @@ export class ProfileRuntimeManager {
     return this.resolveRequiredLocalApiRuntime(normalizedRequest);
   }
 
+  async resolveRuntimeForHealthProbe(
+    request: ProfileRuntimeRequest,
+  ): Promise<ProfileRuntimeHandle> {
+    const profile = normalizeProfile(request.profile);
+    const mode = request.mode ?? this.getConnectionConfig().mode;
+    if (mode !== "local") return this.resolveRuntime({ ...request, profile, mode });
+
+    const state = this.stateFor(profile);
+    const identity =
+      state.lastIdentity?.verified && state.lastIdentity.actualProfile === profile
+        ? state.lastIdentity
+        : createLocalApiIdentity(this.identityContext(), profile, {
+            pid: this.pidFor(profile),
+            startedByMercury: this.isGatewayRunning(profile),
+            verified: true,
+            verificationSource: "managed-process",
+            command: state.gatewayCommand,
+          });
+
+    return {
+      request: { ...request, profile, mode },
+      identity,
+      transport: "api",
+      apiBaseUrl: identity.apiBaseUrl ?? this.getLocalApiUrl(profile),
+      authHeaders: localAuthHeaders({ readEnv: this.readEnv }, profile),
+    };
+  }
+
   ensureInitialized(profile?: string): void {
     const normalizedProfile = normalizeProfile(profile);
     this.ensureApiServerConfig(normalizedProfile);
@@ -211,7 +252,8 @@ export class ProfileRuntimeManager {
     );
 
     const state = this.stateFor(normalizedProfile);
-    const generatedApiServerKey = this.ensureLocalApiServerKey(normalizedProfile);
+    const generatedApiServerKey =
+      this.ensureLocalApiServerKey(normalizedProfile);
     const profileEnv = this.readEnv(normalizedProfile);
     const localApiPort = this.getLocalApiPort(normalizedProfile);
     const localApiHost = "127.0.0.1";
@@ -249,6 +291,7 @@ export class ProfileRuntimeManager {
     state.gatewayCommand = args;
     state.staleReason = undefined;
     state.staleAt = undefined;
+    state.runtimeApplyState = undefined;
     state.lastIdentity = createLocalApiIdentity(
       this.identityContext(),
       normalizedProfile,
@@ -398,6 +441,40 @@ export class ProfileRuntimeManager {
     state.staleAt = undefined;
   }
 
+  setRuntimeApplyState(
+    profile: string | undefined,
+    applyState: RuntimeApplyState,
+  ): void {
+    const state = this.stateFor(normalizeProfile(profile));
+    state.runtimeApplyState = applyState;
+  }
+
+  clearRuntimeApplyState(
+    profile: string | undefined,
+    source: RuntimeApplySource,
+  ): void {
+    const state = this.stateFor(normalizeProfile(profile));
+    if (state.runtimeApplyState?.source === source) {
+      state.runtimeApplyState = undefined;
+    }
+  }
+
+  clearRuntimeStaleIfApplySource(
+    profile: string | undefined,
+    source: RuntimeApplySource,
+    expectedReason?: string,
+  ): void {
+    const state = this.stateFor(normalizeProfile(profile));
+    if (state.runtimeApplyState?.source !== source) return;
+    const staleStillBelongsToApply =
+      expectedReason === undefined || state.staleReason === expectedReason;
+    if (staleStillBelongsToApply) {
+      state.staleReason = undefined;
+      state.staleAt = undefined;
+    }
+    state.runtimeApplyState = undefined;
+  }
+
   async revalidateRuntime(
     profile?: string,
     purpose: ProfileRuntimeRequest["purpose"] = "gateway",
@@ -421,6 +498,7 @@ export class ProfileRuntimeManager {
       if (verified) {
         state.staleReason = undefined;
         state.staleAt = undefined;
+        state.runtimeApplyState = undefined;
         return true;
       }
     } catch {

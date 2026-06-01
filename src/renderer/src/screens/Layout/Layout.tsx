@@ -205,11 +205,21 @@ function Layout(): React.JSX.Element {
     refreshRuntimeDiagnostic();
   }, [view, refreshRuntimeDiagnostic]);
 
+  // Poll fast while the runtime is stale or not yet verified so the banner and
+  // session indicators reflect idle-gated skill applies quickly; otherwise idle
+  // at the normal cadence.
+  const needsFastRuntimePoll =
+    runtimeDiagnostic !== null &&
+    (runtimeDiagnostic.stale || runtimeDiagnostic.status !== "verified");
+
   useEffect(() => {
     refreshRuntimeDiagnostic();
-    const interval = setInterval(refreshRuntimeDiagnostic, 10000);
+    const interval = setInterval(
+      refreshRuntimeDiagnostic,
+      needsFastRuntimePoll ? 1000 : 10000,
+    );
     return () => clearInterval(interval);
-  }, [refreshRuntimeDiagnostic]);
+  }, [refreshRuntimeDiagnostic, needsFastRuntimePoll]);
 
   // Mercury desktop app update state. This is separate from the Hermes Agent
   // engine updater in Settings.
@@ -563,7 +573,10 @@ function Layout(): React.JSX.Element {
       )}
 
       <main className="content">
-        <RuntimeDiagnosticNotice diagnostic={showGlobalRuntimeDiagnostic} />
+        <RuntimeDiagnosticNotice
+          diagnostic={showGlobalRuntimeDiagnostic}
+          onRuntimeDiagnosticRefresh={refreshRuntimeDiagnostic}
+        />
         <div style={paneStyle("chat")}>
           {showChatAgentPicker ? (
             <ChatAgentPicker

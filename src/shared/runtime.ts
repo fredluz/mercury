@@ -17,6 +17,36 @@ export type RuntimeDiagnosticStatus =
   | "update-required"
   | "unsupported";
 
+export type RuntimeApplySource = "skills";
+
+export type RuntimeApplyStatus =
+  | "pending-idle"
+  | "pending-confirm"
+  | "applying"
+  | "failed";
+
+export type ChatSessionActivityStatus =
+  | "queued"
+  | "submitting"
+  | "running"
+  | "stopping"
+  | "idle";
+
+export interface SessionRuntimeActivity {
+  sessionId: string | null;
+  activeRunCount: number;
+  status: ChatSessionActivityStatus;
+  runIds: string[];
+  updatedAt: number;
+}
+
+export interface ProfileSessionRuntimeActivitySnapshot {
+  profile: string;
+  activeRunCount: number;
+  isIdle: boolean;
+  sessions: SessionRuntimeActivity[];
+}
+
 export interface RuntimeDiagnostic {
   selectedProfile: string;
   requestedProfile: string;
@@ -41,6 +71,11 @@ export interface RuntimeDiagnostic {
   stale: boolean;
   staleReason?: string;
   staleAt?: number;
+  runtimeApplyStatus?: RuntimeApplyStatus;
+  runtimeApplySource?: RuntimeApplySource;
+  runtimeApplyReason?: string;
+  runtimeApplyPendingSince?: number;
+  runtimeApplyFailureReason?: string;
   mismatchReason?: string;
   unsupportedReason?: string;
   capabilities?: Record<string, boolean>;

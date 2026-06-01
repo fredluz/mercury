@@ -46,6 +46,7 @@ function installHermesApiMock(): void {
         profile: "research",
       },
     ]),
+    getSessionRuntimeActivity: vi.fn().mockResolvedValue([]),
   };
 }
 
@@ -154,6 +155,45 @@ describe("Sessions resume profile flow", () => {
 
     expect(onOpenSessionTrace).toHaveBeenCalledWith("search-hit", "Search hit", "research");
     expect(onResumeSession).not.toHaveBeenCalled();
+  });
+
+  it("marks a session row active when it has a running runtime activity", async () => {
+    vi.mocked(window.hermesAPI.getSessionRuntimeActivity).mockResolvedValue([
+      {
+        profile: "work",
+        activeRunCount: 1,
+        isIdle: false,
+        sessions: [
+          {
+            sessionId: "session-shared",
+            activeRunCount: 1,
+            status: "running",
+            runIds: ["run-1"],
+            updatedAt: 1_700_000_100,
+          },
+        ],
+      },
+    ]);
+
+    render(
+      <Sessions
+        onResumeSession={vi.fn()}
+        onOpenSessionTrace={vi.fn()}
+        onNewChat={vi.fn()}
+        currentSessionId={null}
+      />,
+    );
+
+    const workTitle = await screen.findByText("Work session");
+    const defaultTitle = await screen.findByText("Default session");
+    await waitFor(() =>
+      expect(
+        workTitle.querySelector(".session-activity-dot"),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      defaultTitle.querySelector(".session-activity-dot"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders unknown agent when a cached row has no profile", async () => {

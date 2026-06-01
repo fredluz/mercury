@@ -11,6 +11,7 @@ export {
   sshUninstallSkill,
   sshMutateSkills,
   sshImportSkillMarkdown,
+  sshImportSkillDirectory,
   sshSearchSkills,
   sshListBundledSkills,
 } from "./ssh/skills";

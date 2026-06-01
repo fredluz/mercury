@@ -1,6 +1,6 @@
 # Skills Subsystem
 
-This document describes Mercury's current skill listing, grouped Skills UI, draft/save batching, shared batch mutation contract, content/metadata reads, install/uninstall, manual Markdown import, validation, local/SSH/pure-remote behavior, test coverage, and the future skill-groups seam. It describes current behavior only: skill groups are not implemented, and runtime restart/reload policy after skill mutations is not solved beyond the stale/restart-warning semantics named here.
+This document describes Mercury's current skill listing, grouped Skills UI, draft/save batching, shared batch mutation contract, content/metadata reads, install/uninstall, Add Skill ingestion from Markdown/GitHub/npx-style commands, validation, local/SSH/pure-remote behavior, test coverage, and the future skill-groups seam. It describes current behavior only: skill groups are not implemented, and runtime restart/reload policy after skill mutations is not solved beyond the stale/restart-warning semantics named here.
 
 ## Source anchors
 
@@ -10,13 +10,14 @@ This document describes Mercury's current skill listing, grouped Skills UI, draf
 - Shared skill contracts: `src/shared/skills.ts`
 - Local skill listing/install helpers: `src/main/skills.ts`
 - Markdown import implementation: `src/main/skills/importer.ts`
+- Source import parser/fetch/import implementation: `src/main/skills/source-parser.ts`, `src/main/skills/github-source.ts`, `src/main/skills/source-service.ts`, `src/main/skills/directory-importer.ts`, `src/main/skills/http-fetch.ts`
 - Knowledge IPC routing: `src/main/ipc/knowledge.ts`
 - Shared knowledge service used by IPC and CLI: `src/main/services/knowledge-service.ts`
 - CLI skill commands: `src/cli/read-only-commands.ts`, `src/cli/mutating-commands.ts`, [CLI contract](../contracts/cli.md)
 - Preload API: `src/preload/api/knowledge.ts`, `src/preload/index.d.ts`
 - SSH skill implementation: `src/main/ssh/skills.ts`
 - SSH transport helpers: `src/main/ssh/transport.ts`
-- Contract tests: `src/renderer/src/screens/Skills/Skills.test.tsx`, `tests/skills-mutation.test.ts`, `tests/skills-import.test.ts`, `tests/knowledge-service.test.ts`, `tests/ipc-handlers.test.ts`, `tests/preload-api-surface.test.ts`
+- Contract tests: `src/renderer/src/screens/Skills/Skills.test.tsx`, `tests/skills-mutation.test.ts`, `tests/skills-import.test.ts`, `tests/skills-source-parser.test.ts`, `tests/skills-source-github.test.ts`, `tests/knowledge-service.test.ts`, `tests/ipc-handlers.test.ts`, `tests/preload-api-surface.test.ts`
 - Codex image generation skill/tool behavior: [Codex image generation](codex-image-generation.md)
 - Future skill-groups investigation: `docs/investigations/skill-groups-implementation-plan-2026-06-01.md`
 
@@ -27,8 +28,8 @@ This document describes Mercury's current skill listing, grouped Skills UI, draf
 | Renderer orchestration | `Skills.tsx` | Loads installed/bundled truth, owns ephemeral pending drafts, stages row/category/detail actions, synthesizes one save batch, gates import behind pending-save, reloads and reconciles results. |
 | Renderer presentation | `SkillCategorySection.tsx` | Renders grouped rows, enabled/pending counts, pending badges, Undo affordance, row Enable/Disable, category Enable all / Disable all callbacks. It does not call preload directly. |
 | Renderer detail | `SkillDetailPanel.tsx` | Renders installed skill Markdown, metadata, Agents-using-skill, and detail-level Disable callback. It does not own mutation persistence. |
-| Renderer modals | `SkillModals.tsx` | Renders manual Markdown import form. Submit is still orchestrated by `Skills.tsx` so pending drafts cannot be bypassed. |
-| Shared types | `src/shared/skills.ts` | Defines Markdown import DTOs, `SkillMutationTarget`, per-item mutation result, error codes, and `SkillMutationBatchResult`. |
+| Renderer modals | `SkillModals.tsx` | Renders the Add Skill modal with Paste Markdown, GitHub link, and npx/gh command tabs. Submit/preview are still orchestrated by `Skills.tsx` so pending drafts cannot be bypassed. |
+| Shared types | `src/shared/skills.ts` | Defines Markdown import DTOs, source preview/import DTOs, `SkillMutationTarget`, per-item mutation result, error codes, and `SkillMutationBatchResult`. |
 | Preload bridge | `src/preload/api/knowledge.ts`, `src/preload/index.d.ts` | Exposes `window.hermesAPI` methods and invokes quoted IPC channel names. |
 | IPC handler | `src/main/ipc/knowledge.ts` | Binds `list-installed-skills`, `list-bundled-skills`, `get-skill-content`, `get-skill-metadata`, legacy single-target channels, `mutate-skills`, and `import-skill-markdown` to the knowledge service. |
 | Service choke point | `src/main/services/knowledge-service.ts` | Routes local/SSH/pure-remote behavior, serializes skill batches per profile, wraps legacy single-target APIs, marks runtime stale once only when a batch changed at least one skill. |
@@ -48,8 +49,10 @@ Skills are exposed through `window.hermesAPI` methods implemented in `src/preloa
 - `uninstallSkill(name, profile?)` (legacy single-target wrapper)
 - `mutateSkills(targets, profile?)`
 - `importSkillMarkdown(request, profile?)`
+- `previewSkillSource(request)`
+- `importSkillSource(request, profile?)`
 
-The renderer-facing TypeScript declarations live in `src/preload/index.d.ts`. Request/result shapes for Markdown import, metadata, and batch mutation come from `src/shared/skills.ts`.
+The renderer-facing TypeScript declarations live in `src/preload/index.d.ts`. Request/result shapes for Markdown import, source preview/import, metadata, and batch mutation come from `src/shared/skills.ts`.
 
 The batch mutation contract is the preferred install/uninstall path:
 
@@ -77,6 +80,28 @@ SkillCategorySection / SkillDetailPanel callback
 
 Renderer code must not import main-process helpers or call local/SSH mutation functions directly. Legacy `installSkill` and `uninstallSkill` remain compatibility wrappers, but service-level callers route those wrappers through the batch mutation path.
 
+Source ingestion uses a two-call stateless API:
+
+```text
+Add Skill source tab
+→ Skills.tsx handlePreviewSkillSource()
+→ window.hermesAPI.previewSkillSource({ source })
+→ ipcRenderer.invoke("preview-skill-source", request)
+→ previewSkillSourceForProfile(request, profile?)
+→ source parser + GitHub resolver return candidates without writing files
+
+selected candidate / single candidate
+→ Skills.tsx handleImportSkillSource()
+→ savePendingChanges() gate, only after preview has already succeeded
+→ window.hermesAPI.importSkillSource(request, profile?)
+→ ipcRenderer.invoke("import-skill-source", request, profile)
+→ importSkillSourceForProfile(request, profile?)
+→ fetch pinned source directory
+→ importSkillDirectory(...) locally OR sshImportSkillDirectory(...) remotely OR pure-remote fail-closed
+```
+
+`previewSkillSource` is read-only and does not mark runtime stale. `importSkillSource` writes files and uses the same pending-draft save gate as Markdown import. If that save fails, import is aborted and the preview result remains visible for retry after the user fixes or discards pending changes.
+
 ## CLI skill commands
 
 The CLI exposes the same skill capabilities for automation through `src/main/services/knowledge-service.ts`; it is not layered through preload.
@@ -90,12 +115,21 @@ The CLI exposes the same skill capabilities for automation through `src/main/ser
 | `mercury skills install <identifier> [--profile <name>]` | Calls the legacy wrapper, which delegates to one-target batch mutation. |
 | `mercury skills uninstall <name> [--profile <name>]` | Calls the legacy wrapper, which delegates to one-target batch mutation. |
 | `mercury skills import --file <path> [--name ...] [--category ...] [--description ...] [--overwrite] [--profile <name>]` | Imports Markdown through the shared `SkillMarkdownImportRequest`/`SkillMarkdownImportResult` contract. |
+| `mercury skills add <source-or-command> [--skill ...] [--category ...] [--name ...] [--description ...] [--overwrite] [--profile <name>]` | Imports a GitHub skill source or pasted `npx skills add ...` / `gh skill install ...` command through the shared source-import contract. |
 
-Local, SSH, and pure remote HTTP behavior matches the IPC mode rules below. Manual Markdown import returns the same success/failure codes as the renderer path; gateway restart warnings are part of the service result (for example `warning: "gateway-restart-required"`) and may appear inside CLI JSON `data` rather than as a top-level CLI envelope warning.
+Local, SSH, and pure remote HTTP behavior matches the IPC mode rules below. Manual Markdown import and source import return the same success/failure codes as the renderer path; gateway restart warnings are part of the service result (for example `warning: "gateway-restart-required"`) and may appear inside CLI JSON `data` rather than as a top-level CLI envelope warning.
 
 ## Renderer UI semantics
 
 The Skills screen groups installed and browse results by `category` into collapsible sections. Each section shows an enabled count, total count, pending count, category-level bulk actions, and row actions.
+
+The header Add Skill action opens one modal with three source tabs:
+
+- **Paste Markdown** keeps the original `importSkillMarkdown` flow.
+- **GitHub link** accepts GitHub repo, tree/blob, raw `SKILL.md`, and `owner/repo`-style sources supported by the main-process parser/resolver.
+- **npx/gh command** accepts pasted installer commands as data. Mercury parses the source and optional skill selector, but never shells out to `npx`, `gh`, `git`, or another installer.
+
+`Skills.tsx` owns all import orchestration. `SkillModals.tsx` is presentational and does not call preload directly. Source imports must be previewed before import so the renderer can show discovered candidates. If preview returns one candidate, the modal shows a ready summary and imports that candidate directly. If preview returns multiple candidates, the user must select one candidate before the Import button is enabled. The modal includes a category input backed by existing installed/bundled categories through a datalist, while still allowing free-text categories that the backend validates. In pure remote HTTP mode, the GitHub link and command tabs are hidden; Paste Markdown retains its existing behavior.
 
 Mercury does not persist a separate skill-enabled flag. In the current implementation, newly created Mercury Agents/profiles start with no skills installed because profile creation uses upstream Hermes `--no-skills`; the Agents "copy default config/API keys" option copies credentials/config only, not `skills/`. This is current behavior, not the desired long-term product invariant.
 
@@ -294,6 +328,54 @@ Failure result codes:
 
 `PreparedSkillMarkdownImport` contains normalized `name`, `category`, `description`, and `markdown`.
 
+## Source import contract
+
+`src/shared/skills.ts` defines the source preview/import DTOs used by renderer, preload, IPC, service, and CLI callers:
+
+```ts
+export type SkillSourcePreviewRequest = {
+  source: string;
+  skillSelector?: string;
+};
+
+export type SkillSourceImportRequest = {
+  source: string;
+  candidateId?: string;
+  skillSelector?: string;
+  name?: string;
+  category?: string;
+  description?: string;
+  directoryName?: string;
+  overwrite?: boolean;
+};
+```
+
+Successful preview returns `{ success: true, source, candidates }`. Each `SkillSourceCandidate` includes:
+
+- `candidateId`, currently stable as `github:<owner>/<repo>@<commitSha>:<path/to/SKILL.md>`;
+- display metadata: `name`, `description`, `category`, `directoryName`;
+- source metadata: `skillPath`, `sourceLabel`, `commitSha`, optional `treeSha`;
+- validity metadata: `valid` plus optional `error`.
+
+Successful import returns the imported `skill`, the parsed `source`, the selected/pinned `candidate`, and optional `warning: "gateway-restart-required"`. Failure codes include source/transport failures (`invalid-source`, `unsupported-source`, `fetch-failed`, `rate-limited`, `source-too-large`, `not-found`), selection failures (`multiple-candidates`), validation failures (`invalid-markdown`, `invalid-name`, `invalid-category`, `duplicate`), and write/mode failures (`write-failed`, `unsupported-remote-mode`).
+
+`candidateId` is commit-pinned so previewing a moving branch and importing later still fetches the files from the previewed commit. Import does not trust a renderer-only candidate object; it re-resolves/fetches the pinned source directory using the `candidateId`/selector fields in the request.
+
+## Source parser and discovery behavior
+
+`src/main/skills/source-parser.ts` is main-process-only and pure. It parses supported source strings but never shells out. Supported forms include:
+
+- `owner/repo` and `https://github.com/owner/repo`;
+- GitHub tree/blob URLs and raw `SKILL.md` URLs;
+- `npx skills add <source>`, including common `-y`, `--yes`, `-g`, `--global`, `-a/--agent`, and `--skill` forms;
+- `gh skill install OWNER/REPO SKILL`.
+
+Unsupported local paths, GitLab URLs, package names, and arbitrary commands fail with typed source errors rather than being executed.
+
+`src/main/skills/github-source.ts` resolves GitHub refs, discovers candidate `SKILL.md` files, reads candidate frontmatter metadata, and downloads the selected skill directory. Discovery recognizes root `SKILL.md`, monorepo layouts such as `skills/<skill>/SKILL.md` and `skills/<category>/<skill>/SKILL.md`, and dotdir agent layouts such as `.agents/skills/<skill>/SKILL.md`, `.claude/skills/<skill>/SKILL.md`, and `.github/skills/<skill>/SKILL.md`. Explicit category overrides from the user win; otherwise only `skills/<category>/<skill>/SKILL.md` infers a category. Other layouts default to `custom`.
+
+Source directory import writes all fetched files as regular files after path validation. GitHub symlink/submodule entries and unsafe relative paths are rejected; file count/size caps return `source-too-large` instead of silently truncating.
+
 ## Markdown import validation
 
 `src/main/skills/importer.ts` currently enforces:
@@ -345,7 +427,7 @@ The parser only treats a delimiter line matching a newline followed by `---` as 
 
 ## Import interaction with pending drafts
 
-Manual Markdown import does not bypass the draft/save model.
+Add Skill import does not bypass the draft/save model.
 
 Renderer flow in `handleImportMarkdown()`:
 
@@ -369,6 +451,28 @@ Local `importSkillMarkdown(request, profile?)` then:
 8. Creates the skill directory recursively and writes normalized Markdown.
 9. Returns the written skill metadata and path.
 
+Renderer flow in `handlePreviewSkillSource()` and `handleImportSkillSource()`:
+
+1. User enters a GitHub link or npx/gh command and clicks Preview.
+2. `handlePreviewSkillSource()` calls `window.hermesAPI.previewSkillSource({ source })` before any pending draft save is attempted.
+3. Preview failure shows the typed source error and performs no writes.
+4. One preview candidate is selected implicitly and summarized; multiple preview candidates are rendered as a required picker with category, directory/name, repo path, and description/error.
+5. User may override `name`, `description`, and `category`; category can be chosen from existing categories or typed freely.
+6. On Import, `handleImportSkillSource()` verifies preview/candidate state first.
+7. If there are pending enable/disable drafts, it calls `savePendingChanges()` using the exact Markdown import gate.
+8. If pending save fails, it sets `skills.importPendingSaveFailed`, leaves failed pending entries visible, and does not call `importSkillSource`.
+9. If pending save succeeds or there are no pending drafts, it calls `window.hermesAPI.importSkillSource(request, profile)`.
+10. Success closes/resets the modal, switches to Installed, clears pending draft state, reloads installed skills, and shows success or gateway restart-warning copy.
+
+Local source import then:
+
+1. Parses the source or command without shelling out.
+2. Resolves a single candidate by `candidateId`, `skillSelector`, or single-preview backstop. Multiple candidates without selection return `multiple-candidates`.
+3. Fetches the selected skill directory pinned to the candidate commit SHA.
+4. Normalizes the selected `SKILL.md` through the same Markdown preparation code used by manual import.
+5. Writes the complete fetched directory to `<profileHome>/skills/<category>/<directoryName>/`, replacing the whole directory only when `overwrite` is true.
+6. Returns imported skill metadata, source metadata, candidate metadata, and optional restart warning.
+
 ## IPC routing and mode differences
 
 `src/main/ipc/knowledge.ts` owns skill IPC handlers.
@@ -382,10 +486,12 @@ Local `importSkillMarkdown(request, profile?)` then:
 - `install-skill` / `uninstall-skill` -> legacy wrappers around `mutateSkillsForProfile(...)`.
 - `mutate-skills` -> local `mutateLocalSkills(targets, profile)` through the service queue.
 - `import-skill-markdown` -> local `importSkillMarkdown(request, profile)`.
+- `preview-skill-source` -> main-process source parser/GitHub preview without writing files.
+- `import-skill-source` -> local `fetchSkillSourceDirectory(...)` plus `importSkillDirectory(request, profile)`.
 
 Successful skill mutation batches mark the selected profile runtime stale once when at least one item actually changed. Empty batches, all-failure batches, and no-op batches do not mark runtime stale.
 
-If Markdown import succeeds while the local gateway is running, the IPC result adds:
+If Markdown import or source import succeeds while the local gateway is running, the IPC result adds:
 
 ```ts
 warning: "gateway-restart-required"
@@ -415,13 +521,15 @@ Current SSH behavior:
 - Markdown import is profile-aware and uses the same `prepareSkillMarkdownImport(...)` validation/normalization as local import.
 - Remote Markdown import writes to `~/.hermes/skills/<category>/<name>/SKILL.md` or profile equivalent.
 - Remote Markdown import rejects duplicates unless `overwrite` is true.
+- Source import uses the same preview/fetch path in the main process, then sends one base64 JSON directory payload through SSH to write the selected skill directory remotely.
+- Remote source import writes to `~/.hermes/skills/<category>/<directoryName>/` or profile equivalent, rejects unsafe relative paths, and replaces the whole directory only when `overwrite` is true.
 - Remote import returns a `REMOTE:` path normalized from `~` to `$HOME`.
 
-If SSH Markdown import succeeds while the remote gateway is running, the IPC result adds `warning: "gateway-restart-required"`. It does not restart the remote gateway automatically.
+If SSH Markdown import or source import succeeds while the remote gateway is running, the IPC result adds `warning: "gateway-restart-required"`. It does not restart the remote gateway automatically.
 
 ### Pure remote HTTP mode
 
-Manual Markdown import is explicitly rejected in pure remote HTTP mode with failure code `write-failed` and an error explaining that import is only available in local and SSH modes because it writes to the selected profile filesystem.
+Manual Markdown import and source import are explicitly rejected in pure remote HTTP mode with failure code `write-failed` (or the source import mode failure equivalent) and an error explaining that import is only available in local and SSH modes because it writes to the selected profile filesystem. The renderer hides GitHub link and command tabs in pure remote mode so users are not offered a source-import dead end; the backend still fails closed if called directly.
 
 Skill mutations also fail closed in pure remote HTTP mode:
 
@@ -441,11 +549,12 @@ Skill file changes can affect a running Agent runtime, but current code only exp
 
 - Changed local/SSH skill mutation batches call `markRuntimeStale(profile, "Skills changed for profile runtime.")` once after the batch.
 - Changed local/SSH Markdown imports call the same stale marker.
-- Successful Markdown import additionally returns `warning: "gateway-restart-required"` when the selected local/SSH gateway is running.
+- Successful Markdown import and source import additionally return `warning: "gateway-restart-required"` when the selected local/SSH gateway is running.
 - Empty, all-failure, and all-no-op mutation batches do not mark stale.
+- Preview is read-only and never marks stale.
 - Pure remote HTTP failures do not mark stale.
 
-Do not document current skill mutation as an automatic restart or solved hot-reload path. The dated skill-groups investigation records this as future runtime-policy work.
+Imported source skills are runtime-stale in the same way as manually imported Markdown skills: installed files are updated, but an already-running runtime may not see new or changed skill files until a gateway restart or new Hermes session. Do not document current skill mutation as an automatic restart or solved hot-reload path. The dated skill-groups investigation records this as future runtime-policy work.
 
 ## Future extension seam: skill groups
 
@@ -480,6 +589,7 @@ See `docs/investigations/skill-groups-implementation-plan-2026-06-01.md` for the
 - Agents-using-skill lookup;
 - refresh/reload behavior that rebases pending state;
 - manual Markdown import;
+- source import preview/import flow, including single-candidate direct import, monorepo candidate picker, disabled import before selection, pending-save gate, pending-save abort, modal cleanup, installed reload, and restart-warning copy;
 - import submission saves pending changes first and aborts import on pending-save failure.
 
 `tests/skills-mutation.test.ts` protects local batch mutation path safety:
@@ -487,7 +597,7 @@ See `docs/investigations/skill-groups-implementation-plan-2026-06-01.md` for the
 - install refuses symlinked profile skill categories that would escape the profile root;
 - uninstall refuses symlinked profile skill categories and leaves external files intact.
 
-`tests/skills-import.test.ts` verifies local Markdown import behavior:
+`tests/skills-import.test.ts` verifies local Markdown and directory import behavior:
 
 - writes normalized `SKILL.md` into the default profile;
 - writes to a named profile skills directory;
@@ -496,7 +606,14 @@ See `docs/investigations/skill-groups-implementation-plan-2026-06-01.md` for the
 - rejects duplicates unless `overwrite` is enabled;
 - preserves Markdown body while normalizing existing frontmatter;
 - does not treat inline dashes inside frontmatter values as a closing delimiter;
+- imports multi-file source directories with scripts/references/assets;
+- rejects unsafe fetched relative paths;
+- replaces stale source-import files on overwrite;
 - checks local `getSkillMetadata()` scripts/references discovery.
+
+`tests/skills-source-parser.test.ts` protects the pure parser for GitHub sources, raw/tree/blob URLs, `npx skills add ...`, `gh skill install ...`, flag handling, skill selectors, and unsupported/arbitrary command rejection.
+
+`tests/skills-source-github.test.ts` protects GitHub preview/fetch behavior: root and monorepo candidates, dotdir skill layouts, tree/blob/raw URL narrowing, rate-limit failures, commit pinning, selected-directory fetches, and oversized/truncated source handling.
 
 `tests/knowledge-service.test.ts` protects service-level mutation policy:
 
@@ -505,13 +622,16 @@ See `docs/investigations/skill-groups-implementation-plan-2026-06-01.md` for the
 - partial failures are preserved in the returned batch result;
 - all-failure and all-no-op batches do not mark stale;
 - pure remote HTTP skill mutation fails closed without touching local/SSH helpers or marking stale;
+- source import routes through local/SSH directory import and marks runtime stale on success;
+- pure remote HTTP source import fails closed before fetch/write/runtime stale marking;
+- preview does not mark runtime stale;
 - SSH batches route through `sshMutateSkills`;
 - toolset toggles are deliberately next-message config writes, not stale runtime mutations.
 
 IPC/preload contract tests protect skill API availability and channel matching:
 
-- `tests/ipc-handlers.test.ts` checks `get-skill-metadata`, `mutate-skills`, and `import-skill-markdown` have both main handlers and preload invokes.
-- `tests/preload-api-surface.test.ts` checks `getSkillMetadata`, `mutateSkills`, and `importSkillMarkdown` exist in both preload implementation and `HermesAPI` types.
+- `tests/ipc-handlers.test.ts` checks `get-skill-metadata`, `mutate-skills`, `import-skill-markdown`, `preview-skill-source`, and `import-skill-source` have both main handlers and preload invokes.
+- `tests/preload-api-surface.test.ts` checks `getSkillMetadata`, `mutateSkills`, `importSkillMarkdown`, `previewSkillSource`, and `importSkillSource` exist in both preload implementation and `HermesAPI` types.
 - `tests/cli-read-only-commands.test.ts` and `tests/cli-mutating-commands.test.ts` cover CLI skill command routing through shared services.
 
 ## Verification guidance
@@ -520,7 +640,7 @@ For skill changes, run targeted tests based on the touched behavior:
 
 ```bash
 npm run test -- src/renderer/src/screens/Skills/Skills.test.tsx
-npm run test -- tests/skills-mutation.test.ts tests/skills-import.test.ts tests/knowledge-service.test.ts
+npm run test -- tests/skills-source-parser.test.ts tests/skills-source-github.test.ts tests/skills-mutation.test.ts tests/skills-import.test.ts tests/knowledge-service.test.ts
 npm run test -- tests/ipc-handlers.test.ts tests/preload-api-surface.test.ts
 npm run test:cli
 npm run typecheck

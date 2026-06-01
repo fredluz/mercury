@@ -19,6 +19,10 @@ const sshConfig: SshConfig = {
   localPort: 18642,
 };
 
+function b64(value: string): string {
+  return Buffer.from(value, "utf-8").toString("base64");
+}
+
 describe("ssh command telemetry metadata", () => {
   it("classifies command shapes without exposing raw commands", () => {
     expect(classifySshCommand("python3 -")).toBe("python-stdin");
@@ -121,6 +125,102 @@ describe("ssh profile runtime command construction", () => {
     expect(
       buildSshTunnelIdentityKey({ ...sshConfig, localPort: 18643 }, "alpha"),
     ).not.toBe(buildSshTunnelIdentityKey(sshConfig, "alpha"));
+  });
+});
+
+describe("ssh directory skill import", () => {
+  it("sends one python JSON payload with normalized files", async () => {
+    vi.resetModules();
+    const sshPython = vi.fn().mockResolvedValue(
+      JSON.stringify({
+        success: true,
+        skill: {
+          name: "dir-skill",
+          category: "tools",
+          description: "Directory import.",
+          path: "REMOTE:/home/hermes/.hermes/profiles/alpha/skills/tools/dir-skill",
+          directoryName: "dir-skill",
+        },
+      }),
+    );
+    vi.doMock("../src/main/ssh/transport", async () => {
+      const actual = await vi.importActual<typeof import("../src/main/ssh/transport")>(
+        "../src/main/ssh/transport",
+      );
+      return { ...actual, sshPython };
+    });
+
+    const { sshImportSkillDirectory } = await import("../src/main/ssh/skills");
+    const result = await sshImportSkillDirectory(
+      sshConfig,
+      {
+        category: "tools",
+        directoryName: "dir-skill",
+        files: [
+          { relativePath: "SKILL.md", contentBase64: b64("# dir-skill\n\nDirectory import.") },
+          { relativePath: "scripts/check.py", contentBase64: b64("print('ok')\n") },
+          { relativePath: "references/guide.md", contentBase64: b64("# Guide\n") },
+        ],
+      },
+      "alpha",
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      skill: {
+        category: "tools",
+        directoryName: "dir-skill",
+        path: "REMOTE:/home/hermes/.hermes/profiles/alpha/skills/tools/dir-skill",
+      },
+    });
+    expect(sshPython).toHaveBeenCalledTimes(1);
+    expect(sshPython.mock.calls[0][3]).toBe(120000);
+    const payload = JSON.parse(sshPython.mock.calls[0][2] as string) as {
+      profile: string;
+      category: string;
+      directoryName: string;
+      files: Array<{ relativePath: string; contentBase64: string }>;
+    };
+    expect(payload).toMatchObject({ profile: "alpha", category: "tools", directoryName: "dir-skill" });
+    expect(payload.files.map((file) => file.relativePath)).toEqual([
+      "SKILL.md",
+      "scripts/check.py",
+      "references/guide.md",
+    ]);
+    const normalizedSkill = Buffer.from(payload.files[0].contentBase64, "base64").toString("utf-8");
+    expect(normalizedSkill).toContain('name: "dir-skill"');
+    expect(normalizedSkill).toContain('description: "Directory import."');
+    vi.doUnmock("../src/main/ssh/transport");
+  });
+
+  it("maps remote duplicate responses and transport failures", async () => {
+    vi.resetModules();
+    const sshPython = vi
+      .fn()
+      .mockResolvedValueOnce(JSON.stringify({ success: false, code: "duplicate", error: "exists" }))
+      .mockRejectedValueOnce(new Error("remote exploded"));
+    vi.doMock("../src/main/ssh/transport", async () => {
+      const actual = await vi.importActual<typeof import("../src/main/ssh/transport")>(
+        "../src/main/ssh/transport",
+      );
+      return { ...actual, sshPython };
+    });
+
+    const { sshImportSkillDirectory } = await import("../src/main/ssh/skills");
+    const request = {
+      files: [{ relativePath: "SKILL.md", contentBase64: b64("# dir-skill") }],
+    };
+
+    await expect(sshImportSkillDirectory(sshConfig, request)).resolves.toMatchObject({
+      success: false,
+      code: "duplicate",
+    });
+    await expect(sshImportSkillDirectory(sshConfig, request)).resolves.toMatchObject({
+      success: false,
+      code: "write-failed",
+      error: "remote exploded",
+    });
+    vi.doUnmock("../src/main/ssh/transport");
   });
 });
 

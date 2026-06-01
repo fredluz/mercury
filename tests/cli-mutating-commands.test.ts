@@ -50,6 +50,7 @@ describe("mutating CLI commands", () => {
     process.env.HERMES_HOME = oldHome;
     vi.doUnmock("../src/main/services/cron-service");
     vi.doUnmock("../src/main/services/install-service");
+    vi.doUnmock("../src/main/services/knowledge-service");
     for (const home of homes.splice(0))
       rmSync(home, { recursive: true, force: true });
   });
@@ -303,6 +304,78 @@ describe("mutating CLI commands", () => {
       JSON.parse(readFileSync(join(home, "desktop", "sessions.json"), "utf-8"))
         .sessions[0].title,
     ).toBe("New Title");
+  });
+
+  it("forwards skills add sources and import flags to the source import service", async () => {
+    const home = tempHome();
+    const importSkillSourceForProfile = vi.fn(async () => ({
+      success: true,
+      skill: { name: "demo", category: "custom", description: "Demo", path: "/skills/demo", directoryName: "demo-dir" },
+    }));
+    vi.doMock("../src/main/services/knowledge-service", () => ({
+      importSkillSourceForProfile,
+    }));
+
+    const result = await runJson(home, [
+      "skills",
+      "add",
+      "owner/repo",
+      "--skill",
+      "pdf",
+      "--category",
+      "custom",
+      "--name",
+      "demo",
+      "--description",
+      "Demo skill",
+      "--directoryName",
+      "demo-dir",
+      "--overwrite",
+      "--profile",
+      "alpha",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(importSkillSourceForProfile).toHaveBeenCalledWith(
+      {
+        source: "owner/repo",
+        skillSelector: "pdf",
+        name: "demo",
+        category: "custom",
+        description: "Demo skill",
+        directoryName: "demo-dir",
+        overwrite: true,
+      },
+      "alpha",
+    );
+  });
+
+  it("accepts a pasted npx skills add command as the skills add source", async () => {
+    const home = tempHome();
+    const importSkillSourceForProfile = vi.fn(async () => ({
+      success: true,
+      skill: { name: "demo", category: "custom", description: "Demo", path: "/skills/demo", directoryName: "demo" },
+    }));
+    vi.doMock("../src/main/services/knowledge-service", () => ({
+      importSkillSourceForProfile,
+    }));
+
+    const command = "npx skills add owner/repo --skill pdf -g -y";
+    const result = await runJson(home, ["skills", "add", command]);
+
+    expect(result.exitCode).toBe(0);
+    expect(importSkillSourceForProfile).toHaveBeenCalledWith(
+      {
+        source: command,
+        skillSelector: undefined,
+        name: undefined,
+        category: undefined,
+        description: undefined,
+        directoryName: undefined,
+        overwrite: false,
+      },
+      undefined,
+    );
   });
 
   it("adds a model block when setting model config on an API-only config", async () => {

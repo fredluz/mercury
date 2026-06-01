@@ -1,6 +1,21 @@
 import http from "http";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ChatCallbacks, ProfileRuntimeHandle } from "../src/main/hermes/types";
+
+const activityMocks = vi.hoisted(() => ({
+  beginRun: vi.fn(() => "activity-token"),
+  attachRun: vi.fn(),
+  markRunning: vi.fn(),
+  markStopping: vi.fn(),
+  finishRun: vi.fn(),
+}));
+import type {
+  ChatCallbacks,
+  ProfileRuntimeHandle,
+} from "../src/main/hermes/types";
+
+vi.mock("../src/main/hermes/session-activity", () => ({
+  chatSessionActivityTracker: activityMocks,
+}));
 
 vi.mock("../src/main/hermes/chat-model", () => ({
   resolveChatRuntimeModel: vi.fn().mockResolvedValue({
@@ -69,7 +84,11 @@ function callbacks(): ChatCallbacks & {
 }
 
 async function fakeHermes(
-  handler: (req: http.IncomingMessage, res: http.ServerResponse, body: string) => void,
+  handler: (
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    body: string,
+  ) => void,
 ): Promise<{ baseUrl: string; seen: SeenRequest[] }> {
   const seen: SeenRequest[] = [];
   const server = http.createServer((req, res) => {
@@ -104,10 +123,15 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 }
 
 afterEach(async () => {
+  vi.clearAllMocks();
+  activityMocks.beginRun.mockReturnValue("activity-token");
   await Promise.all(
-    servers.splice(0).map(
-      (server) => new Promise<void>((resolve) => server.close(() => resolve())),
-    ),
+    servers
+      .splice(0)
+      .map(
+        (server) =>
+          new Promise<void>((resolve) => server.close(() => resolve())),
+      ),
   );
 });
 
@@ -128,11 +152,21 @@ describe("Hermes runs API transport", () => {
       }
       if (req.method === "GET" && req.url === "/v1/runs/run_1/events") {
         res.writeHead(200, { "Content-Type": "text/event-stream" });
-        res.write('data: {"event":"tool.started","run_id":"run_1","tool":"terminal"}\n\n');
-        res.write('data: {"event":"message.delta","run_id":"run_1","delta":"hel"}\n\n');
-        res.write('data: {"event":"message.delta","run_id":"run_1","delta":"lo"}\n\n');
-        res.write('data: {"event":"approval.request","run_id":"run_1","tool":"terminal"}\n\n');
-        res.write('data: {"event":"run.completed","run_id":"run_1","session_id":"session-1","usage":{"input_tokens":2,"output_tokens":3,"total_tokens":5}}\n\n');
+        res.write(
+          'data: {"event":"tool.started","run_id":"run_1","tool":"terminal"}\n\n',
+        );
+        res.write(
+          'data: {"event":"message.delta","run_id":"run_1","delta":"hel"}\n\n',
+        );
+        res.write(
+          'data: {"event":"message.delta","run_id":"run_1","delta":"lo"}\n\n',
+        );
+        res.write(
+          'data: {"event":"approval.request","run_id":"run_1","tool":"terminal"}\n\n',
+        );
+        res.write(
+          'data: {"event":"run.completed","run_id":"run_1","session_id":"session-1","usage":{"input_tokens":2,"output_tokens":3,"total_tokens":5}}\n\n',
+        );
         res.end();
         return;
       }
@@ -160,8 +194,24 @@ describe("Hermes runs API transport", () => {
     });
     expect(cb.done).toHaveBeenCalledWith("session-1");
     expect(cb.error).not.toHaveBeenCalled();
-    expect(seen.every((request) => request.authorization === "Bearer test-key")).toBe(true);
-    expect(seen.map((request) => request.url)).not.toContain("/v1/chat/completions");
+    expect(
+      seen.every((request) => request.authorization === "Bearer test-key"),
+    ).toBe(true);
+    expect(seen.map((request) => request.url)).not.toContain(
+      "/v1/chat/completions",
+    );
+    expect(activityMocks.beginRun).toHaveBeenCalledWith({
+      profile: "work",
+      sessionId: "session-1",
+      status: "queued",
+    });
+    expect(activityMocks.attachRun).toHaveBeenCalledWith({
+      token: "activity-token",
+      runId: "run_1",
+      sessionId: "session-1",
+    });
+    expect(activityMocks.finishRun).toHaveBeenCalledTimes(1);
+    expect(activityMocks.finishRun).toHaveBeenCalledWith("activity-token");
   });
 
   it("polls terminal run status when the SSE stream closes without a terminal event", async () => {
@@ -174,13 +224,21 @@ describe("Hermes runs API transport", () => {
       }
       if (req.method === "GET" && req.url === "/v1/runs/run_2/events") {
         res.writeHead(200, { "Content-Type": "text/event-stream" });
-        res.write('data: {"event":"message.delta","run_id":"run_2","delta":"partial"}\n\n');
+        res.write(
+          'data: {"event":"message.delta","run_id":"run_2","delta":"partial"}\n\n',
+        );
         res.end();
         return;
       }
       if (req.method === "GET" && req.url === "/v1/runs/run_2") {
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ run_id: "run_2", status: "failed", error: "provider exploded" }));
+        res.end(
+          JSON.stringify({
+            run_id: "run_2",
+            status: "failed",
+            error: "provider exploded",
+          }),
+        );
         return;
       }
       res.writeHead(404);
@@ -188,7 +246,14 @@ describe("Hermes runs API transport", () => {
     });
     const cb = callbacks();
 
-    await sendMessageViaApi("hello", cb, "work", "session-1", undefined, runtime(baseUrl));
+    await sendMessageViaApi(
+      "hello",
+      cb,
+      "work",
+      "session-1",
+      undefined,
+      runtime(baseUrl),
+    );
     await waitFor(() => cb.error.mock.calls.length > 0);
 
     expect(cb.chunks.join("")).toBe("partial");
@@ -198,6 +263,12 @@ describe("Hermes runs API transport", () => {
       diagnostics: { runId: "run_2", sessionId: "session-1" },
     });
     expect(cb.done).not.toHaveBeenCalled();
+    expect(activityMocks.attachRun).toHaveBeenCalledWith({
+      token: "activity-token",
+      runId: "run_2",
+      sessionId: "session-1",
+    });
+    expect(activityMocks.finishRun).toHaveBeenCalledTimes(1);
   });
 
   it("attaches debug-prompt remediation metadata to run failures", async () => {
@@ -210,11 +281,13 @@ describe("Hermes runs API transport", () => {
       }
       if (req.method === "GET" && req.url === "/v1/runs/run_debug/events") {
         res.writeHead(200, { "Content-Type": "text/event-stream" });
-        res.write(`data: ${JSON.stringify({
-          event: "run.failed",
-          run_id: "run_debug",
-          error: "'NoneType' object is not iterable",
-        })}\n\n`);
+        res.write(
+          `data: ${JSON.stringify({
+            event: "run.failed",
+            run_id: "run_debug",
+            error: "'NoneType' object is not iterable",
+          })}\n\n`,
+        );
         res.end();
         return;
       }
@@ -223,7 +296,14 @@ describe("Hermes runs API transport", () => {
     });
     const cb = callbacks();
 
-    await sendMessageViaApi("hello", cb, "work", "session-1", undefined, runtime(baseUrl));
+    await sendMessageViaApi(
+      "hello",
+      cb,
+      "work",
+      "session-1",
+      undefined,
+      runtime(baseUrl),
+    );
     await waitFor(() => cb.error.mock.calls.length > 0);
 
     expect(cb.error.mock.calls[0][0]).toBe("'NoneType' object is not iterable");
@@ -240,6 +320,12 @@ describe("Hermes runs API transport", () => {
     expect(cb.error.mock.calls[0][1]?.remediation?.prompt).toContain(
       "Debug this Hermes/Mercury chat failure.",
     );
+    expect(activityMocks.attachRun).toHaveBeenCalledWith({
+      token: "activity-token",
+      runId: "run_debug",
+      sessionId: "session-1",
+    });
+    expect(activityMocks.finishRun).toHaveBeenCalledTimes(1);
   });
 
   it("attaches queue-and-retry remediation metadata to run submission 429s", async () => {
@@ -249,7 +335,10 @@ describe("Hermes runs API transport", () => {
         res.writeHead(429, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({
-            error: { message: "too many concurrent runs", code: "rate_limit_exceeded" },
+            error: {
+              message: "too many concurrent runs",
+              code: "rate_limit_exceeded",
+            },
           }),
         );
         return;
@@ -259,7 +348,14 @@ describe("Hermes runs API transport", () => {
     });
     const cb = callbacks();
 
-    await sendMessageViaApi("hello", cb, "work", "session-1", undefined, runtime(baseUrl));
+    await sendMessageViaApi(
+      "hello",
+      cb,
+      "work",
+      "session-1",
+      undefined,
+      runtime(baseUrl),
+    );
     await waitFor(() => cb.error.mock.calls.length > 0);
 
     expect(cb.error.mock.calls[0][0]).toBe("too many concurrent runs");
@@ -268,6 +364,8 @@ describe("Hermes runs API transport", () => {
       tier: "auto-fix",
       action: "queue-and-retry",
     });
+    expect(activityMocks.attachRun).not.toHaveBeenCalled();
+    expect(activityMocks.finishRun).toHaveBeenCalledTimes(1);
   });
 
   it("retries transient run-cap 429s before surfacing an error", async () => {
@@ -280,16 +378,24 @@ describe("Hermes runs API transport", () => {
           res.writeHead(429, { "Content-Type": "application/json" });
           res.end(
             JSON.stringify({
-              error: { message: "too many concurrent runs", code: "rate_limit_exceeded" },
+              error: {
+                message: "too many concurrent runs",
+                code: "rate_limit_exceeded",
+              },
             }),
           );
           return;
         }
         res.writeHead(202, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ run_id: "run_after_retry", status: "started" }));
+        res.end(
+          JSON.stringify({ run_id: "run_after_retry", status: "started" }),
+        );
         return;
       }
-      if (req.method === "GET" && req.url === "/v1/runs/run_after_retry/events") {
+      if (
+        req.method === "GET" &&
+        req.url === "/v1/runs/run_after_retry/events"
+      ) {
         res.writeHead(200, { "Content-Type": "text/event-stream" });
         res.write(
           `data: ${JSON.stringify({
@@ -307,10 +413,19 @@ describe("Hermes runs API transport", () => {
     });
     const cb = callbacks();
 
-    await sendMessageViaApi("hello", cb, "work", "session-1", undefined, runtime(baseUrl));
+    await sendMessageViaApi(
+      "hello",
+      cb,
+      "work",
+      "session-1",
+      undefined,
+      runtime(baseUrl),
+    );
     await waitFor(() => cb.done.mock.calls.length > 0);
 
-    expect(seen.filter((request) => request.url === "/v1/runs")).toHaveLength(2);
+    expect(seen.filter((request) => request.url === "/v1/runs")).toHaveLength(
+      2,
+    );
     expect(cb.chunks.join("")).toBe("ok");
     expect(cb.done).toHaveBeenCalledWith("session-1");
     expect(cb.error).not.toHaveBeenCalled();
@@ -345,15 +460,24 @@ describe("Hermes runs API transport", () => {
       undefined,
       runtime(baseUrl),
     );
-    await waitFor(() => seen.some((request) => request.url === "/v1/runs/run_stop/events"));
+    await waitFor(() =>
+      seen.some((request) => request.url === "/v1/runs/run_stop/events"),
+    );
     handle.abort();
-    await waitFor(() => seen.some((request) => request.url === "/v1/runs/run_stop/stop"));
+    await waitFor(() =>
+      seen.some((request) => request.url === "/v1/runs/run_stop/stop"),
+    );
+    expect(activityMocks.markStopping).toHaveBeenCalledWith("activity-token");
+    expect(activityMocks.finishRun).toHaveBeenCalledTimes(1);
   });
 
   it("resolves a pending run approval through the run-specific approval endpoint", async () => {
     const { resolveRunApproval } = await import("../src/main/hermes/runs-api");
     const { baseUrl, seen } = await fakeHermes((req, res, body) => {
-      if (req.method === "POST" && req.url === "/v1/runs/run_approval/approval") {
+      if (
+        req.method === "POST" &&
+        req.url === "/v1/runs/run_approval/approval"
+      ) {
         expect(JSON.parse(body)).toEqual({
           choice: "always",
           all: true,

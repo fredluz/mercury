@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ChatBubble, Clock, Plus, Users } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
 import { useCachedSessions } from "../Sessions/useCachedSessions";
+import { useSessionRuntimeActivity } from "../Sessions/useSessionRuntimeActivity";
 import {
   formatSessionFullDate,
   formatSessionModel,
@@ -136,6 +137,7 @@ function ChatListSidebar({
     limit: 100,
     refreshToken,
   });
+  const { activeBySessionKey, activeProfiles } = useSessionRuntimeActivity();
 
   useEffect(() => {
     let cancelled = false;
@@ -199,9 +201,11 @@ function ChatListSidebar({
       session.profile,
     );
     const title = session.title || t("chat.untitledChat");
+    const rowKey = sessionRowKey(session.id, session.profile);
+    const runActive = activeBySessionKey.has(rowKey);
     return (
       <button
-        key={sessionRowKey(session.id, session.profile)}
+        key={rowKey}
         className={`chat-sidebar-row ${active ? "chat-sidebar-row--active" : ""}`}
         onClick={() =>
           onResumeSession(
@@ -211,7 +215,16 @@ function ChatListSidebar({
           )
         }
       >
-        <span className="chat-sidebar-row-title">{title}</span>
+        <span className="chat-sidebar-row-title">
+          {runActive ? (
+            <span
+              className="session-activity-dot"
+              title={t("chat.sidebarSessionActive")}
+              aria-label={t("chat.sidebarSessionActive")}
+            />
+          ) : null}
+          {title}
+        </span>
         <span className="chat-sidebar-row-meta">
           {formatSessionFullDate(session.startedAt)}
         </span>
@@ -288,7 +301,16 @@ function ChatListSidebar({
           <section key={group.key} className="chat-sidebar-agent-group">
             <div className="chat-sidebar-agent-header">
               <div>
-                <div className="chat-sidebar-agent-name">{group.name}</div>
+                <div className="chat-sidebar-agent-name">
+                  {group.name}
+                  {activeProfiles.has(group.key) ? (
+                    <span
+                      className="session-activity-dot session-activity-dot--group"
+                      title={t("chat.sidebarAgentActive")}
+                      aria-label={t("chat.sidebarAgentActive")}
+                    />
+                  ) : null}
+                </div>
                 <div className="chat-sidebar-agent-count">
                   {renderCount(group.sessions.length)}
                 </div>

@@ -8,6 +8,10 @@ import type {
   SkillMetadata,
   SkillMutationBatchResult,
   SkillMutationTarget,
+  SkillSourceImportRequest,
+  SkillSourceImportResult,
+  SkillSourcePreviewRequest,
+  SkillSourcePreviewResult,
 } from "../shared/skills";
 import type {
   MigrationInventory,
@@ -16,6 +20,7 @@ import type {
 } from "../shared/migration";
 import type { PerfTelemetryConfig, RendererPerfEvent } from "../shared/perf";
 import type {
+  ProfileSessionRuntimeActivitySnapshot,
   RuntimeDebugAgentRequest,
   RuntimeDebugAgentResult,
   RuntimeDiagnostic,
@@ -53,7 +58,12 @@ interface InstallProgress {
 interface HermesAPI {
   // Runtime diagnostics
   getRuntimeDiagnostic: (profile?: string) => Promise<RuntimeDiagnostic>;
+  getSessionRuntimeActivity: (
+    profile?: string,
+  ) => Promise<ProfileSessionRuntimeActivitySnapshot[]>;
   revalidateRuntime: (profile?: string) => Promise<boolean>;
+  applyPendingRuntimeUpdateNow: (profile?: string) => Promise<boolean>;
+  deferPendingRuntimeUpdate: (profile?: string) => Promise<boolean>;
   launchRuntimeDebugAgent: (
     request: RuntimeDebugAgentRequest,
   ) => Promise<RuntimeDebugAgentResult>;
@@ -316,7 +326,13 @@ interface HermesAPI {
   listInstalledSkills: (
     profile?: string,
   ) => Promise<
-    Array<{ name: string; category: string; description: string; path: string; directoryName: string }>
+    Array<{
+      name: string;
+      category: string;
+      description: string;
+      path: string;
+      directoryName: string;
+    }>
   >;
   listBundledSkills: () => Promise<
     Array<{
@@ -346,6 +362,13 @@ interface HermesAPI {
     request: SkillMarkdownImportRequest,
     profile?: string,
   ) => Promise<SkillMarkdownImportResult>;
+  previewSkillSource: (
+    request: SkillSourcePreviewRequest,
+  ) => Promise<SkillSourcePreviewResult>;
+  importSkillSource: (
+    request: SkillSourceImportRequest,
+    profile?: string,
+  ) => Promise<SkillSourceImportResult>;
 
   // Session cache
   listCachedSessions: (
@@ -476,7 +499,6 @@ interface HermesAPI {
       capabilities: ModelCapability[];
     }>,
   ) => Promise<boolean>;
-
 
   // Updates
   checkForUpdates: () => Promise<string | null>;

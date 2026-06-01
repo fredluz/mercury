@@ -36,3 +36,12 @@ release/
 output/
 
 prompt-exports/
+
+# Internal dev artifacts — keep local, never on GitHub
+docs/investigations/
+specs/
+blueprints/
+docs/adr/
+.understand-anything/
+AGENTS.md
+CONTEXT.md

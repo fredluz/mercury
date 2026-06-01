@@ -47,6 +47,17 @@ interface DiagnosticRequestShape {
   jobId?: string;
 }
 
+export interface HermesDetailedHealthPayload extends JsonRecord {
+  status?: string;
+  platform?: string;
+  gateway_state?: string;
+  platforms?: unknown;
+  active_agents?: number;
+  exit_reason?: string | null;
+  updated_at?: string;
+  pid?: number;
+}
+
 export class ProfileHermesBffClient {
   readonly profile: string;
   readonly apiBaseUrl: string;
@@ -284,6 +295,20 @@ export class ProfileHermesBffClient {
     } catch {
       return false;
     }
+  }
+
+  detailedHealth(
+    options: { timeoutMs?: number; signal?: AbortSignal } = {},
+  ): Promise<HermesDetailedHealthPayload> {
+    return this.json<HermesDetailedHealthPayload>({
+      family: "health",
+      method: "GET",
+      path: "/health/detailed",
+      expectedStatuses: [200],
+      timeoutMs: options.timeoutMs ?? HEALTH_TIMEOUT_MS,
+      signal: options.signal,
+      retry: "none",
+    });
   }
 
   private async requestJsonAttempt(

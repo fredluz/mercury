@@ -22,6 +22,7 @@ const VALUE_FLAGS = new Set([
   "--context-window",
   "--deliver",
   "--description",
+  "--directoryName",
   "--entries-file",
   "--file",
   "--host",
@@ -38,6 +39,7 @@ const VALUE_FLAGS = new Set([
   "--provider",
   "--remote-port",
   "--schedule",
+  "--skill",
   "--url",
   "--username",
 ]);
@@ -398,6 +400,24 @@ async function dispatchKnowledge(domain: string, rest: string[], context: CliCon
         profile,
       );
       ensureResultSuccess(result, "skills import");
+      return { handled: true, data: result };
+    }
+    if (action === "add") {
+      const source = positionals.join(" ").trim();
+      if (!source) throw usageError("Missing skill source");
+      const result = await knowledge.importSkillSourceForProfile(
+        {
+          source,
+          skillSelector: optionValue(options, "--skill"),
+          name: optionValue(options, "--name"),
+          category: optionValue(options, "--category"),
+          description: optionValue(options, "--description"),
+          directoryName: optionValue(options, "--directoryName"),
+          overwrite: hasOption(options, "--overwrite"),
+        },
+        profile,
+      );
+      ensureResultSuccess(result, "skills add");
       return { handled: true, data: result };
     }
   }

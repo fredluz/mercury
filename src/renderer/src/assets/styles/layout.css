@@ -255,6 +255,20 @@
   color: var(--text-secondary);
 }
 
+.runtime-diagnostic-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.runtime-diagnostic-action {
+  min-height: 24px;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
 .chat-list-sidebar {
   padding: 12px;
   gap: 10px;
@@ -447,6 +461,35 @@
   color: var(--text-primary);
   font-size: 13px;
   font-weight: 800;
+}
+
+/* Per-session / per-agent "active run" indicator. Purely informational. */
+.session-activity-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  vertical-align: middle;
+  background: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
+  animation: session-activity-pulse 1.6s ease-in-out infinite;
+}
+
+.session-activity-dot--group {
+  margin-right: 0;
+  margin-left: 6px;
+}
+
+@keyframes session-activity-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
 }
 
 .chat-sidebar-agent-count,

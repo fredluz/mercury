@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-function mockSystemServiceDeps(options: {
-  revalidateRuntime?: ReturnType<typeof vi.fn>;
-} = {}): void {
+function mockSystemServiceDeps(
+  options: {
+    revalidateRuntime?: ReturnType<typeof vi.fn>;
+    getSnapshot?: ReturnType<typeof vi.fn>;
+  } = {},
+): void {
   const revalidateRuntime =
     options.revalidateRuntime ?? vi.fn().mockResolvedValue(true);
+  const getSnapshot = options.getSnapshot ?? vi.fn().mockReturnValue([]);
 
   vi.doMock("../src/main/installer", () => ({
     runHermesBackup: vi.fn(),
@@ -21,6 +25,9 @@ function mockSystemServiceDeps(options: {
     getRuntimeDiagnostic: vi.fn(),
     markRuntimeStale: vi.fn(),
     revalidateRuntime,
+  }));
+  vi.doMock("../src/main/hermes/session-activity", () => ({
+    chatSessionActivityTracker: { getSnapshot },
   }));
   vi.doMock("../src/main/ssh-remote", () => ({
     sshRunDump: vi.fn(),
@@ -45,11 +52,26 @@ describe("system-service runtime revalidation", () => {
         .fn()
         .mockRejectedValue(new Error("runtime-profile-unverified")),
     });
-    const { revalidateRuntimeForProfile } = await import(
-      "../src/main/services/system-service"
-    );
+    const { revalidateRuntimeForProfile } =
+      await import("../src/main/services/system-service");
 
     await expect(revalidateRuntimeForProfile("default")).resolves.toBe(false);
+  });
+
+  it("delegates session runtime activity snapshots to the chat activity tracker", async () => {
+    const getSnapshot = vi
+      .fn()
+      .mockReturnValue([
+        { profile: "alpha", activeRunCount: 1, isIdle: false, sessions: [] },
+      ]);
+    mockSystemServiceDeps({ getSnapshot });
+    const { getSessionRuntimeActivityForProfile } =
+      await import("../src/main/services/system-service");
+
+    await expect(getSessionRuntimeActivityForProfile("alpha")).toEqual([
+      { profile: "alpha", activeRunCount: 1, isIdle: false, sessions: [] },
+    ]);
+    expect(getSnapshot).toHaveBeenCalledWith("alpha");
   });
 
   it("delegates runtime revalidation to the capability-gated runtime manager", async () => {
@@ -57,9 +79,8 @@ describe("system-service runtime revalidation", () => {
     mockSystemServiceDeps({
       revalidateRuntime,
     });
-    const { revalidateRuntimeForProfile } = await import(
-      "../src/main/services/system-service"
-    );
+    const { revalidateRuntimeForProfile } =
+      await import("../src/main/services/system-service");
 
     await expect(revalidateRuntimeForProfile("default")).resolves.toBe(false);
     expect(revalidateRuntime).toHaveBeenCalledWith("default");

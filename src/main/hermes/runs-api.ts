@@ -3,6 +3,7 @@ import { resolveChatRuntimeModel } from "./chat-model";
 import { profileHermesBffClientForRuntime, HermesBffError } from "./bff";
 import type { HermesRunsBffClient } from "./bff";
 import { hermesRunRegistry } from "./run-registry";
+import { chatSessionActivityTracker } from "./session-activity";
 import type {
   ChatCallbacks,
   ChatHandle,
@@ -70,37 +71,58 @@ export function sendMessageViaRunsApi(
   );
 
   const controller = new AbortController();
+  const activityToken = chatSessionActivityTracker.beginRun({
+    profile: expectedProfile,
+    sessionId: resumeSessionId,
+    status: "queued",
+  });
   let activeRunId: string | undefined;
   let activeRequest: ClientRequest | undefined;
   let finished = false;
+  let activityFinished = false;
+
+  const finishActivity = (): void => {
+    if (activityFinished) return;
+    activityFinished = true;
+    chatSessionActivityTracker.finishRun(activityToken);
+  };
 
   const finish = (error?: string, info?: ChatErrorInfo): void => {
     if (finished) return;
     finished = true;
+    finishActivity();
     if (error) cb.onError(error, info);
   };
 
   const execute = async (): Promise<void> => {
     if (controller.signal.aborted) return;
-    await sendMessageViaVerifiedRunsApi(
-      message,
-      cb,
-      expectedProfile,
-      resumeSessionId,
-      history,
-      bff.runs,
-      controller.signal,
-      (req) => {
-        activeRequest = req;
-      },
-      (runId) => {
-        activeRunId = runId;
-      },
-    );
+    try {
+      await sendMessageViaVerifiedRunsApi(
+        message,
+        cb,
+        expectedProfile,
+        resumeSessionId,
+        history,
+        bff.runs,
+        controller.signal,
+        (req) => {
+          activeRequest = req;
+        },
+        (runId) => {
+          activeRunId = runId;
+        },
+        activityToken,
+      );
+    } finally {
+      finishActivity();
+    }
   };
 
   hermesRunRegistry.schedule(execute, controller.signal).catch((error) => {
-    if (controller.signal.aborted) return;
+    if (controller.signal.aborted) {
+      finishActivity();
+      return;
+    }
     const message =
       error instanceof Error ? error.message : "Hermes run failed to start.";
     finish(message, buildErrorInfo(message, expectedProfile));
@@ -109,10 +131,12 @@ export function sendMessageViaRunsApi(
   return {
     abort: () => {
       controller.abort();
+      if (activeRunId) chatSessionActivityTracker.markStopping(activityToken);
       activeRequest?.destroy();
       if (activeRunId) {
         void postRunStop(bff.runs, activeRunId).catch(() => undefined);
       }
+      finishActivity();
     },
   };
 }
@@ -127,6 +151,7 @@ async function sendMessageViaVerifiedRunsApi(
   signal: AbortSignal,
   setActiveRequest: (req: ClientRequest | undefined) => void,
   setActiveRunId: (runId: string) => void,
+  activityToken: string,
 ): Promise<void> {
   const mc = await resolveChatRuntimeModel(profile);
   const requestShape = {
@@ -163,6 +188,11 @@ async function sendMessageViaVerifiedRunsApi(
     return;
   }
   setActiveRunId(submitted.runId);
+  chatSessionActivityTracker.attachRun({
+    token: activityToken,
+    runId: submitted.runId,
+    sessionId: submitted.sessionId || resumeSessionId,
+  });
   await streamRunEvents(
     runs,
     submitted.runId,
@@ -173,6 +203,7 @@ async function sendMessageViaVerifiedRunsApi(
     mc.model,
     signal,
     setActiveRequest,
+    activityToken,
   );
 }
 
@@ -252,6 +283,7 @@ async function streamRunEvents(
   model: string | undefined,
   signal: AbortSignal,
   setActiveRequest: (req: ClientRequest | undefined) => void,
+  activityToken: string,
 ): Promise<void> {
   let output = "";
   let terminal = false;
@@ -289,6 +321,7 @@ async function streamRunEvents(
   };
 
   try {
+    chatSessionActivityTracker.markRunning(activityToken);
     await runs.streamEvents<RunEventPayload>(runId, {
       signal,
       setActiveRequest,

@@ -1,8 +1,17 @@
 import { sendMessageViaApi } from "./chat-api";
 import { isRemoteMode } from "./connection";
+import {
+  profileHermesBffClientForRuntime,
+  type HermesDetailedHealthPayload,
+} from "./bff";
 import { profileRuntimeManager } from "./runtime";
 import { assertVerifiedApiRuntimeHandle } from "./runtime/api-runtime";
-import { isSyntheticChatStreamEnabled, sendSyntheticChatStream } from "./synthetic-chat";
+import {
+  isSyntheticChatStreamEnabled,
+  sendSyntheticChatStream,
+} from "./synthetic-chat";
+import type { RuntimeApplySource } from "../../shared/runtime";
+import type { RuntimeApplyState } from "./runtime/state";
 import type { ChatCallbacks, ChatHandle, ProfileRuntimeHandle } from "./types";
 
 export async function sendMessage(
@@ -14,7 +23,13 @@ export async function sendMessage(
   preparedRuntime?: ProfileRuntimeHandle,
 ): Promise<ChatHandle> {
   if (isSyntheticChatStreamEnabled()) {
-    return sendSyntheticChatStream(message, cb, profile, resumeSessionId, history);
+    return sendSyntheticChatStream(
+      message,
+      cb,
+      profile,
+      resumeSessionId,
+      history,
+    );
   }
 
   const normalizedProfile = profileRuntimeManager.normalizeProfile(profile);
@@ -93,7 +108,26 @@ export function getRuntimeDiagnostic(profile?: string) {
   return profileRuntimeManager.getRuntimeDiagnostic(profile);
 }
 
-export function markRuntimeStale(profile: string | undefined, reason: string): void {
+export async function getGatewayDetailedHealth(
+  profile?: string,
+): Promise<HermesDetailedHealthPayload> {
+  const normalizedProfile = profileRuntimeManager.normalizeProfile(profile);
+  const runtime = await profileRuntimeManager.resolveRuntimeForHealthProbe({
+    profile: normalizedProfile,
+    purpose: "gateway",
+    preferTransport: "api",
+  });
+  return profileHermesBffClientForRuntime(
+    runtime,
+    normalizedProfile,
+    "gateway",
+  ).detailedHealth();
+}
+
+export function markRuntimeStale(
+  profile: string | undefined,
+  reason: string,
+): void {
   profileRuntimeManager.markRuntimeStale(profile, reason);
 }
 
@@ -103,6 +137,32 @@ export function markAllRuntimesStale(reason: string): void {
 
 export function clearRuntimeStale(profile?: string): void {
   profileRuntimeManager.clearRuntimeStale(profile);
+}
+
+export function setRuntimeApplyState(
+  profile: string | undefined,
+  state: RuntimeApplyState,
+): void {
+  profileRuntimeManager.setRuntimeApplyState(profile, state);
+}
+
+export function clearRuntimeApplyState(
+  profile: string | undefined,
+  source: RuntimeApplySource,
+): void {
+  profileRuntimeManager.clearRuntimeApplyState(profile, source);
+}
+
+export function clearRuntimeStaleIfApplySource(
+  profile: string | undefined,
+  source: RuntimeApplySource,
+  expectedReason?: string,
+): void {
+  profileRuntimeManager.clearRuntimeStaleIfApplySource(
+    profile,
+    source,
+    expectedReason,
+  );
 }
 
 export function revalidateRuntime(profile?: string): Promise<boolean> {

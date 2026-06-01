@@ -1,12 +1,21 @@
 import type { SshConfig } from "../ssh-tunnel";
 import { type InstalledSkill, type SkillSearchResult } from "../skills";
-import { isValidSkillImportProfile, prepareSkillMarkdownImport } from "../skills/importer";
+import {
+  isValidSkillCategory,
+  isValidSkillImportProfile,
+  isValidSkillName,
+  prepareSkillMarkdownImport,
+} from "../skills/importer";
+import type { SkillDirectoryImportRequest } from "../skills/directory-importer";
 import type {
+  ParsedSkillSource,
   SkillMarkdownImportRequest,
   SkillMarkdownImportResult,
   SkillMetadata,
   SkillMutationBatchResult,
   SkillMutationTarget,
+  SkillSourceCandidate,
+  SkillSourceImportResult,
 } from "../../shared/skills";
 import { normalizeRemotePath, pythonJsonInput, shellQuote, sshExec, sshFileExists, sshPython, sshReadFile, sshWriteFile } from "./transport";
 
@@ -232,6 +241,316 @@ export async function sshImportSkillMarkdown(
       code: "write-failed",
       error: (err as Error).message,
     };
+  }
+}
+
+function normalizeRelativeFilePath(relativePath: string): string {
+  return relativePath.split(/[\\/]+/).join("/");
+}
+
+function isSafeRemoteRelativeFilePath(relativePath: string): boolean {
+  if (typeof relativePath !== "string" || !relativePath || relativePath.includes("\0")) {
+    return false;
+  }
+  if (relativePath.startsWith("/") || /^[A-Za-z]:[\\/]/.test(relativePath)) {
+    return false;
+  }
+  const parts = relativePath.split(/[\\/]+/);
+  return !parts.some((part) => part === "" || part === "." || part === "..");
+}
+
+function sourceForDirectoryImport(request: SkillDirectoryImportRequest): ParsedSkillSource {
+  return request.source || {
+    kind: "github",
+    owner: "local",
+    repo: "directory",
+    originalSource: "directory-import",
+    pathKind: "repo",
+  };
+}
+
+function candidateForDirectoryImport(
+  request: SkillDirectoryImportRequest,
+  source: ParsedSkillSource,
+  skill: Extract<SkillSourceImportResult, { success: true }>["skill"],
+): SkillSourceCandidate {
+  return request.candidate || {
+    candidateId: `github:${source.owner}/${source.repo}@directory:${skill.category}/${skill.directoryName}/SKILL.md` as SkillSourceCandidate["candidateId"],
+    name: skill.name,
+    category: skill.category,
+    directoryName: skill.directoryName,
+    description: skill.description,
+    skillPath: `${skill.category}/${skill.directoryName}/SKILL.md`,
+    sourceLabel: source.originalSource,
+    commitSha: "directory",
+    valid: true,
+  };
+}
+
+export async function sshImportSkillDirectory(
+  config: SshConfig,
+  request: SkillDirectoryImportRequest,
+  profile?: string,
+): Promise<SkillSourceImportResult> {
+  const fail = (
+    code: Extract<SkillSourceImportResult, { success: false }>["code"],
+    error: string,
+  ): Extract<SkillSourceImportResult, { success: false }> => ({ success: false, code, error });
+
+  if (!isValidSkillImportProfile(profile)) {
+    return fail("write-failed", "Invalid profile name for remote skill directory import.");
+  }
+  if (!Array.isArray(request.files) || request.files.length === 0) {
+    return fail("invalid-markdown", "Skill directory import requires files including SKILL.md.");
+  }
+
+  const normalizedFiles = request.files.map((file) => ({
+    originalRelativePath: file.relativePath,
+    relativePath: normalizeRelativeFilePath(file.relativePath),
+    contentBase64: file.contentBase64,
+  }));
+  const skillMarkdownFile = normalizedFiles.find((file) => file.relativePath === "SKILL.md");
+  if (!skillMarkdownFile) {
+    return fail("invalid-markdown", "Skill directory import requires a top-level SKILL.md file.");
+  }
+  const seen = new Set<string>();
+  for (const file of normalizedFiles) {
+    if (!isSafeRemoteRelativeFilePath(file.originalRelativePath)) {
+      return fail("write-failed", `Unsafe file path in skill import: ${file.originalRelativePath}`);
+    }
+    if (seen.has(file.relativePath)) {
+      return fail("write-failed", `Duplicate file path in skill import: ${file.relativePath}`);
+    }
+    seen.add(file.relativePath);
+  }
+
+  const skillMarkdown = Buffer.from(skillMarkdownFile.contentBase64, "base64").toString("utf-8");
+  const preparedResult = prepareSkillMarkdownImport({
+    markdown: skillMarkdown,
+    name: request.name,
+    category: request.category,
+    description: request.description,
+    overwrite: request.overwrite,
+  });
+  if (!preparedResult.success) return preparedResult;
+
+  const { prepared } = preparedResult;
+  const directoryName = (request.directoryName?.trim() || prepared.name).trim();
+  if (!isValidSkillCategory(prepared.category)) {
+    return fail("invalid-category", "Category must be a slug: 1-64 lowercase letters, numbers, underscores, or hyphens.");
+  }
+  if (!isValidSkillName(directoryName)) {
+    return fail("invalid-name", "Skill directory name must be a slug: 2-64 lowercase letters, numbers, underscores, or hyphens.");
+  }
+
+  const payload = {
+    profile,
+    category: prepared.category,
+    directoryName,
+    name: prepared.name,
+    description: prepared.description,
+    overwrite: request.overwrite === true,
+    files: normalizedFiles.map((file) => ({
+      relativePath: file.relativePath,
+      contentBase64:
+        file.relativePath === "SKILL.md"
+          ? Buffer.from(prepared.markdown, "utf-8").toString("base64")
+          : file.contentBase64,
+    })),
+  };
+
+  const script = String.raw`
+import base64, json, os, re, shutil, sys, tempfile, time
+payload = json.load(sys.stdin)
+profile = payload.get("profile")
+category = payload.get("category") or ""
+directory_name = payload.get("directoryName") or ""
+name = payload.get("name") or ""
+description = payload.get("description") or ""
+overwrite = bool(payload.get("overwrite"))
+files = payload.get("files") or []
+remote_prefix = "REMOTE:"
+skills_root = os.path.expanduser(f"~/.hermes/profiles/{profile}/skills" if profile and profile != "default" else "~/.hermes/skills")
+
+NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,63}$")
+CATEGORY_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+PROFILE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+def result(value):
+    print(json.dumps(value))
+    sys.exit(0)
+
+def fail(code, error):
+    result({"success": False, "code": code, "error": error})
+
+def under(parent, child):
+    try:
+        parent_real = os.path.realpath(parent)
+        child_real = os.path.realpath(child)
+        return child_real == parent_real or child_real.startswith(parent_real + os.sep)
+    except Exception:
+        return False
+
+def has_symlink_in_path(root, target):
+    if not os.path.exists(root):
+        return False
+    root_abs = os.path.abspath(root)
+    target_abs = os.path.abspath(target)
+    try:
+        if os.path.islink(root_abs):
+            return True
+    except Exception:
+        return False
+    rel = os.path.relpath(target_abs, root_abs)
+    if rel == "." or rel.startswith("..") or os.path.isabs(rel):
+        return False
+    current = root_abs
+    for part in rel.split(os.sep):
+        current = os.path.join(current, part)
+        if not os.path.exists(current):
+            return False
+        if os.path.islink(current):
+            return True
+    return False
+
+def safe_rel(path):
+    if not isinstance(path, str) or not path or "\x00" in path:
+        return False
+    if os.path.isabs(path) or re.match(r"^[A-Za-z]:[\\/]", path):
+        return False
+    parts = re.split(r"[\\/]+", path)
+    return not any(part in ("", ".", "..") for part in parts)
+
+def normalize_rel(path):
+    return "/".join(re.split(r"[\\/]+", path))
+
+def safe_existing(path):
+    return os.path.exists(skills_root) and os.path.exists(path) and under(skills_root, path) and not has_symlink_in_path(skills_root, path)
+
+def safe_destination_parent(destination):
+    parent = os.path.dirname(destination)
+    return os.path.exists(skills_root) and os.path.exists(parent) and under(skills_root, destination) and under(skills_root, parent) and not has_symlink_in_path(skills_root, parent)
+
+def remove_any(path):
+    if os.path.isdir(path) and not os.path.islink(path):
+        shutil.rmtree(path, ignore_errors=True)
+        return
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+
+if profile and profile != "default" and not PROFILE_RE.match(profile):
+    fail("write-failed", "Invalid profile name for remote skill directory import.")
+if not CATEGORY_RE.match(category):
+    fail("invalid-category", "Category must be a slug: 1-64 lowercase letters, numbers, underscores, or hyphens.")
+if not NAME_RE.match(directory_name):
+    fail("invalid-name", "Skill directory name must be a slug: 2-64 lowercase letters, numbers, underscores, or hyphens.")
+if not isinstance(files, list) or not files:
+    fail("invalid-markdown", "Skill directory import requires files including SKILL.md.")
+
+normalized = []
+seen = set()
+has_skill = False
+for entry in files:
+    rel_original = entry.get("relativePath") if isinstance(entry, dict) else None
+    if not safe_rel(rel_original):
+        fail("write-failed", f"Unsafe file path in skill import: {rel_original}")
+    rel = normalize_rel(rel_original)
+    if rel in seen:
+        fail("write-failed", f"Duplicate file path in skill import: {rel}")
+    seen.add(rel)
+    if rel == "SKILL.md":
+        has_skill = True
+    normalized.append({"relativePath": rel, "contentBase64": entry.get("contentBase64") or ""})
+if not has_skill:
+    fail("invalid-markdown", "Skill directory import requires a top-level SKILL.md file.")
+
+category_dir = os.path.abspath(os.path.join(skills_root, category))
+dest_dir = os.path.abspath(os.path.join(category_dir, directory_name))
+if not under(skills_root, dest_dir):
+    fail("write-failed", "Resolved skill path escapes the remote skills directory.")
+
+try:
+    os.makedirs(skills_root, mode=0o755, exist_ok=True)
+    os.makedirs(category_dir, mode=0o755, exist_ok=True)
+    if not safe_destination_parent(dest_dir):
+        fail("write-failed", "Skill destination is not safe to write.")
+
+    destination_exists = os.path.lexists(dest_dir)
+    if destination_exists and not overwrite:
+        fail("duplicate", f"Skill {category}/{directory_name} already exists on the remote host.")
+    if destination_exists and not safe_existing(dest_dir):
+        fail("write-failed", "Existing skill destination is not safe to replace.")
+
+    temp_dir = tempfile.mkdtemp(prefix=".mercury-import-", dir=category_dir)
+    os.chmod(temp_dir, 0o755)
+    if not safe_destination_parent(temp_dir):
+        fail("write-failed", "Temporary skill destination is not safe to write.")
+
+    try:
+        for entry in normalized:
+            rel = entry["relativePath"]
+            target = os.path.abspath(os.path.join(temp_dir, *rel.split("/")))
+            if not under(temp_dir, target):
+                raise Exception(f"Resolved file path escapes the skill directory: {rel}")
+            parent = os.path.dirname(target)
+            os.makedirs(parent, mode=0o755, exist_ok=True)
+            current = temp_dir
+            for part in rel.split("/")[:-1]:
+                current = os.path.join(current, part)
+                os.chmod(current, 0o755)
+            data = base64.b64decode(entry["contentBase64"])
+            with open(target, "xb") as handle:
+                handle.write(data)
+            os.chmod(target, 0o644)
+
+        backup_dir = None
+        try:
+            if destination_exists:
+                backup_dir = f"{dest_dir}.mercury-backup-{os.getpid()}-{int(time.time() * 1000)}"
+                os.rename(dest_dir, backup_dir)
+            os.rename(temp_dir, dest_dir)
+            temp_dir = None
+            if backup_dir:
+                remove_any(backup_dir)
+        except Exception:
+            if backup_dir and os.path.exists(backup_dir) and not os.path.exists(dest_dir):
+                try:
+                    os.rename(backup_dir, dest_dir)
+                except Exception:
+                    pass
+            raise
+    finally:
+        if temp_dir and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    result({"success": True, "skill": {"name": name, "category": category, "description": description, "path": remote_prefix + dest_dir, "directoryName": directory_name}})
+except SystemExit:
+    raise
+except Exception as exc:
+    fail("write-failed", str(exc))
+`;
+
+  try {
+    const out = await sshPython(config, script, pythonJsonInput(payload), 120000);
+    const parsed = JSON.parse(out.trim() || "{}") as SkillSourceImportResult;
+    if (!parsed.success) return parsed;
+    const source = sourceForDirectoryImport(request);
+    const skill = {
+      ...parsed.skill,
+      path: parsed.skill.path.startsWith(REMOTE_PREFIX)
+        ? REMOTE_PREFIX + normalizeRemotePath(parsed.skill.path.slice(REMOTE_PREFIX.length))
+        : REMOTE_PREFIX + normalizeRemotePath(parsed.skill.path),
+    };
+    return {
+      success: true,
+      skill,
+      source,
+      candidate: candidateForDirectoryImport(request, source, skill),
+    };
+  } catch (err) {
+    return fail("write-failed", (err as Error).message);
   }
 }
 

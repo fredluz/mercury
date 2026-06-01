@@ -12,6 +12,14 @@ type SkillMarkdownImportFailure = Extract<
   { success: false }
 >;
 
+export function isValidSkillName(value: string | undefined): boolean {
+  return typeof value === "string" && SKILL_NAME_RE.test(value);
+}
+
+export function isValidSkillCategory(value: string | undefined): boolean {
+  return typeof value === "string" && SKILL_CATEGORY_RE.test(value);
+}
+
 export function isValidSkillImportProfile(profile?: string): boolean {
   return !profile || profile === "default" || PROFILE_NAME_RE.test(profile);
 }
@@ -109,7 +117,7 @@ export function prepareSkillMarkdownImport(
     existingFrontmatter?.body || markdown,
   );
 
-  if (!SKILL_NAME_RE.test(name)) {
+  if (!isValidSkillName(name)) {
     return {
       success: false,
       code: "invalid-name",
@@ -117,7 +125,7 @@ export function prepareSkillMarkdownImport(
     };
   }
 
-  if (!SKILL_CATEGORY_RE.test(category)) {
+  if (!isValidSkillCategory(category)) {
     return {
       success: false,
       code: "invalid-category",

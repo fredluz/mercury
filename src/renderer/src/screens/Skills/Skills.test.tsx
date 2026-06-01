@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { SkillSourceCandidate, SkillSourceImportRequest } from "../../../../shared/skills";
 import Skills from "./Skills";
 
 vi.mock("../../components/useI18n", () => {
@@ -19,6 +20,7 @@ vi.mock("../../components/useI18n", () => {
     "skills.pendingSaveMissingResult": "No result returned for this change",
     "skills.pendingSaveNotReflected": "Saved result was not reflected after reload",
     "skills.importPendingSaveFailed": "Save pending skill changes before importing. Fix or discard failed changes, then try again.",
+    "skills.sourceImportRestartWarning": "Skill imported from source. Restart the gateway or start a new Hermes session for runtime indexing.",
   };
   const t = (key: string, options?: Record<string, unknown>) => {
     const template = templates[key] ?? key;
@@ -77,6 +79,21 @@ type MutationTarget = {
 
 function targetIdentity(target: { category?: string; name: string; directoryName?: string }): string {
   return `${(target.category || "").toLowerCase()}\u0000${(target.directoryName || target.name).toLowerCase()}`;
+}
+
+function sourceCandidate(overrides: Partial<SkillSourceCandidate> = {}): SkillSourceCandidate {
+  return {
+    candidateId: "github:owner/repo@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:skills/demo/SKILL.md" as const,
+    name: "demo-skill",
+    category: "custom",
+    directoryName: "demo-skill",
+    description: "Demo source skill",
+    skillPath: "skills/demo/SKILL.md",
+    sourceLabel: "owner/repo",
+    commitSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    valid: true,
+    ...overrides,
+  };
 }
 
 function installHermesApiMock(): void {
@@ -158,6 +175,42 @@ function installHermesApiMock(): void {
         path: "/skills/custom/manual-skill",
       },
     }),
+    previewSkillSource: vi.fn().mockResolvedValue({
+      success: true,
+      source: {
+        kind: "github",
+        owner: "owner",
+        repo: "repo",
+        originalSource: "owner/repo",
+        pathKind: "repo",
+      },
+      candidates: [sourceCandidate()],
+    }),
+    importSkillSource: vi.fn().mockImplementation(async (request: SkillSourceImportRequest, profile?: string) => {
+      const key = profile || "default";
+      const category = request.category || "custom";
+      const directoryName = request.name || "demo-skill";
+      const imported = {
+        name: request.name || "demo-skill",
+        category,
+        description: request.description || "Demo source skill",
+        path: `/skills/${category}/${directoryName}`,
+        directoryName,
+      };
+      installedByProfile[key] = [...(installedByProfile[key] ?? installedByProfile.default), imported];
+      return {
+        success: true,
+        skill: imported,
+        source: {
+          kind: "github",
+          owner: "owner",
+          repo: "repo",
+          originalSource: request.source,
+          pathKind: "repo",
+        },
+        candidate: sourceCandidate({ category, directoryName, name: imported.name }),
+      };
+    }),
     listProfiles: vi.fn().mockResolvedValue([
       {
         name: "default",
@@ -184,6 +237,7 @@ function installHermesApiMock(): void {
         gatewayRunning: false,
       },
     ]),
+    isRemoteOnlyMode: vi.fn().mockResolvedValue(false),
     openExternal: vi.fn(),
   };
 }
@@ -570,7 +624,7 @@ describe("Skills redesign", () => {
     if (!tsTestRow) throw new Error("Missing ts-test row");
     fireEvent.click(within(tsTestRow as HTMLElement).getByRole("button", { name: "skills.enable" }));
 
-    fireEvent.click(screen.getByRole("button", { name: /skills.importMarkdownAction/i }));
+    fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
     fireEvent.change(screen.getByPlaceholderText("skills.importMarkdownPlaceholder"), {
       target: { value: "# manual-skill\n\nManual body." },
     });
@@ -587,7 +641,7 @@ describe("Skills redesign", () => {
     render(<Skills profile="default" />);
     await screen.findByText("typescript");
 
-    fireEvent.click(screen.getByRole("button", { name: /skills.importMarkdownAction/i }));
+    fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
     fireEvent.change(screen.getByPlaceholderText("skills.importMarkdownPlaceholder"), {
       target: { value: "# manual-skill\n\nManual body." },
     });
@@ -611,7 +665,7 @@ describe("Skills redesign", () => {
     if (!tsTestRow) throw new Error("Missing ts-test row");
     fireEvent.click(within(tsTestRow as HTMLElement).getByRole("button", { name: "skills.enable" }));
 
-    fireEvent.click(screen.getByRole("button", { name: /skills.importMarkdownAction/i }));
+    fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
     fireEvent.change(screen.getByPlaceholderText("skills.importMarkdownPlaceholder"), {
       target: { value: "# manual-skill\n\nManual body." },
     });
@@ -623,5 +677,267 @@ describe("Skills redesign", () => {
       [{ action: "install", name: "ts-test", category: "typescript", directoryName: "ts-test" }],
       "default",
     );
+  });
+
+  it("previews a GitHub URL with one candidate and imports it directly", async () => {
+    const candidate = sourceCandidate({
+      candidateId: "github:owner/repo@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:skills/pdf/SKILL.md",
+      category: "docs",
+      directoryName: "pdf",
+      name: "pdf",
+      skillPath: "skills/pdf/SKILL.md",
+    });
+    vi.mocked(window.hermesAPI.previewSkillSource).mockResolvedValueOnce({
+      success: true,
+      source: {
+        kind: "github",
+        owner: "owner",
+        repo: "repo",
+        originalSource: "https://github.com/owner/repo",
+        pathKind: "repo",
+      },
+      candidates: [candidate],
+    });
+
+    render(<Skills profile="default" />);
+    await screen.findByText("typescript");
+
+    fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
+    fireEvent.click(await screen.findByRole("tab", { name: "skills.githubLinkTab" }));
+    fireEvent.change(screen.getByPlaceholderText("skills.sourceUrlPlaceholder"), {
+      target: { value: "https://github.com/owner/repo" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "skills.previewSource" }));
+
+    await waitFor(() => expect(window.hermesAPI.previewSkillSource).toHaveBeenCalledWith({ source: "https://github.com/owner/repo" }));
+    fireEvent.click(screen.getByRole("button", { name: "skills.import" }));
+
+    await waitFor(() => expect(window.hermesAPI.importSkillSource).toHaveBeenCalledTimes(1));
+    expect(window.hermesAPI.importSkillSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "https://github.com/owner/repo",
+        candidateId: candidate.candidateId,
+        category: "docs",
+      }),
+      "default",
+    );
+  });
+
+  it("previews before saving pending source imports and aborts import on pending-save failure", async () => {
+    vi.mocked(window.hermesAPI.mutateSkills).mockResolvedValueOnce({
+      success: false,
+      updated: 0,
+      failed: 1,
+      results: [
+        {
+          success: false,
+          action: "install",
+          target: { action: "install", name: "ts-test", category: "typescript", directoryName: "ts-test" },
+          name: "ts-test",
+          category: "typescript",
+          code: "timeout",
+          error: "Timed out while installing",
+        },
+      ],
+    });
+
+    render(<Skills profile="default" />);
+    await screen.findByText("typescript");
+
+    fireEvent.click(screen.getByRole("button", { name: /skills.browseTab/i }));
+    const section = categorySection("typescript");
+    const tsTestRow = within(section).getByText("ts-test").closest(".skills-row");
+    if (!tsTestRow) throw new Error("Missing ts-test row");
+    fireEvent.click(within(tsTestRow as HTMLElement).getByRole("button", { name: "skills.enable" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
+    fireEvent.click(await screen.findByRole("tab", { name: "skills.githubLinkTab" }));
+    fireEvent.change(screen.getByPlaceholderText("skills.sourceUrlPlaceholder"), {
+      target: { value: "owner/repo" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "skills.previewSource" }));
+    await waitFor(() => expect(window.hermesAPI.previewSkillSource).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "skills.import" }));
+
+    await waitFor(() => expect(window.hermesAPI.mutateSkills).toHaveBeenCalledTimes(1));
+    expect(window.hermesAPI.importSkillSource).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Save pending skill changes before importing/)).toBeInTheDocument();
+    expect(
+      vi.mocked(window.hermesAPI.previewSkillSource).mock.invocationCallOrder[0],
+    ).toBeLessThan(vi.mocked(window.hermesAPI.mutateSkills).mock.invocationCallOrder[0]);
+  });
+
+  it("renders a monorepo candidate picker and imports the selected candidate", async () => {
+    const pdf = sourceCandidate({
+      candidateId: "github:owner/repo@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:skills/pdf/SKILL.md",
+      category: "docs",
+      directoryName: "pdf",
+      name: "pdf",
+      skillPath: "skills/pdf/SKILL.md",
+      description: "PDF helper",
+    });
+    const lint = sourceCandidate({
+      candidateId: "github:owner/repo@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:skills/lint/SKILL.md",
+      category: "devtools",
+      directoryName: "lint",
+      name: "lint",
+      skillPath: "skills/lint/SKILL.md",
+      description: "Lint helper",
+    });
+    vi.mocked(window.hermesAPI.previewSkillSource).mockResolvedValueOnce({
+      success: true,
+      source: {
+        kind: "github",
+        owner: "owner",
+        repo: "repo",
+        originalSource: "owner/repo",
+        pathKind: "repo",
+      },
+      candidates: [pdf, lint],
+    });
+
+    render(<Skills profile="default" />);
+    await screen.findByText("typescript");
+
+    fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
+    fireEvent.click(await screen.findByRole("tab", { name: "skills.githubLinkTab" }));
+    fireEvent.change(screen.getByPlaceholderText("skills.sourceUrlPlaceholder"), {
+      target: { value: "owner/repo" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "skills.previewSource" }));
+
+    expect(await screen.findByText("skills/pdf/SKILL.md")).toBeInTheDocument();
+    expect(screen.getByText("skills/lint/SKILL.md")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Lint helper").closest("button")!);
+    fireEvent.click(screen.getByRole("button", { name: "skills.import" }));
+
+    await waitFor(() => expect(window.hermesAPI.importSkillSource).toHaveBeenCalledTimes(1));
+    expect(window.hermesAPI.importSkillSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "owner/repo",
+        candidateId: lint.candidateId,
+        category: "devtools",
+      }),
+      "default",
+    );
+  });
+
+  it("disables source import until a candidate is selected when preview returns multiple candidates", async () => {
+    vi.mocked(window.hermesAPI.previewSkillSource).mockResolvedValueOnce({
+      success: true,
+      source: {
+        kind: "github",
+        owner: "owner",
+        repo: "repo",
+        originalSource: "owner/repo",
+        pathKind: "repo",
+      },
+      candidates: [
+        sourceCandidate({
+          candidateId: "github:owner/repo@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:skills/pdf/SKILL.md",
+          directoryName: "pdf",
+          skillPath: "skills/pdf/SKILL.md",
+        }),
+        sourceCandidate({
+          candidateId: "github:owner/repo@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:skills/lint/SKILL.md",
+          directoryName: "lint",
+          skillPath: "skills/lint/SKILL.md",
+        }),
+      ],
+    });
+
+    render(<Skills profile="default" />);
+    await screen.findByText("typescript");
+
+    fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
+    fireEvent.click(await screen.findByRole("tab", { name: "skills.githubLinkTab" }));
+    fireEvent.change(screen.getByPlaceholderText("skills.sourceUrlPlaceholder"), {
+      target: { value: "owner/repo" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "skills.previewSource" }));
+
+    await screen.findByText("skills/pdf/SKILL.md");
+    expect(screen.getByRole("button", { name: "skills.import" })).toBeDisabled();
+  });
+
+  it("shows the error for a single invalid source candidate", async () => {
+    vi.mocked(window.hermesAPI.previewSkillSource).mockResolvedValueOnce({
+      success: true,
+      source: {
+        kind: "github",
+        owner: "owner",
+        repo: "repo",
+        originalSource: "owner/repo",
+        pathKind: "repo",
+      },
+      candidates: [sourceCandidate({ valid: false, error: "Invalid SKILL.md frontmatter" })],
+    });
+
+    render(<Skills profile="default" />);
+    await screen.findByText("typescript");
+
+    fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
+    fireEvent.click(await screen.findByRole("tab", { name: "skills.githubLinkTab" }));
+    fireEvent.change(screen.getByPlaceholderText("skills.sourceUrlPlaceholder"), {
+      target: { value: "owner/repo" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "skills.previewSource" }));
+
+    expect(await screen.findByText("Invalid SKILL.md frontmatter")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "skills.import" })).toBeDisabled();
+  });
+
+  it("hides GitHub and command source tabs in pure remote mode", async () => {
+    vi.mocked(window.hermesAPI.isRemoteOnlyMode).mockResolvedValueOnce(true);
+
+    render(<Skills profile="default" />);
+    await screen.findByText("typescript");
+
+    fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
+
+    expect(screen.getByRole("tab", { name: "skills.pasteMarkdownTab" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "skills.githubLinkTab" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "skills.commandTab" })).not.toBeInTheDocument();
+    expect(await screen.findByText("skills.sourceRemoteUnavailable")).toBeInTheDocument();
+  });
+
+  it("source import success closes the modal, reloads installed skills, and shows restart warning", async () => {
+    vi.mocked(window.hermesAPI.importSkillSource).mockResolvedValueOnce({
+      success: true,
+      skill: {
+        name: "demo-skill",
+        category: "custom",
+        description: "Demo source skill",
+        path: "/skills/custom/demo-skill",
+        directoryName: "demo-skill",
+      },
+      source: {
+        kind: "github",
+        owner: "owner",
+        repo: "repo",
+        originalSource: "owner/repo",
+        pathKind: "repo",
+      },
+      candidate: sourceCandidate(),
+      warning: "gateway-restart-required",
+    });
+
+    render(<Skills profile="default" />);
+    await screen.findByText("typescript");
+    const listCallsBeforeImport = vi.mocked(window.hermesAPI.listInstalledSkills).mock.calls.length;
+
+    fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
+    fireEvent.click(await screen.findByRole("tab", { name: "skills.githubLinkTab" }));
+    fireEvent.change(screen.getByPlaceholderText("skills.sourceUrlPlaceholder"), {
+      target: { value: "owner/repo" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "skills.previewSource" }));
+    await waitFor(() => expect(window.hermesAPI.previewSkillSource).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "skills.import" }));
+
+    await waitFor(() => expect(screen.queryByText("skills.addSkillTitle")).not.toBeInTheDocument());
+    expect(window.hermesAPI.listInstalledSkills).toHaveBeenCalledTimes(listCallsBeforeImport + 1);
+    expect(screen.getByText("Skill imported from source. Restart the gateway or start a new Hermes session for runtime indexing.")).toBeInTheDocument();
   });
 });
