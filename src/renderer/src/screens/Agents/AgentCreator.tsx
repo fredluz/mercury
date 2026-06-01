@@ -4,7 +4,7 @@ import type {
   AgentDraftChangeEvent,
   AgentDraftPatch,
 } from "../../../../shared/agents";
-import { Send } from "lucide-react";
+import { ArrowLeft, Send } from "lucide-react";
 import MercuryMark from "../../components/common/MercuryMark";
 import { useI18n } from "../../components/useI18n";
 import { AgentDraftNotifications } from "./AgentDraftNotifications";
@@ -53,7 +53,11 @@ export function AgentCreator({
   }, [draft.displayName, t]);
 
   const history = useMemo(
-    () => messages.map((message) => ({ role: message.role, content: message.content })),
+    () =>
+      messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+      })),
     [messages],
   );
 
@@ -99,17 +103,23 @@ export function AgentCreator({
             <MercuryMark size={30} decorative />
           </div>
           <div>
-            <p className="agents-draft-eyebrow">{t("agents.creatorEyebrow")}</p>
-            <h2>{t("agents.creatorTitle")}</h2>
+            <p className="agents-draft-eyebrow">
+              {t("agents.creatorEyebrowNew")}
+            </p>
+            <h2>{t("agents.creatorTitleNew")}</h2>
           </div>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={onClose}>
-          {t("agents.creatorBack")}
+        <button className="btn btn-ghost btn-sm" onClick={onClose}>
+          <ArrowLeft size={14} />
+          {t("agents.creatorBackShort")}
         </button>
       </header>
 
       <div className="agents-creator-layout">
-        <section className="agents-creator-chat" aria-label={t("agents.creatorChatLabel")}>
+        <section
+          className="agents-creator-chat"
+          aria-label={t("agents.creatorChatLabel")}
+        >
           <div className="agents-creator-chat-messages">
             {messages.map((message, index) => (
               <div
@@ -117,7 +127,9 @@ export function AgentCreator({
                 className={`agents-creator-message agents-creator-message-${message.role}`}
               >
                 <span className="agents-creator-message-role">
-                  {message.role === "assistant" ? "Mercury" : t("agents.creatorYou")}
+                  {message.role === "assistant"
+                    ? "Mercury"
+                    : t("agents.creatorYou")}
                 </span>
                 <p>{message.content}</p>
               </div>
@@ -128,29 +140,31 @@ export function AgentCreator({
               {sendError}
             </div>
           ) : null}
-          <div className="agents-creator-composer">
-            <textarea
-              className="input agents-creator-input"
-              value={input}
-              placeholder={t("agents.creatorInputPlaceholder")}
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void handleSend();
-                }
-              }}
-            />
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => void handleSend()}
-              disabled={sending || !input.trim()}
-            >
-              <Send size={14} />
-              {sending ? t("common.loading") : t("chat.send")}
-            </button>
+          <div className="agents-creator-composer-wrap">
+            <AgentDraftNotifications notifications={notifications} />
+            <div className="agents-creator-composer">
+              <textarea
+                className="input agents-creator-input"
+                value={input}
+                placeholder={t("agents.creatorInputPlaceholder")}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void handleSend();
+                  }
+                }}
+              />
+              <button
+                className="btn btn-primary"
+                onClick={() => void handleSend()}
+                disabled={sending || !input.trim()}
+              >
+                <Send size={14} />
+                {sending ? t("common.loading") : t("chat.send")}
+              </button>
+            </div>
           </div>
-          <AgentDraftNotifications notifications={notifications} />
         </section>
 
         <AgentDraftReview

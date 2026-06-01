@@ -41,6 +41,14 @@ export interface AgentCreationDraft {
   selectedPackIds: string[];
   docsPointers: AgentDocsPointerSelection[];
   toolsetOverrides: Record<string, boolean>;
+  /**
+   * Per-member include/exclude overrides within selected packs, keyed by
+   * `agentPackMemberKey` (e.g. `skill:research/arxiv`, `tool:web`). A `false`
+   * entry trims that member from an otherwise-selected pack; `true` is the
+   * implicit default and only persisted when re-enabling a previously excluded
+   * member.
+   */
+  skillOverrides: Record<string, boolean>;
   /** Persisted idempotency keys for deterministic draft mutation retries. */
   mutationIds: string[];
   createdAt: string;
@@ -56,6 +64,8 @@ export interface AgentDraftPatch {
   selectedPackIds?: string[];
   docsPointers?: AgentDocsPointerSelection[];
   toolsetOverrides?: Record<string, boolean>;
+  /** Per-pack-member include/exclude overrides keyed by `agentPackMemberKey`. */
+  skillOverrides?: Record<string, boolean>;
 }
 
 export interface AgentChatOptions {
@@ -127,4 +137,3 @@ export type AgentDraftMutationResult =
       error: string;
       draft?: AgentCreationDraft;
     };
-

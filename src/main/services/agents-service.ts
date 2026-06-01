@@ -194,7 +194,11 @@ export async function commitAgentDraft(
 
   const existingProfiles = await listProfilesForConnection();
 
-  const expanded = expandAgentPackSelection(draft.selectedPackIds);
+  const expanded = expandAgentPackSelection(
+    draft.selectedPackIds,
+    undefined,
+    draft.skillOverrides,
+  );
   const docsPointers = mergeDocsPointers(expanded.docsPointers, draft.docsPointers);
   const metadata = profileMetadataFromDraft(draft, expanded.packIds, docsPointers);
 
@@ -646,6 +650,7 @@ function isAgentDraftMutationRequest(
     "selectedPackIds",
     "docsPointers",
     "toolsetOverrides",
+    "skillOverrides",
   ];
   const keys = Object.keys(patch);
   return keys.some((key) => allowedKeys.includes(key)) && keys.every((key) => isValidDraftPatchField(key, patch));
@@ -667,6 +672,7 @@ function isValidDraftPatchField(key: string, patch: Record<string, unknown>): bo
     case "docsPointers":
       return value === undefined || isDocsPointerArray(value);
     case "toolsetOverrides":
+    case "skillOverrides":
       return value === undefined || isBooleanRecord(value);
     default:
       return false;

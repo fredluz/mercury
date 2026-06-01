@@ -39,14 +39,20 @@ export function agentDraftsStateFilePath(): string {
 /** @deprecated Kept as a temporary WI-C compatibility alias for draft-only state. */
 export const agentsStateFilePath = agentDraftsStateFilePath;
 
-export async function readAgentsState(_profiles?: ProfileInfo[]): Promise<AgentsStateV1> {
+export async function readAgentsState(
+  _profiles?: ProfileInfo[],
+): Promise<AgentsStateV1> {
   return readPersistedState();
 }
 
 export async function writeAgentsState(state: AgentsStateV1): Promise<void> {
   const filePath = agentDraftsStateFilePath();
   await mkdir(dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(normalizeState(state), null, 2)}\n`, "utf-8");
+  await writeFile(
+    filePath,
+    `${JSON.stringify(normalizeState(state), null, 2)}\n`,
+    "utf-8",
+  );
 }
 
 export async function createAgentDraft(
@@ -55,7 +61,8 @@ export async function createAgentDraft(
 ): Promise<AgentCreationDraft> {
   const discoveredProfiles = profiles ?? (await listProfiles());
   const state = await readAgentsState();
-  const displayName = cleanDisplayName(request.displayName) || DEFAULT_DRAFT_DISPLAY_NAME;
+  const displayName =
+    cleanDisplayName(request.displayName) || DEFAULT_DRAFT_DISPLAY_NAME;
   const occupied = occupiedProfileIds(state, discoveredProfiles);
   const requestedProfile = cleanProfileId(request.profileId);
   if (requestedProfile) {
@@ -65,13 +72,16 @@ export async function createAgentDraft(
       );
     }
     if (RESERVED_AGENT_PROFILE_IDS.has(requestedProfile)) {
-      throw new Error("Mercury/default is immutable and cannot be targeted by a draft.");
+      throw new Error(
+        "Mercury/default is immutable and cannot be targeted by a draft.",
+      );
     }
     if (occupied.has(requestedProfile)) {
       throw new Error(`Agent profile '${requestedProfile}' already exists.`);
     }
   }
-  const profile = requestedProfile || deriveBackendProfileId(displayName, occupied);
+  const profile =
+    requestedProfile || deriveBackendProfileId(displayName, occupied);
   const now = new Date().toISOString();
   const draft: AgentCreationDraft = {
     id: request.draftId ?? randomUUID(),
@@ -82,6 +92,7 @@ export async function createAgentDraft(
     selectedPackIds: [...DEFAULT_AGENT_PACK_IDS],
     docsPointers: [],
     toolsetOverrides: {},
+    skillOverrides: {},
     mutationIds: [],
     createdAt: now,
     updatedAt: now,
@@ -197,7 +208,8 @@ function normalizeState(value: unknown): AgentsStateV1 {
 
 function normalizeDraft(id: string, value: unknown): AgentCreationDraft | null {
   if (!isRecord(value)) return null;
-  const displayName = cleanDisplayName(value.displayName) || DEFAULT_DRAFT_DISPLAY_NAME;
+  const displayName =
+    cleanDisplayName(value.displayName) || DEFAULT_DRAFT_DISPLAY_NAME;
   const profile = stringValue(value.profile);
   if (!profile || !isValidBackendProfileId(profile)) return null;
   if (RESERVED_AGENT_PROFILE_IDS.has(profile)) return null;
@@ -218,6 +230,7 @@ function normalizeDraft(id: string, value: unknown): AgentCreationDraft | null {
     selectedPackIds: stringArray(value.selectedPackIds),
     docsPointers: docsPointers(value.docsPointers),
     toolsetOverrides: booleanRecord(value.toolsetOverrides),
+    skillOverrides: booleanRecord(value.skillOverrides),
     mutationIds: stringArray(value.mutationIds),
     createdAt: stringValue(value.createdAt) || now,
     updatedAt: stringValue(value.updatedAt) || now,
@@ -241,9 +254,25 @@ function applyPatch(
   setIfChanged(draft, "persona", patch.persona, changes);
   setIfChanged(draft, "model", cloneObject(patch.model), changes);
   setIfChanged(draft, "memory", cloneObject(patch.memory), changes);
-  setIfChanged(draft, "selectedPackIds", cloneArray(patch.selectedPackIds), changes);
+  setIfChanged(
+    draft,
+    "selectedPackIds",
+    cloneArray(patch.selectedPackIds),
+    changes,
+  );
   setIfChanged(draft, "docsPointers", cloneArray(patch.docsPointers), changes);
-  setIfChanged(draft, "toolsetOverrides", cloneObject(patch.toolsetOverrides), changes);
+  setIfChanged(
+    draft,
+    "toolsetOverrides",
+    cloneObject(patch.toolsetOverrides),
+    changes,
+  );
+  setIfChanged(
+    draft,
+    "skillOverrides",
+    cloneObject(patch.skillOverrides),
+    changes,
+  );
   return changes;
 }
 
@@ -295,7 +324,11 @@ function stringArray(value: unknown): string[] {
 function docsPointers(value: unknown): AgentDocsPointerSelection[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry): AgentDocsPointerSelection[] => {
-    if (!isRecord(entry) || typeof entry.id !== "string" || typeof entry.title !== "string") {
+    if (
+      !isRecord(entry) ||
+      typeof entry.id !== "string" ||
+      typeof entry.title !== "string"
+    ) {
       return [];
     }
     return [

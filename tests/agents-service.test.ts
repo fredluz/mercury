@@ -1,62 +1,67 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "fs";
 import { join } from "path";
 
-const {
-  TEST_HOME,
-  execFileSyncMock,
-  serviceMocks,
-  sshMocks,
-  KNOWN_TOOLSETS,
-} = vi.hoisted(() => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const path = require("path");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const os = require("os");
-  const knownToolsets = [
-    "web",
-    "browser",
-    "terminal",
-    "file",
-    "code_execution",
-    "vision",
-    "image_gen",
-    "tts",
-    "skills",
-    "memory",
-    "session_search",
-    "clarify",
-    "delegation",
-    "cronjob",
-    "moa",
-    "todo",
-  ];
-  return {
-    TEST_HOME: path.join(os.tmpdir(), `mercury-agents-service-test-${Date.now()}`),
-    execFileSyncMock: vi.fn(),
-    KNOWN_TOOLSETS: knownToolsets,
-    serviceMocks: {
-      getConnection: vi.fn(),
-      setModelConfigForProfile: vi.fn(),
-      getToolsetsForProfile: vi.fn(),
-      setToolsetEnabledForProfile: vi.fn(),
-      mutateSkillsForProfile: vi.fn(),
-      writeSoulForProfile: vi.fn(),
-      writeUserProfileForProfile: vi.fn(),
-      addMemoryEntryForProfile: vi.fn(),
-    },
-    sshMocks: {
-      sshListSessions: vi.fn(),
-      sshGetSessionMessages: vi.fn(),
-      sshSearchSessions: vi.fn(),
-      sshListProfiles: vi.fn(),
-      sshCreateProfile: vi.fn(),
-      sshDeleteProfile: vi.fn(),
-      sshWriteProfileAgentMetadata: vi.fn(),
-      sshListCachedSessions: vi.fn(),
-    },
-  };
-});
+const { TEST_HOME, execFileSyncMock, serviceMocks, sshMocks, KNOWN_TOOLSETS } =
+  vi.hoisted(() => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("path");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const os = require("os");
+    const knownToolsets = [
+      "web",
+      "browser",
+      "terminal",
+      "file",
+      "code_execution",
+      "vision",
+      "image_gen",
+      "tts",
+      "skills",
+      "memory",
+      "session_search",
+      "clarify",
+      "delegation",
+      "cronjob",
+      "moa",
+      "todo",
+    ];
+    return {
+      TEST_HOME: path.join(
+        os.tmpdir(),
+        `mercury-agents-service-test-${Date.now()}`,
+      ),
+      execFileSyncMock: vi.fn(),
+      KNOWN_TOOLSETS: knownToolsets,
+      serviceMocks: {
+        getConnection: vi.fn(),
+        setModelConfigForProfile: vi.fn(),
+        getToolsetsForProfile: vi.fn(),
+        setToolsetEnabledForProfile: vi.fn(),
+        mutateSkillsForProfile: vi.fn(),
+        writeSoulForProfile: vi.fn(),
+        writeUserProfileForProfile: vi.fn(),
+        addMemoryEntryForProfile: vi.fn(),
+      },
+      sshMocks: {
+        sshListSessions: vi.fn(),
+        sshGetSessionMessages: vi.fn(),
+        sshSearchSessions: vi.fn(),
+        sshListProfiles: vi.fn(),
+        sshCreateProfile: vi.fn(),
+        sshDeleteProfile: vi.fn(),
+        sshWriteProfileAgentMetadata: vi.fn(),
+        sshListCachedSessions: vi.fn(),
+      },
+    };
+  });
 
 vi.mock("../src/main/installer", () => ({
   HERMES_HOME: TEST_HOME,
@@ -96,7 +101,11 @@ vi.mock("../src/main/ssh-remote", () => ({
 }));
 
 import type { AgentDraftChangeEvent } from "../src/shared/agents";
-import { agentDraftsStateFilePath, readAgentsState } from "../src/main/agent-store";
+import type { SkillMutationTarget } from "../src/shared/skills";
+import {
+  agentDraftsStateFilePath,
+  readAgentsState,
+} from "../src/main/agent-store";
 import {
   abandonAgentDraft,
   cancelAgentDraftNotifications,
@@ -132,7 +141,9 @@ function profileInfo(name: string, isDefault = false) {
 
 function toolToggleMap(): Record<string, boolean> {
   return Object.fromEntries(
-    serviceMocks.setToolsetEnabledForProfile.mock.calls.map(([key, enabled]) => [key, enabled]),
+    serviceMocks.setToolsetEnabledForProfile.mock.calls.map(
+      ([key, enabled]) => [key, enabled],
+    ),
   );
 }
 
@@ -165,7 +176,12 @@ beforeEach(() => {
   serviceMocks.setModelConfigForProfile.mockResolvedValue(true);
   serviceMocks.getToolsetsForProfile.mockReset();
   serviceMocks.getToolsetsForProfile.mockResolvedValue(
-    KNOWN_TOOLSETS.map((key) => ({ key, label: key, description: key, enabled: false })),
+    KNOWN_TOOLSETS.map((key) => ({
+      key,
+      label: key,
+      description: key,
+      enabled: false,
+    })),
   );
   serviceMocks.setToolsetEnabledForProfile.mockReset();
   serviceMocks.setToolsetEnabledForProfile.mockResolvedValue(true);
@@ -174,7 +190,7 @@ beforeEach(() => {
     success: true,
     updated: targets.length,
     failed: 0,
-    results: targets.map((target) => ({
+    results: targets.map((target: SkillMutationTarget) => ({
       success: true,
       action: target.action,
       target,
@@ -190,9 +206,7 @@ beforeEach(() => {
   serviceMocks.addMemoryEntryForProfile.mockReset();
   serviceMocks.addMemoryEntryForProfile.mockResolvedValue({ success: true });
   for (const mock of Object.values(sshMocks)) mock.mockReset();
-  sshMocks.sshListProfiles.mockResolvedValue([
-    profileInfo("default", true),
-  ]);
+  sshMocks.sshListProfiles.mockResolvedValue([profileInfo("default", true)]);
   sshMocks.sshCreateProfile.mockResolvedValue({ success: true });
   sshMocks.sshDeleteProfile.mockResolvedValue(true);
   sshMocks.sshWriteProfileAgentMetadata.mockResolvedValue(undefined);
@@ -211,7 +225,10 @@ afterEach(() => {
 
 describe("agents service draft lifecycle", () => {
   it("updates revisions, reports stale conflicts, and dedupes mutation retries", async () => {
-    const draft = await createAgentDraft({ draftId: "draft-service-1", displayName: "Research" });
+    const draft = await createAgentDraft({
+      draftId: "draft-service-1",
+      displayName: "Research",
+    });
 
     const first = await updateAgentDraft({
       draftId: draft.id,
@@ -255,7 +272,10 @@ describe("agents service draft lifecycle", () => {
     vi.useFakeTimers();
     const events: AgentDraftChangeEvent[] = [];
     const dispose = onAgentDraftChanged((event) => events.push(event));
-    const draft = await createAgentDraft({ draftId: "draft-text", displayName: "Alpha" });
+    const draft = await createAgentDraft({
+      draftId: "draft-text",
+      displayName: "Alpha",
+    });
 
     await updateAgentDraft({
       draftId: draft.id,
@@ -297,7 +317,10 @@ describe("agents service draft lifecycle", () => {
   it("emits non-text notifications immediately", async () => {
     const events: AgentDraftChangeEvent[] = [];
     const dispose = onAgentDraftChanged((event) => events.push(event));
-    const draft = await createAgentDraft({ draftId: "draft-state", displayName: "Stateful" });
+    const draft = await createAgentDraft({
+      draftId: "draft-state",
+      displayName: "Stateful",
+    });
 
     await updateAgentDraft({
       draftId: draft.id,
@@ -310,7 +333,9 @@ describe("agents service draft lifecycle", () => {
     expect(events[0]).toMatchObject({
       draftId: draft.id,
       revision: 1,
-      changes: [{ path: "selectedPackIds", previous: ["default"], next: ["coding"] }],
+      changes: [
+        { path: "selectedPackIds", previous: ["default"], next: ["coding"] },
+      ],
       notification: { debounced: false },
     });
     dispose();
@@ -320,7 +345,10 @@ describe("agents service draft lifecycle", () => {
     vi.useFakeTimers();
     const events: AgentDraftChangeEvent[] = [];
     const dispose = onAgentDraftChanged((event) => events.push(event));
-    const draft = await createAgentDraft({ draftId: "draft-commit", displayName: "Before" });
+    const draft = await createAgentDraft({
+      draftId: "draft-commit",
+      displayName: "Before",
+    });
 
     await updateAgentDraft({
       draftId: draft.id,
@@ -330,7 +358,10 @@ describe("agents service draft lifecycle", () => {
     });
     expect(events).toHaveLength(0);
 
-    const result = await commitAgentDraft({ draftId: draft.id, expectedRevision: 1 });
+    const result = await commitAgentDraft({
+      draftId: draft.id,
+      expectedRevision: 1,
+    });
 
     expect(result).toMatchObject({ success: false, code: "validation-error" });
     expect(events).toHaveLength(1);
@@ -345,7 +376,10 @@ describe("agents service draft lifecycle", () => {
     vi.useFakeTimers();
     const events: AgentDraftChangeEvent[] = [];
     const dispose = onAgentDraftChanged((event) => events.push(event));
-    const draft = await createAgentDraft({ draftId: "draft-abandon", displayName: "Before" });
+    const draft = await createAgentDraft({
+      draftId: "draft-abandon",
+      displayName: "Before",
+    });
 
     await updateAgentDraft({
       draftId: draft.id,
@@ -381,10 +415,28 @@ describe("agents service draft lifecycle", () => {
       patch: {
         description: "Finds sources and makes images",
         persona: "Be precise.",
-        model: { provider: "openai", model: "gpt-4.1", baseUrl: "https://api.example.test" },
-        memory: { userProfile: "Prefers citations", entries: ["Uses APA style"] },
-        selectedPackIds: ["default", "research", "image-generation", "video-making"],
-        docsPointers: [{ id: "custom-doc", title: "Custom doc", url: "https://example.test/doc" }],
+        model: {
+          provider: "openai",
+          model: "gpt-4.1",
+          baseUrl: "https://api.example.test",
+        },
+        memory: {
+          userProfile: "Prefers citations",
+          entries: ["Uses APA style"],
+        },
+        selectedPackIds: [
+          "default",
+          "research",
+          "image-generation",
+          "video-making",
+        ],
+        docsPointers: [
+          {
+            id: "custom-doc",
+            title: "Custom doc",
+            url: "https://example.test/doc",
+          },
+        ],
         toolsetOverrides: { image_gen: false, tts: true },
       },
     });
@@ -402,7 +454,12 @@ describe("agents service draft lifecycle", () => {
       agent: {
         name: "research_artist",
         displayName: "Research Artist",
-        selectedPackIds: ["default", "research", "image-generation", "video-making"],
+        selectedPackIds: [
+          "default",
+          "research",
+          "image-generation",
+          "video-making",
+        ],
         docsPointers: expect.arrayContaining([
           expect.objectContaining({ id: "default-baseline-docs" }),
           expect.objectContaining({ id: "custom-doc" }),
@@ -425,11 +482,22 @@ describe("agents service draft lifecycle", () => {
       "https://api.example.test",
       "research_artist",
     );
-    expect(serviceMocks.writeSoulForProfile).toHaveBeenCalledWith("Be precise.", "research_artist");
-    expect(serviceMocks.writeUserProfileForProfile).toHaveBeenCalledWith("Prefers citations", "research_artist");
-    expect(serviceMocks.addMemoryEntryForProfile).toHaveBeenCalledWith("Uses APA style", "research_artist");
+    expect(serviceMocks.writeSoulForProfile).toHaveBeenCalledWith(
+      "Be precise.",
+      "research_artist",
+    );
+    expect(serviceMocks.writeUserProfileForProfile).toHaveBeenCalledWith(
+      "Prefers citations",
+      "research_artist",
+    );
+    expect(serviceMocks.addMemoryEntryForProfile).toHaveBeenCalledWith(
+      "Uses APA style",
+      "research_artist",
+    );
 
-    expect(serviceMocks.setToolsetEnabledForProfile).toHaveBeenCalledTimes(KNOWN_TOOLSETS.length);
+    expect(serviceMocks.setToolsetEnabledForProfile).toHaveBeenCalledTimes(
+      KNOWN_TOOLSETS.length,
+    );
     expect(toolToggleMap()).toMatchObject({
       web: true,
       browser: true,
@@ -450,25 +518,46 @@ describe("agents service draft lifecycle", () => {
     });
 
     expect(serviceMocks.mutateSkillsForProfile).toHaveBeenCalledTimes(1);
-    const [skillTargets, profile] = serviceMocks.mutateSkillsForProfile.mock.calls[0];
+    const [skillTargets, profile] =
+      serviceMocks.mutateSkillsForProfile.mock.calls[0];
     expect(profile).toBe("research_artist");
     expect(skillTargets).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ action: "install", category: "research", directoryName: "arxiv" }),
-        expect.objectContaining({ action: "install", category: "creative", directoryName: "comfyui" }),
+        expect.objectContaining({
+          action: "install",
+          category: "research",
+          directoryName: "arxiv",
+        }),
+        expect.objectContaining({
+          action: "install",
+          category: "creative",
+          directoryName: "comfyui",
+        }),
       ]),
     );
-    expect(skillTargets.filter((target) => target.directoryName === "comfyui")).toHaveLength(1);
+    expect(
+      skillTargets.filter((target: SkillMutationTarget) => target.directoryName === "comfyui"),
+    ).toHaveLength(1);
     expect(skillTargets).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ name: "default-baseline-docs" })]),
+      expect.arrayContaining([
+        expect.objectContaining({ name: "default-baseline-docs" }),
+      ]),
     );
 
     const metadata = JSON.parse(
-      readFileSync(join(PROFILES_DIR, "research_artist", "desktop", "profile-agent.json"), "utf-8"),
+      readFileSync(
+        join(PROFILES_DIR, "research_artist", "desktop", "profile-agent.json"),
+        "utf-8",
+      ),
     ) as { selectedPackIds?: string[]; docsPointers?: Array<{ id: string }> };
     expect(metadata).toMatchObject({
       displayName: "Research Artist",
-      selectedPackIds: ["default", "research", "image-generation", "video-making"],
+      selectedPackIds: [
+        "default",
+        "research",
+        "image-generation",
+        "video-making",
+      ],
       docsPointers: expect.arrayContaining([
         expect.objectContaining({ id: "default-baseline-docs" }),
         expect.objectContaining({ id: "custom-doc" }),
@@ -479,8 +568,51 @@ describe("agents service draft lifecycle", () => {
     expect(state.drafts[draft.id]?.status).toBe("committed");
   });
 
+  it("trims pack skills excluded by per-member skillOverrides at commit", async () => {
+    const draft = await createAgentDraft({
+      draftId: "draft-skill-override",
+      displayName: "Selective Researcher",
+      profileId: "selective_researcher",
+    });
+    const updated = await updateAgentDraft({
+      draftId: draft.id,
+      expectedRevision: draft.revision,
+      mutationId: "configure-skill-override",
+      patch: {
+        model: { provider: "openai", model: "gpt-4.1", baseUrl: "" },
+        selectedPackIds: ["research"],
+        // research pack has tool:web + 4 skills; drop arxiv and the web tool.
+        skillOverrides: { "skill:research/arxiv": false, "tool:web": false },
+      },
+    });
+    expect(updated.success).toBe(true);
+    if (!updated.success) return;
+
+    const result = await commitAgentDraft({
+      draftId: draft.id,
+      expectedRevision: updated.draft.revision,
+    });
+    expect(result.success).toBe(true);
+
+    const [skillTargets] = serviceMocks.mutateSkillsForProfile.mock.calls[0];
+    expect(skillTargets).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ directoryName: "arxiv" }),
+      ]),
+    );
+    expect(skillTargets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ directoryName: "blogwatcher" }),
+      ]),
+    );
+    // The excluded web tool is not enabled.
+    expect(toolToggleMap().web).toBe(false);
+  });
+
   it("rolls back profile creation and does not persist metadata when skill application fails", async () => {
-    const draft = await modelReadyDraft("draft-rollback", "Rollback Agent", ["research"]);
+    const draft = await modelReadyDraft("draft-rollback", "Rollback Agent", [
+      "research",
+    ]);
     serviceMocks.mutateSkillsForProfile.mockResolvedValueOnce({
       success: false,
       updated: 0,
@@ -489,7 +621,12 @@ describe("agents service draft lifecycle", () => {
         {
           success: false,
           action: "install",
-          target: { action: "install", name: "arxiv", category: "research", directoryName: "arxiv" },
+          target: {
+            action: "install",
+            name: "arxiv",
+            category: "research",
+            directoryName: "arxiv",
+          },
           name: "arxiv",
           category: "research",
           code: "not-found",
@@ -498,7 +635,10 @@ describe("agents service draft lifecycle", () => {
       ],
     });
 
-    const result = await commitAgentDraft({ draftId: draft.id, expectedRevision: draft.revision });
+    const result = await commitAgentDraft({
+      draftId: draft.id,
+      expectedRevision: draft.revision,
+    });
 
     expect(result).toMatchObject({
       success: false,
@@ -510,17 +650,32 @@ describe("agents service draft lifecycle", () => {
       ["/dev/null", "profile", "delete", draft.profile, "--yes"],
       expect.objectContaining({ timeout: 15000 }),
     );
-    expect(existsSync(join(PROFILES_DIR, draft.profile, "desktop", "profile-agent.json"))).toBe(false);
+    expect(
+      existsSync(
+        join(PROFILES_DIR, draft.profile, "desktop", "profile-agent.json"),
+      ),
+    ).toBe(false);
     const state = await readAgentsState([]);
     expect("agents" in state).toBe(false);
     expect(state.drafts[draft.id]?.status).toBe("draft");
   });
 
   it("metadata write failure rolls back the created profile and leaves the draft uncommitted", async () => {
-    const draft = await modelReadyDraft("draft-metadata-fail", "Metadata Fail", ["default"]);
-    writeFileSync(join(PROFILES_DIR, draft.profile), "not a profile directory", "utf-8");
+    const draft = await modelReadyDraft(
+      "draft-metadata-fail",
+      "Metadata Fail",
+      ["default"],
+    );
+    writeFileSync(
+      join(PROFILES_DIR, draft.profile),
+      "not a profile directory",
+      "utf-8",
+    );
 
-    const result = await commitAgentDraft({ draftId: draft.id, expectedRevision: draft.revision });
+    const result = await commitAgentDraft({
+      draftId: draft.id,
+      expectedRevision: draft.revision,
+    });
 
     expect(result).toMatchObject({
       success: false,
@@ -532,17 +687,26 @@ describe("agents service draft lifecycle", () => {
       ["/dev/null", "profile", "delete", draft.profile, "--yes"],
       expect.objectContaining({ timeout: 15000 }),
     );
-    expect(existsSync(join(PROFILES_DIR, draft.profile, "desktop", "profile-agent.json"))).toBe(false);
+    expect(
+      existsSync(
+        join(PROFILES_DIR, draft.profile, "desktop", "profile-agent.json"),
+      ),
+    ).toBe(false);
     const state = await readAgentsState([]);
     expect(state.drafts[draft.id]?.status).toBe("draft");
   });
 
   it("draft-status write failure after metadata write does not blindly delete the created profile", async () => {
-    const draft = await modelReadyDraft("draft-status-fail", "Status Fail", ["default"]);
+    const draft = await modelReadyDraft("draft-status-fail", "Status Fail", [
+      "default",
+    ]);
     chmodSync(agentDraftsStateFilePath(), 0o444);
 
     try {
-      const result = await commitAgentDraft({ draftId: draft.id, expectedRevision: draft.revision });
+      const result = await commitAgentDraft({
+        draftId: draft.id,
+        expectedRevision: draft.revision,
+      });
 
       expect(result).toMatchObject({ success: false, code: "commit-failed" });
       expect(execFileSyncMock).not.toHaveBeenCalledWith(
@@ -550,49 +714,74 @@ describe("agents service draft lifecycle", () => {
         ["/dev/null", "profile", "delete", draft.profile, "--yes"],
         expect.anything(),
       );
-      expect(existsSync(join(PROFILES_DIR, draft.profile, "desktop", "profile-agent.json"))).toBe(true);
+      expect(
+        existsSync(
+          join(PROFILES_DIR, draft.profile, "desktop", "profile-agent.json"),
+        ),
+      ).toBe(true);
     } finally {
       chmodSync(agentDraftsStateFilePath(), 0o644);
     }
   });
 
   it("idempotent retry reconciles a draft whose profile metadata already matches", async () => {
-    const draft = await modelReadyDraft("draft-retry", "Retry Agent", ["default"]);
+    const draft = await modelReadyDraft("draft-retry", "Retry Agent", [
+      "default",
+    ]);
     chmodSync(agentDraftsStateFilePath(), 0o444);
 
     try {
-      await commitAgentDraft({ draftId: draft.id, expectedRevision: draft.revision });
+      await commitAgentDraft({
+        draftId: draft.id,
+        expectedRevision: draft.revision,
+      });
     } finally {
       chmodSync(agentDraftsStateFilePath(), 0o644);
     }
 
     const createCallsAfterFirstAttempt = execFileSyncMock.mock.calls.filter(
-      ([, args]) => Array.isArray(args) && args[1] === "profile" && args[2] === "create",
+      ([, args]) =>
+        Array.isArray(args) && args[1] === "profile" && args[2] === "create",
     ).length;
-    const modelWritesAfterFirstAttempt = serviceMocks.setModelConfigForProfile.mock.calls.length;
+    const modelWritesAfterFirstAttempt =
+      serviceMocks.setModelConfigForProfile.mock.calls.length;
 
-    const result = await commitAgentDraft({ draftId: draft.id, expectedRevision: draft.revision });
+    const result = await commitAgentDraft({
+      draftId: draft.id,
+      expectedRevision: draft.revision,
+    });
 
     expect(result).toMatchObject({
       success: true,
       agent: { name: draft.profile, displayName: "Retry Agent" },
     });
     const createCallsAfterRetry = execFileSyncMock.mock.calls.filter(
-      ([, args]) => Array.isArray(args) && args[1] === "profile" && args[2] === "create",
+      ([, args]) =>
+        Array.isArray(args) && args[1] === "profile" && args[2] === "create",
     ).length;
     expect(createCallsAfterRetry).toBe(createCallsAfterFirstAttempt);
-    expect(serviceMocks.setModelConfigForProfile.mock.calls.length).toBe(modelWritesAfterFirstAttempt);
+    expect(serviceMocks.setModelConfigForProfile.mock.calls.length).toBe(
+      modelWritesAfterFirstAttempt,
+    );
     const state = await readAgentsState([]);
     expect(state.drafts[draft.id]?.status).toBe("committed");
   });
 
   it("fails pure remote commits before any profile, tool, skill, model, or metadata write", async () => {
     serviceMocks.getConnection.mockReturnValue({ mode: "remote" });
-    const draft = await modelReadyDraft("draft-remote", "Remote Agent", ["research"]);
+    const draft = await modelReadyDraft("draft-remote", "Remote Agent", [
+      "research",
+    ]);
 
-    const result = await commitAgentDraft({ draftId: draft.id, expectedRevision: draft.revision });
+    const result = await commitAgentDraft({
+      draftId: draft.id,
+      expectedRevision: draft.revision,
+    });
 
-    expect(result).toMatchObject({ success: false, code: "unsupported-remote-mode" });
+    expect(result).toMatchObject({
+      success: false,
+      code: "unsupported-remote-mode",
+    });
     expect(execFileSyncMock).not.toHaveBeenCalled();
     expect(serviceMocks.setModelConfigForProfile).not.toHaveBeenCalled();
     expect(serviceMocks.setToolsetEnabledForProfile).not.toHaveBeenCalled();
@@ -618,11 +807,21 @@ describe("agents service draft lifecycle", () => {
     serviceMocks.getConnection.mockReturnValue({ mode: "ssh", ssh });
     const draft = await modelReadyDraft("draft-ssh", "SSH Agent", ["default"]);
 
-    const result = await commitAgentDraft({ draftId: draft.id, expectedRevision: draft.revision });
+    const result = await commitAgentDraft({
+      draftId: draft.id,
+      expectedRevision: draft.revision,
+    });
 
-    expect(result).toMatchObject({ success: true, agent: { name: draft.profile } });
+    expect(result).toMatchObject({
+      success: true,
+      agent: { name: draft.profile },
+    });
     expect(sshMocks.sshListProfiles).toHaveBeenCalledWith(ssh);
-    expect(sshMocks.sshCreateProfile).toHaveBeenCalledWith(ssh, draft.profile, true);
+    expect(sshMocks.sshCreateProfile).toHaveBeenCalledWith(
+      ssh,
+      draft.profile,
+      true,
+    );
     expect(sshMocks.sshWriteProfileAgentMetadata).toHaveBeenCalledWith(
       ssh,
       draft.profile,
@@ -636,11 +835,22 @@ describe("agents service draft lifecycle", () => {
   });
 
   it("commit honors expectedRevision conflicts before writes", async () => {
-    const draft = await modelReadyDraft("draft-commit-conflict", "Conflict Agent", ["default"]);
+    const draft = await modelReadyDraft(
+      "draft-commit-conflict",
+      "Conflict Agent",
+      ["default"],
+    );
 
-    const result = await commitAgentDraft({ draftId: draft.id, expectedRevision: draft.revision - 1 });
+    const result = await commitAgentDraft({
+      draftId: draft.id,
+      expectedRevision: draft.revision - 1,
+    });
 
-    expect(result).toMatchObject({ success: false, code: "conflict", draft: { revision: draft.revision } });
+    expect(result).toMatchObject({
+      success: false,
+      code: "conflict",
+      draft: { revision: draft.revision },
+    });
     expect(execFileSyncMock).not.toHaveBeenCalled();
     expect(serviceMocks.setModelConfigForProfile).not.toHaveBeenCalled();
     expect(serviceMocks.mutateSkillsForProfile).not.toHaveBeenCalled();

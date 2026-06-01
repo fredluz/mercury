@@ -109,7 +109,8 @@ export const AGENT_PACK_CATALOG: AgentPackDefinition[] = [
   {
     id: "default",
     displayName: "Default",
-    description: "Lean baseline skills and core tools for a generally capable agent.",
+    description:
+      "Lean baseline skills and core tools for a generally capable agent.",
     members: [
       ...DEFAULT_BASELINE_TOOL_KEYS.map(tool),
       skill("devops", "kanban-orchestrator"),
@@ -140,13 +141,15 @@ export const AGENT_PACK_CATALOG: AgentPackDefinition[] = [
   {
     id: "computer-use",
     displayName: "Computer Use",
-    description: "macOS computer-control skill. Tool binding remains pending until a stable tool key exists.",
+    description:
+      "macOS computer-control skill. Tool binding remains pending until a stable tool key exists.",
     members: [skill("apple", "macos-computer-use")],
   },
   {
     id: "coding",
     displayName: "Coding",
-    description: "Autonomous coding, GitHub, debugging, and implementation workflows.",
+    description:
+      "Autonomous coding, GitHub, debugging, and implementation workflows.",
     members: [
       skill("autonomous-ai-agents", "claude-code"),
       skill("autonomous-ai-agents", "codex"),
@@ -270,21 +273,51 @@ export const AGENT_PACK_CATALOG: AgentPackDefinition[] = [
   },
   independentPack("ascii-video", "ASCII Video", "creative", "ascii-video"),
   independentPack("pretext", "Pretext", "creative", "pretext"),
-  independentPack("touchdesigner-mcp", "TouchDesigner MCP", "creative", "touchdesigner-mcp"),
+  independentPack(
+    "touchdesigner-mcp",
+    "TouchDesigner MCP",
+    "creative",
+    "touchdesigner-mcp",
+  ),
   independentPack("himalaya", "Himalaya", "email", "himalaya"),
-  independentPack("huggingface-hub", "Hugging Face Hub", "mlops", "huggingface-hub"),
+  independentPack(
+    "huggingface-hub",
+    "Hugging Face Hub",
+    "mlops",
+    "huggingface-hub",
+  ),
   independentPack("obsidian", "Obsidian", "note-taking", "obsidian"),
   independentPack("airtable", "Airtable", "productivity", "airtable"),
-  independentPack("google-workspace", "Google Workspace", "productivity", "google-workspace"),
+  independentPack(
+    "google-workspace",
+    "Google Workspace",
+    "productivity",
+    "google-workspace",
+  ),
   independentPack("linear", "Linear", "productivity", "linear"),
   independentPack("maps", "Maps", "productivity", "maps"),
   independentPack("nano-pdf", "Nano PDF", "productivity", "nano-pdf"),
   independentPack("notion", "Notion", "productivity", "notion"),
-  independentPack("ocr-and-documents", "OCR and Documents", "productivity", "ocr-and-documents"),
+  independentPack(
+    "ocr-and-documents",
+    "OCR and Documents",
+    "productivity",
+    "ocr-and-documents",
+  ),
   independentPack("powerpoint", "PowerPoint", "productivity", "powerpoint"),
-  independentPack("teams-meeting-pipeline", "Teams Meeting Pipeline", "productivity", "teams-meeting-pipeline"),
+  independentPack(
+    "teams-meeting-pipeline",
+    "Teams Meeting Pipeline",
+    "productivity",
+    "teams-meeting-pipeline",
+  ),
   independentPack("god-mode", "God Mode", "red-teaming", "godmode"),
-  independentPack("research-paper-writing", "Research Paper Writing", "research", "research-paper-writing"),
+  independentPack(
+    "research-paper-writing",
+    "Research Paper Writing",
+    "research",
+    "research-paper-writing",
+  ),
   independentPack("xurl", "XURL", "social-media", "xurl"),
 ];
 
@@ -301,6 +334,71 @@ function independentPack(
     description: "Independent one-skill pack.",
     members: [skill(category, directoryName, name)],
   };
+}
+
+/**
+ * Presentation hints for the agent-creator Capabilities step. Keyed by pack id;
+ * packs without an explicit hint fall back to a generic icon and their first
+ * member's category. This keeps {@link AGENT_PACK_CATALOG} the single source of
+ * truth while letting the UI render category-flavoured cards.
+ */
+export type AgentPackIconKey =
+  | "search"
+  | "pencil"
+  | "code"
+  | "chart"
+  | "puzzle";
+
+export interface AgentPackPresentation {
+  icon: AgentPackIconKey;
+  category: string;
+}
+
+const PACK_PRESENTATION: Record<string, AgentPackPresentation> = {
+  research: { icon: "search", category: "research" },
+  "research-paper-writing": { icon: "search", category: "research" },
+  writing: { icon: "pencil", category: "writing" },
+  ideation: { icon: "pencil", category: "writing" },
+  coding: { icon: "code", category: "engineering" },
+  architecture: { icon: "code", category: "engineering" },
+  design: { icon: "pencil", category: "design" },
+  "image-generation": { icon: "chart", category: "creative" },
+  "video-making": { icon: "chart", category: "creative" },
+};
+
+export function agentPackPresentation(
+  pack: AgentPackDefinition,
+): AgentPackPresentation {
+  const explicit = PACK_PRESENTATION[pack.id];
+  if (explicit) return explicit;
+  const firstSkill = pack.members.find((member) => member.kind === "skill");
+  const category =
+    firstSkill && firstSkill.kind === "skill" ? firstSkill.category : "general";
+  return { icon: "puzzle", category };
+}
+
+/** A short, human-readable label for an individual pack member. */
+export function agentPackMemberLabel(member: AgentPackMember): string {
+  switch (member.kind) {
+    case "skill":
+      return member.name || member.directoryName;
+    case "tool":
+      return member.key;
+    case "docs-pointer":
+      return member.title;
+  }
+}
+
+/** A best-effort description used in the skill-detail modal. */
+export function agentPackMemberDescription(member: AgentPackMember): string {
+  switch (member.kind) {
+    case "skill":
+      return `A ${member.category} skill: ${member.directoryName.replace(/-/g, " ")}.`;
+    case "tool":
+      return `Built-in tool: ${member.key.replace(/_/g, " ")}.`;
+    case "docs-pointer":
+      return member.title;
+  }
 }
 
 const PACKS_BY_ID = new Map(AGENT_PACK_CATALOG.map((pack) => [pack.id, pack]));
@@ -326,7 +424,9 @@ export function validateAgentPackIds(packIds: readonly string[]): string[] {
   return packIds.filter((packId) => !isAgentPackId(packId));
 }
 
-export function agentSkillMemberKey(member: Pick<AgentPackSkillMember, "category" | "directoryName">): string {
+export function agentSkillMemberKey(
+  member: Pick<AgentPackSkillMember, "category" | "directoryName">,
+): string {
   return `skill:${member.category}/${member.directoryName}`;
 }
 
@@ -345,7 +445,9 @@ export function deriveAgentPackState(
   pack: AgentPackDefinition,
   enabledMemberKeys: ReadonlySet<string>,
 ): AgentPackSelectionState {
-  const selectableMembers = pack.members.filter((member) => member.kind !== "docs-pointer");
+  const selectableMembers = pack.members.filter(
+    (member) => member.kind !== "docs-pointer",
+  );
   if (selectableMembers.length === 0) return "off";
   const enabledCount = selectableMembers.filter((member) =>
     enabledMemberKeys.has(agentPackMemberKey(member)),
@@ -357,6 +459,7 @@ export function deriveAgentPackState(
 export function expandAgentPackSelection(
   packIds: readonly string[],
   catalog: readonly AgentPackDefinition[] = AGENT_PACK_CATALOG,
+  skillOverrides: Readonly<Record<string, boolean>> = {},
 ): ExpandedAgentPackSelection {
   const packsById = new Map(catalog.map((pack) => [pack.id, pack]));
   const selectedPackIds: string[] = [];
@@ -369,6 +472,13 @@ export function expandAgentPackSelection(
     if (!pack || selectedPackIds.includes(pack.id)) continue;
     selectedPackIds.push(pack.id);
     for (const member of pack.members) {
+      // A `false` override trims that member out of an otherwise-selected pack.
+      if (
+        member.kind !== "docs-pointer" &&
+        skillOverrides[agentPackMemberKey(member)] === false
+      ) {
+        continue;
+      }
       if (member.kind === "skill") {
         const key = agentSkillMemberKey(member);
         if (!skillTargetsByKey.has(key)) {

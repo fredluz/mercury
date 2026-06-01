@@ -1,4 +1,10 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AgentCreationDraft,
@@ -57,14 +63,18 @@ const draft: AgentCreationDraft = {
   selectedPackIds: ["research"],
   docsPointers: [{ id: "docs", title: "Research docs" }],
   toolsetOverrides: { web: true },
+  skillOverrides: {},
   mutationIds: [],
   createdAt: "2026-06-01T00:00:00.000Z",
   updatedAt: "2026-06-01T00:00:00.000Z",
 };
 
-let draftChangedCallback: ((event: AgentDraftChangeEvent) => void) | null = null;
+let draftChangedCallback: ((event: AgentDraftChangeEvent) => void) | null =
+  null;
 
-function installHermesApiMock(overrides: Partial<Window["hermesAPI"]> = {}): void {
+function installHermesApiMock(
+  overrides: Partial<Window["hermesAPI"]> = {},
+): void {
   (window as unknown as { hermesAPI: Partial<Window["hermesAPI"]> }).hermesAPI =
     {
       listProfiles: vi.fn().mockResolvedValue([mercuryProfile]),
@@ -125,7 +135,9 @@ describe("Agents conversational creator", () => {
 
     expect(await screen.findByText("Mercury")).toBeInTheDocument();
     expect(screen.queryByTitle("agents.deleteTitle")).not.toBeInTheDocument();
-    expect(screen.queryByTitle("agents.configureModel")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTitle("agents.configureModel"),
+    ).not.toBeInTheDocument();
     expect(screen.queryByTitle("agents.actionSkills")).not.toBeInTheDocument();
     expect(screen.queryByTitle("agents.actionTools")).not.toBeInTheDocument();
     expect(screen.queryByTitle("agents.actionPersona")).not.toBeInTheDocument();
@@ -133,18 +145,29 @@ describe("Agents conversational creator", () => {
     expect(screen.getByTitle("agents.actionChat")).toBeInTheDocument();
   });
 
-  it("New Agent creates an authoritative draft and shows the review panel", async () => {
+  it("New Agent creates an authoritative draft and opens the stepped flow", async () => {
     renderAgents();
 
     fireEvent.click(
       await screen.findByRole("button", { name: "agents.newAgent" }),
     );
 
-    expect(await screen.findByText("Research Buddy")).toBeInTheDocument();
-    expect(screen.getByText("research-buddy")).toBeInTheDocument();
-    expect(screen.getByText("openai / gpt-4o")).toBeInTheDocument();
+    // Identity step shows the draft name in an editable field.
+    expect(
+      await screen.findByDisplayValue("Research Buddy"),
+    ).toBeInTheDocument();
     expect(window.hermesAPI.createAgentDraft).toHaveBeenCalledWith();
     expect(window.hermesAPI.getAgentDraft).toHaveBeenCalledWith("draft-1");
+
+    // Walk to the Review step to confirm the profile id and model summary.
+    fireEvent.click(
+      screen.getByRole("button", { name: /agents\.creatorContinue/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /agents\.creatorContinue/ }),
+    );
+    expect(await screen.findByText("research-buddy")).toBeInTheDocument();
+    expect(screen.getByText("openai / gpt-4o")).toBeInTheDocument();
   });
 
   it("draft-change events update visible draft fields with prev/new notifications", async () => {
@@ -152,7 +175,7 @@ describe("Agents conversational creator", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "agents.newAgent" }),
     );
-    await screen.findByText("Research Buddy");
+    await screen.findByDisplayValue("Research Buddy");
 
     const updatedDraft = {
       ...draft,
@@ -165,7 +188,11 @@ describe("Agents conversational creator", () => {
         revision: 2,
         snapshot: updatedDraft,
         changes: [
-          { path: "displayName", previous: "Research Buddy", next: "Source Scout" },
+          {
+            path: "displayName",
+            previous: "Research Buddy",
+            next: "Source Scout",
+          },
         ],
         notification: {
           text: "Updated display name.",
@@ -176,9 +203,11 @@ describe("Agents conversational creator", () => {
       });
     });
 
-    expect(await screen.findByText("Source Scout")).toBeInTheDocument();
-    expect(screen.getByText(/Research Buddy/)).toBeInTheDocument();
-    expect(screen.getAllByText(/Source Scout/).length).toBeGreaterThan(0);
+    // The Identity name field reflects the new value...
+    expect(await screen.findByDisplayValue("Source Scout")).toBeInTheDocument();
+    // ...and the diff chip surfaces the prev -> new transition.
+    expect(screen.getByText("Research Buddy")).toBeInTheDocument();
+    expect(screen.getByText("Source Scout")).toBeInTheDocument();
   });
 
   it("commit success selects the returned backend profile and navigates to chat", async () => {
@@ -205,8 +234,15 @@ describe("Agents conversational creator", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "agents.newAgent" }),
     );
+    await screen.findByDisplayValue("Research Buddy");
     fireEvent.click(
-      await screen.findByRole("button", { name: "agents.creatorCommit" }),
+      screen.getByRole("button", { name: /agents\.creatorContinue/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /agents\.creatorContinue/ }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: /agents\.creatorCreateAgent/ }),
     );
 
     await waitFor(() => {
@@ -234,11 +270,21 @@ describe("Agents conversational creator", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "agents.newAgent" }),
     );
+    await screen.findByDisplayValue("Research Buddy");
     fireEvent.click(
-      await screen.findByRole("button", { name: "agents.creatorCommit" }),
+      screen.getByRole("button", { name: /agents\.creatorContinue/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /agents\.creatorContinue/ }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: /agents\.creatorCreateAgent/ }),
     );
 
-    expect(await screen.findByText("commit-failed: Item 5 stub")).toBeInTheDocument();
-    expect(screen.getByText("Research Buddy")).toBeInTheDocument();
+    expect(
+      await screen.findByText("commit-failed: Item 5 stub"),
+    ).toBeInTheDocument();
+    // The draft stays visible on the Review step.
+    expect(screen.getByText("research-buddy")).toBeInTheDocument();
   });
 });
