@@ -465,6 +465,25 @@ describe("Skills redesign", () => {
     expect(window.hermesAPI.getSkillMetadata).toHaveBeenCalledWith("/skills/typescript/ts-pro");
   });
 
+  it("restores the skill list scroll position after returning from details", async () => {
+    render(<Skills profile="default" />);
+    await screen.findByText("typescript");
+
+    const container = document.querySelector(".skills-container") as HTMLDivElement | null;
+    if (!container) throw new Error("Missing skills scroll container");
+    container.scrollTop = 420;
+
+    const section = categorySection("typescript");
+    fireEvent.click(within(section).getByRole("button", { name: "skills.details" }));
+    expect(await screen.findByText("Skill body.")).toBeInTheDocument();
+
+    container.scrollTop = 0;
+    fireEvent.click(screen.getByRole("button", { name: "skills.backToSkills" }));
+
+    await waitFor(() => expect(screen.queryByText("Skill body.")).not.toBeInTheDocument());
+    expect(container.scrollTop).toBe(420);
+  });
+
   it("detail disable stages pending uninstall and closes details", async () => {
     render(<Skills profile="default" />);
     await screen.findByText("typescript");

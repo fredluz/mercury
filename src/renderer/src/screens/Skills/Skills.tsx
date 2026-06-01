@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { Search, X, Refresh, Plus } from "../../assets/icons";
 import { SkillModals } from "./components/SkillModals";
 import {
@@ -246,6 +246,9 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const listScrollTopRef = useRef(0);
+  const restoreListScrollRef = useRef(false);
   const detailRequestRef = useRef(0);
   const draftSequenceRef = useRef(0);
 
@@ -256,6 +259,14 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
   const pendingCount = pendingChanges.length;
   const pendingEnableCount = pendingChanges.filter((change) => change.action === "install").length;
   const pendingDisableCount = pendingChanges.filter((change) => change.action === "uninstall").length;
+
+  useLayoutEffect(() => {
+    if (selectedDetail || !restoreListScrollRef.current) return;
+    restoreListScrollRef.current = false;
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = listScrollTopRef.current;
+    }
+  }, [selectedDetail]);
 
   const loadInstalled = useCallback(async (): Promise<InstalledSkill[]> => {
     const list = await window.hermesAPI.listInstalledSkills(profile);
@@ -335,6 +346,8 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
       );
       return;
     }
+
+    listScrollTopRef.current = scrollContainerRef.current?.scrollTop ?? 0;
 
     const requestId = detailRequestRef.current + 1;
     detailRequestRef.current = requestId;
@@ -430,6 +443,7 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
     }
 
     if (!desiredEnabled && selectedDetail && targetMatchesInstalledSkill(target, selectedDetail.skill)) {
+      restoreListScrollRef.current = true;
       setSelectedDetail(null);
     }
 
@@ -455,6 +469,11 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
 
   function handleDisableSkill(skill: SkillListItem | InstalledSkill): void {
     stageSkillEnabledState(skill, false);
+  }
+
+  function handleBackToSkillList(): void {
+    restoreListScrollRef.current = true;
+    setSelectedDetail(null);
   }
 
   function handleCategoryAction(
@@ -731,7 +750,7 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
   }
 
   return (
-    <div className="skills-container">
+    <div className="skills-container" ref={scrollContainerRef}>
       <SkillModals
         values={{
           t,
@@ -833,7 +852,7 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
         <SkillDetailPanel
           detail={selectedDetail}
           saving={savingDraft}
-          onBack={() => setSelectedDetail(null)}
+          onBack={handleBackToSkillList}
           onDisable={handleDisableSkill}
           t={t}
         />

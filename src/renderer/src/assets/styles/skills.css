@@ -78,10 +78,13 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  background: var(--accent-subtle);
+  background: color-mix(in srgb, var(--bg-primary) 88%, var(--brand-cream) 12%);
   border: 1px solid var(--accent);
   border-radius: var(--radius-md);
-  box-shadow: 0 12px 28px rgba(45, 35, 20, 0.14);
+  box-shadow:
+    0 0 0 4px var(--bg-primary),
+    0 16px 36px rgba(45, 35, 20, 0.18);
+  isolation: isolate;
   padding: 12px;
   margin-bottom: 14px;
 }
