@@ -9,6 +9,7 @@ export {
   sshGetSkillMetadata,
   sshInstallSkill,
   sshUninstallSkill,
+  sshMutateSkills,
   sshImportSkillMarkdown,
   sshSearchSkills,
   sshListBundledSkills,

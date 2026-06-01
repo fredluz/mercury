@@ -2,7 +2,7 @@ import { execFileSync } from "child_process";
 import { join } from "path";
 import { homedir } from "os";
 import { promises as fs } from "fs";
-import { existsSync } from "fs";
+import { copyFileSync, existsSync } from "fs";
 import {
   HERMES_HOME,
   HERMES_PYTHON,
@@ -11,6 +11,7 @@ import {
 } from "./installer";
 
 const PROFILES_DIR = join(HERMES_HOME, "profiles");
+const PROFILE_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 export interface ProfileInfo {
   name: string;
@@ -224,28 +225,53 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
 
 export function createProfile(
   name: string,
-  clone: boolean,
+  copyDefaultConfig: boolean,
 ): { success: boolean; error?: string } {
+  if (!PROFILE_NAME_PATTERN.test(name)) {
+    return {
+      success: false,
+      error:
+        "Profile names must start with a lowercase letter or number and contain only lowercase letters, numbers, underscores, or hyphens.",
+    };
+  }
+
   try {
-    const args = clone
-      ? ["profile", "create", name, "--clone"]
-      : ["profile", "create", name];
-    execFileSync(HERMES_PYTHON, [HERMES_SCRIPT, ...args], {
-      cwd: join(HERMES_HOME, "hermes-agent"),
-      env: {
-        ...process.env,
-        PATH: getEnhancedPath(),
-        HOME: homedir(),
-        HERMES_HOME,
+    execFileSync(
+      HERMES_PYTHON,
+      [HERMES_SCRIPT, "profile", "create", name, "--no-skills"],
+      {
+        cwd: join(HERMES_HOME, "hermes-agent"),
+        env: {
+          ...process.env,
+          PATH: getEnhancedPath(),
+          HOME: homedir(),
+          HERMES_HOME,
+        },
+        stdio: "pipe",
+        timeout: 15000,
       },
-      stdio: "pipe",
-      timeout: 15000,
-    });
+    );
+
+    if (copyDefaultConfig) {
+      const profilePath = join(PROFILES_DIR, name);
+      for (const file of ["config.yaml", ".env"]) {
+        const source = join(HERMES_HOME, file);
+        if (existsSync(source)) copyFileSync(source, join(profilePath, file));
+      }
+    }
+
     return { success: true };
   } catch (err) {
     const msg =
       (err as { stderr?: Buffer }).stderr?.toString() || (err as Error).message;
-    return { success: false, error: msg.trim() };
+    let error = msg.trim();
+    if (copyDefaultConfig) {
+      const rollback = deleteProfile(name);
+      if (!rollback.success && rollback.error) {
+        error = `${error} Rollback attempted but failed: ${rollback.error}`;
+      }
+    }
+    return { success: false, error };
   }
 }
 

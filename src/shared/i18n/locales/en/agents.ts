@@ -4,7 +4,7 @@ export default {
     "Each agent is an isolated Hermes workspace with its own config, memory, and skills",
   newAgent: "New Agent",
   namePlaceholder: "Agent name (e.g. coder)",
-  cloneConfig: "Clone config & API keys from default",
+  cloneConfig: "Copy default config/API keys; start with skills off",
   createFailed: "Failed to create agent",
   creating: "Creating...",
   create: "Create",
@@ -17,7 +17,8 @@ export default {
   modelRequired: "Choose a provider and model",
   modelSaveFailed: "Failed to save model",
   modelInventoryFailed: "Couldn't load available models",
-  modelModalSubtitle: "Choose from the models Hermes already exposes for this agent.",
+  modelModalSubtitle:
+    "Choose from the models Hermes already exposes for this agent.",
   noModelsAvailable: "No models available",
   noModelsAvailableHint: "Connect a provider first, then choose a model here.",
   savingModel: "Saving...",

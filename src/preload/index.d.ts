@@ -6,6 +6,8 @@ import type {
   SkillMarkdownImportRequest,
   SkillMarkdownImportResult,
   SkillMetadata,
+  SkillMutationBatchResult,
+  SkillMutationTarget,
 } from "../shared/skills";
 import type {
   MigrationInventory,
@@ -314,7 +316,7 @@ interface HermesAPI {
   listInstalledSkills: (
     profile?: string,
   ) => Promise<
-    Array<{ name: string; category: string; description: string; path: string }>
+    Array<{ name: string; category: string; description: string; path: string; directoryName: string }>
   >;
   listBundledSkills: () => Promise<
     Array<{
@@ -323,6 +325,7 @@ interface HermesAPI {
       category: string;
       source: string;
       installed: boolean;
+      directoryName: string;
     }>
   >;
   getSkillContent: (skillPath: string) => Promise<string>;
@@ -335,6 +338,10 @@ interface HermesAPI {
     name: string,
     profile?: string,
   ) => Promise<{ success: boolean; error?: string }>;
+  mutateSkills: (
+    targets: SkillMutationTarget[],
+    profile?: string,
+  ) => Promise<SkillMutationBatchResult>;
   importSkillMarkdown: (
     request: SkillMarkdownImportRequest,
     profile?: string,

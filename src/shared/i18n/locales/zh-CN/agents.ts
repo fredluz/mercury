@@ -3,7 +3,7 @@ export default {
   subtitle: "每个代理都是独立的 Hermes 工作区，拥有自己的配置、记忆和技能",
   newAgent: "新建代理",
   namePlaceholder: "代理名称（例如 coder）",
-  cloneConfig: "复制默认代理的配置与 API Key",
+  cloneConfig: "复制默认配置与 API Key；启动时不启用技能",
   createFailed: "创建代理失败",
   creating: "创建中...",
   create: "创建",

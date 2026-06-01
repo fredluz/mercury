@@ -8,6 +8,8 @@ Use evergreen docs first when you need to understand or change Mercury. These pa
 
 ### Architecture
 
+- [Code map](architecture/code-map.md) — agent-facing file/module map for `src/`, the CLI, tests, and "find X" navigation.
+- [Architecture map](architecture/architecture-map.md) — process boundaries, Mercury↔Hermes seams, control flows, state ownership, and build pipeline.
 - [Architecture overview](architecture/overview.md) — Electron main/preload/renderer, Node CLI adapter, shared service boundaries, app startup/shutdown, subsystem ownership, and brand asset generation flow.
 - [Brand source](../brand/README.md) — canonical Mercury logo source and `npm run brand:generate` / `npm run brand:check` instructions for generated app and docs icons.
 
@@ -61,7 +63,7 @@ Historical evidence can explain why decisions were made or what was observed dur
 
 ## How future agents should use these docs
 
-1. Start with the [Architecture overview](architecture/overview.md).
+1. Start with the [Code map](architecture/code-map.md) and [Architecture map](architecture/architecture-map.md), then use the [Architecture overview](architecture/overview.md) for lifecycle detail.
 2. Read the relevant contract or subsystem docs before changing IPC/preload, CLI commands, shared services, shared schemas, storage, connection modes, user-visible workflows, or contract tests.
 3. Use historical evidence only for dated context and prior findings.
 4. Verify behavior against source and run the checks listed by the relevant docs before submitting changes.

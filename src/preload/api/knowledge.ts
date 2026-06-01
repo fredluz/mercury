@@ -3,6 +3,8 @@ import type {
   SkillMarkdownImportRequest,
   SkillMarkdownImportResult,
   SkillMetadata,
+  SkillMutationBatchResult,
+  SkillMutationTarget,
 } from "../../shared/skills";
 
 export const knowledgeApi = {
@@ -59,7 +61,7 @@ export const knowledgeApi = {
   listInstalledSkills: (
     profile?: string,
   ): Promise<
-    Array<{ name: string; category: string; description: string; path: string }>
+    Array<{ name: string; category: string; description: string; path: string; directoryName: string }>
   > => ipcRenderer.invoke("list-installed-skills", profile),
   listBundledSkills: (): Promise<
     Array<{
@@ -68,6 +70,7 @@ export const knowledgeApi = {
       category: string;
       source: string;
       installed: boolean;
+      directoryName: string;
     }>
   > => ipcRenderer.invoke("list-bundled-skills"),
   getSkillContent: (skillPath: string): Promise<string> =>
@@ -84,6 +87,11 @@ export const knowledgeApi = {
     profile?: string,
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("uninstall-skill", name, profile),
+  mutateSkills: (
+    targets: SkillMutationTarget[],
+    profile?: string,
+  ): Promise<SkillMutationBatchResult> =>
+    ipcRenderer.invoke("mutate-skills", targets, profile),
   importSkillMarkdown: (
     request: SkillMarkdownImportRequest,
     profile?: string,

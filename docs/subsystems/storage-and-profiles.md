@@ -34,6 +34,8 @@ Current behavior visible from callers:
 - Named profiles are any non-dot directories directly under `<HERMES_HOME>/profiles`; they do not need `config.yaml` or `.env` to be visible in the UI.
 - `<HERMES_HOME>/active_profile` is read to mark `ProfileInfo.isActive`. Missing or blank files default the active profile to `"default"`.
 - SSH implementations mirror this shape with remote paths under `~/.hermes` for default and `~/.hermes/profiles/<profile>` for named profiles.
+- New local and SSH profiles created by Mercury start with skills off: profile creation passes upstream Hermes `--no-skills`. The create-time copy option copies default `config.yaml` and `.env`/API key material only; it does not copy `skills/`, SOUL, memories, state databases, gateway files, or logs.
+- Pure remote HTTP mode fails closed for profile create/delete/use mutations because those operations require profile filesystem writes that Mercury cannot safely perform through the remote HTTP runtime.
 
 ## Storage isolation vs runtime isolation
 
@@ -82,7 +84,7 @@ CLI mutations use the same profile-scoped files and service side effects as IPC/
 - `memory add|update|remove`, `memory read`, and `user-profile write` use the selected profile's `memories/` files and SQLite session counts.
 - `soul write|reset|read` uses the selected profile's `SOUL.md`.
 - `tools set` updates the selected profile's tool configuration as a next-message write and does not mark the profile runtime stale.
-- `skills install|uninstall|import|installed|content|metadata` uses the same local/SSH skill roots and Markdown import contract described in [Skills subsystem](skills.md).
+- `skills install|uninstall|import|installed|content|metadata` uses the same local/SSH skill roots and Markdown import contract described in [Skills subsystem](skills.md). Install/uninstall mutations fail closed in pure remote HTTP mode instead of falling back to local profile files.
 - `sessions cache sync`, `sessions cache list`, `sessions list|messages|search`, and `sessions title set` preserve profile metadata in the desktop session cache and profile DBs.
 - `cron create|remove|pause|resume|run` uses the same cron state/runtime isolation rules as the desktop schedules surface.
 - `env set`, `config set`, `model-config set`, `connection set`, and `connection ssh set` write the same `.env`, `config.yaml`, and `desktop.json` files used by the renderer settings path.

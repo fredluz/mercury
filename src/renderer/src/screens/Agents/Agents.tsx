@@ -76,7 +76,7 @@ function Agents({
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
-  const [cloneConfig, setCloneConfig] = useState(true);
+  const [copyDefaultConfig, setCopyDefaultConfig] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -91,8 +91,8 @@ function Agents({
   }, []);
 
   const loadInventory = useCallback(async (): Promise<void> => {
-    // New profile creation clones config/API keys from default, so filter the
-    // picker against the credentials the new agent can actually inherit.
+    // New profile creation can copy default config/API keys without copying
+    // skills, so filter the picker against inherited credentials.
     const providerProfile = "default";
     const [models, env, credPool, codexStatus] = await Promise.all([
       window.hermesAPI.listModels(),
@@ -160,7 +160,10 @@ function Agents({
     if (!name) return;
     setCreating(true);
     setError("");
-    const result = await window.hermesAPI.createProfile(name, cloneConfig);
+    const result = await window.hermesAPI.createProfile(
+      name,
+      copyDefaultConfig,
+    );
     if (!result.success) {
       setCreating(false);
       setError(result.error || t("agents.createFailed"));
@@ -275,8 +278,8 @@ function Agents({
           <label className="agents-create-clone">
             <input
               type="checkbox"
-              checked={cloneConfig}
-              onChange={(e) => setCloneConfig(e.target.checked)}
+              checked={copyDefaultConfig}
+              onChange={(e) => setCopyDefaultConfig(e.target.checked)}
             />
             <span>{t("agents.cloneConfig")}</span>
           </label>

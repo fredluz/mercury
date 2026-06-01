@@ -26,7 +26,7 @@ interface SkillDetailPanelProps {
   actionInProgress: string | null;
   onBack: () => void;
   onDisable: (skill: InstalledSkill) => void;
-  skillKey: (skill: { category: string; name: string }) => string;
+  skillKey: (skill: InstalledSkill) => string;
   t: (key: string, options?: Record<string, unknown>) => string;
 }
 

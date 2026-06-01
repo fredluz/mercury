@@ -24,11 +24,12 @@ Skills are exposed through `window.hermesAPI` methods implemented in `src/preloa
 - `listBundledSkills()`
 - `getSkillContent(skillPath)`
 - `getSkillMetadata(skillPath)`
-- `installSkill(identifier, profile?)`
-- `uninstallSkill(name, profile?)`
+- `installSkill(identifier, profile?)` (legacy single-target wrapper)
+- `uninstallSkill(name, profile?)` (legacy single-target wrapper)
+- `mutateSkills(targets, profile?)`
 - `importSkillMarkdown(request, profile?)`
 
-The renderer-facing TypeScript declarations live in `src/preload/index.d.ts` and use request/result types from `src/shared/skills.ts` for Markdown import and metadata.
+The renderer-facing TypeScript declarations live in `src/preload/index.d.ts` and use request/result types from `src/shared/skills.ts` for Markdown import, metadata, and `SkillMutationTarget` / `SkillMutationBatchResult` batch mutations. Batch mutation results preserve input order, report `updated` changed-item count, and include per-target success or failure details.
 
 ## CLI skill commands
 
@@ -50,18 +51,20 @@ Local, SSH, and pure remote HTTP behavior matches the IPC mode rules below. Manu
 
 The Skills screen groups both installed and browse results by `category` into collapsible sections. Each section shows an enabled count and category-level bulk actions.
 
-Mercury does not persist a separate skill-enabled flag. In the current V1 UI, **enabled for the selected Agent** means the skill is installed in that Agent profile, and **disabled** means the skill is uninstalled from that Agent profile:
+Mercury does not persist a separate skill-enabled flag. Newly created Mercury Agents/profiles start with no skills installed; the Agents "copy default config/API keys" option copies credentials/config only, not skills. Users opt into skills from this screen after Agent creation.
 
-- Individual Enable -> `installSkill(skill.name, profile?)`
-- Individual Disable -> `uninstallSkill(skill.name, profile?)`
-- Category Enable all -> sequentially installs currently disabled skills in that visible category.
-- Category Disable all / Disable enabled -> sequentially uninstalls currently enabled skills in that visible category.
+In the current V1 UI, **enabled for the selected Agent** means the skill is installed in that Agent profile, and **disabled** means the skill is uninstalled from that Agent profile:
 
-Bulk actions continue after individual failures, reload installed skills afterward, and surface a partial-failure notice listing failed skill names.
+- Individual Enable -> `mutateSkills([{ action: "install", name, category, directoryName }], profile?)`.
+- Individual Disable -> `mutateSkills([{ action: "uninstall", name, category, directoryName, path }], profile?)`.
+- Category Enable all -> one `mutateSkills(...)` batch for currently disabled skills in that visible category.
+- Category Disable all / Disable enabled -> one `mutateSkills(...)` batch for currently enabled skills in that visible category.
+
+Bulk actions make one renderer-to-main API call, reload installed skills once after the batch completes, and surface detailed per-skill failures such as timeout, ambiguity, or unsupported-mode errors. The UI uses `category + directoryName` as skill allocation identity and includes the installed path in row/action keys so duplicate display names do not collide. If a selected detail panel's installed skill is disabled by an operation, the detail panel closes rather than showing stale content.
 
 The installed-skill detail experience is an in-screen page/panel instead of a modal. It renders `SKILL.md` Markdown on the left and metadata on the right. Browse results can open details only when the bundled skill is already installed for the selected Agent; otherwise users are prompted to install it first.
 
-"Agents using this skill" is derived in the renderer by calling `listProfiles()` and then `listInstalledSkills(profile.name)` for each Agent. Matching prefers case-insensitive `category/name` identity.
+"Agents using this skill" is derived in the renderer by calling `listProfiles()` and then `listInstalledSkills(profile.name)` for each Agent. Matching prefers case-insensitive `category/directoryName` identity, falling back to display name only when a directory name is unavailable.
 
 ## Local installed skills
 
@@ -75,6 +78,7 @@ Current behavior:
 
 - `listInstalledSkills(profile?)` walks category directories under `<profileHome>/skills`.
 - A valid installed skill is a directory containing `SKILL.md`.
+- Returned installed summaries include `directoryName`, the actual skill directory under the category. Display `name` can still come from frontmatter.
 - Metadata is parsed from YAML frontmatter when present:
   - `name`
   - `description`
@@ -86,7 +90,7 @@ Current behavior:
 
 Current local behavior:
 
-- `listBundledSkills()` walks `<HERMES_REPO>/skills/<category>/<skill>/SKILL.md` and returns bundled skills sorted by category/name.
+- `listBundledSkills()` walks `<HERMES_REPO>/skills/<category>/<skill>/SKILL.md` and returns bundled skills sorted by category/name. Results include `directoryName`, the bundled skill directory.
 - `searchSkills(query)` shells out to Hermes CLI: `hermes skills browse --query <query> --json`; if JSON parsing fails or command fails, it returns an empty list.
 
 `listBundledSkills()` does not call the registry search locally; it reads bundled skills from the local Hermes repo directory.
@@ -95,23 +99,14 @@ Current SSH behavior differs: `sshListBundledSkills()` calls remote registry bro
 
 ## Local install and uninstall
 
-`installSkill(identifier, profile?)` shells out to:
+`mutateLocalSkills(targets, profile?)` is the primary mutation engine for UI/API calls. It processes targets in order and returns a `SkillMutationBatchResult` with one item result per target:
 
-```text
-hermes skills install <identifier> --yes
-```
+- install resolves bundled skills by exact `category + directoryName`, then `category + name`, and falls back to the Hermes CLI install path for legacy identifiers.
+- uninstall prefers exact installed `path`, then `category + directoryName`, then `category + name`, then legacy name-only lookup.
+- ambiguous uninstall targets fail closed with `ambiguous-skill` rather than deleting the wrong directory.
+- all direct filesystem writes/removals validate that source and destination paths remain inside the expected bundled-skill or profile-skill roots.
 
-If `profile` is provided and is not `default`, it inserts `-p <profile>` into the Hermes command.
-
-`uninstallSkill(name, profile?)` shells out to:
-
-```text
-hermes skills uninstall <name>
-```
-
-Again, non-default profiles add `-p <profile>`.
-
-Both functions run with enhanced PATH, `HOME`, and `HERMES_HOME`, and return `{ success: true }` or `{ success: false, error }`.
+Legacy `installSkill(identifier, profile?)` and `uninstallSkill(name, profile?)` remain for compatibility and still return `{ success: true }` or `{ success: false, error }`, but service-level callers route through the batch mutation path.
 
 ## Shared Markdown import contract
 
@@ -225,9 +220,11 @@ The parser only treats a delimiter line matching a newline followed by `---` as 
 - `list-bundled-skills` -> local `listBundledSkills()`.
 - `get-skill-content` -> local `getSkillContent(skillPath)`.
 - `get-skill-metadata` -> local `getSkillMetadata(skillPath)`.
-- `install-skill` -> local `installSkill(identifier, profile)`.
-- `uninstall-skill` -> local `uninstallSkill(name, profile)`.
+- `install-skill` / `uninstall-skill` -> legacy wrappers around `mutateSkillsForProfile(...)`.
+- `mutate-skills` -> local `mutateLocalSkills(targets, profile)` through the service queue.
 - `import-skill-markdown` -> local `importSkillMarkdown(request, profile)`.
+
+Successful skill mutation batches mark the selected profile runtime stale once when at least one item actually changed. Empty batches, all-failure batches, and no-op batches do not mark runtime stale.
 
 If Markdown import succeeds while the local gateway is running, the IPC result adds:
 
@@ -247,8 +244,9 @@ Current SSH behavior:
 - Returned remote skill paths are prefixed with `REMOTE:`.
 - `getSkillContent(...)` strips the `REMOTE:` prefix if present and reads remote `<path>/SKILL.md`.
 - `getSkillMetadata(...)` strips the `REMOTE:` prefix if present and lists immediate children under remote `scripts/` and `references/`; SSH failures degrade to `metadataAvailable: false` instead of breaking the detail page.
-- Install is profile-aware in SSH mode and runs `hermes -p <profile> skills install <identifier> --yes` for non-default profiles.
-- Uninstall is profile-aware in SSH mode and runs `hermes -p <profile> skills uninstall <name>` for non-default profiles.
+- Batch install/uninstall is profile-aware in SSH mode and is processed by one remote `sshPython()` call per batch.
+- Legacy single install/uninstall wrappers remain available, but UI/API mutation routes use `sshMutateSkills(...)` so bulk operations avoid one SSH round trip per skill.
+- SSH uninstall resolves exact `REMOTE:` paths or `category + directoryName` before falling back to name matching, and ambiguous targets fail closed.
 - Markdown import is profile-aware and uses the same `prepareSkillMarkdownImport(...)` validation/normalization as local import.
 - Remote Markdown import writes to `~/.hermes/skills/<category>/<name>/SKILL.md` or profile equivalent.
 - Remote Markdown import rejects duplicates unless `overwrite` is true.
@@ -260,7 +258,7 @@ If SSH Markdown import succeeds while the remote gateway is running, the IPC res
 
 Manual Markdown import is explicitly rejected in pure remote HTTP mode with failure code `write-failed` and an error explaining that import is only available in local and SSH modes because it writes to the selected profile filesystem.
 
-Other skill handlers in `knowledge.ts` only branch for SSH and otherwise fall through to local implementations. Therefore pure remote HTTP mode uses local list/content/install/uninstall/bundled behavior unless a specific handler, currently manual Markdown import, rejects the operation.
+Skill mutations also fail closed in pure remote HTTP mode. `install-skill`, `uninstall-skill`, and `mutate-skills` return failures with `unsupported-remote-mode` details and do not call local skill helpers or mark the runtime stale. Read-only listing/content behavior remains local/SSH-oriented unless separately productized for remote HTTP.
 
 ## Contract tests
 
@@ -277,9 +275,9 @@ Other skill handlers in `knowledge.ts` only branch for SSH and otherwise fall th
 IPC/preload and CLI surface tests also protect skill API availability:
 
 - `tests/skills-import.test.ts` checks Markdown import and local `getSkillMetadata()` scripts/references discovery.
-- `tests/ipc-handlers.test.ts` checks `get-skill-metadata` and `import-skill-markdown` have both main handlers and preload invokes.
-- `tests/preload-api-surface.test.ts` checks `getSkillMetadata` and `importSkillMarkdown` exist in both preload implementation and `HermesAPI` types.
-- `src/renderer/src/screens/Skills/Skills.test.tsx` covers grouping/collapse, individual and category enable/disable actions, detail metadata, Agents using a skill, and manual Markdown import.
+- `tests/ipc-handlers.test.ts` checks `get-skill-metadata`, `mutate-skills`, and `import-skill-markdown` have both main handlers and preload invokes.
+- `tests/preload-api-surface.test.ts` checks `getSkillMetadata`, `mutateSkills`, and `importSkillMarkdown` exist in both preload implementation and `HermesAPI` types.
+- `src/renderer/src/screens/Skills/Skills.test.tsx` covers grouping/collapse, individual and category batch enable/disable actions, detailed failure rendering, duplicate display-name targeting, detail metadata, Agents using a skill, and manual Markdown import.
 - `tests/cli-read-only-commands.test.ts` and `tests/cli-mutating-commands.test.ts` cover CLI skill command routing through shared services.
 
 ## Verification guidance

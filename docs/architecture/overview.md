@@ -2,6 +2,8 @@
 
 This is the evergreen architecture reference for Mercury's current Electron app and Node CLI shape. It is grounded in the source files listed below and should be updated when app startup, process boundaries, CLI adapter behavior, navigation, or subsystem ownership changes.
 
+For agent navigation, start with the focused [Code map](code-map.md) and [Architecture map](architecture-map.md). This overview remains the narrative companion for startup, lifecycle, and ownership details.
+
 ## Source anchors
 
 - Main process entrypoint: `src/main/index.ts`
@@ -11,7 +13,8 @@ This is the evergreen architecture reference for Mercury's current Electron app 
 - Preload bridge: `src/preload/index.ts`, `src/preload/api/*`, `src/preload/index.d.ts`
 - Renderer app shell: `src/renderer/src/App.tsx`, `src/renderer/src/screens/Layout/Layout.tsx`
 - Shared contracts: `src/shared/*`, including runtime diagnostics in `src/shared/runtime.ts`
-- Profile runtime manager: `src/main/hermes/runtime.ts`, `src/main/hermes/types.ts`
+- Profile runtime manager: `src/main/hermes/runtime.ts`, `src/main/hermes/runtime/*`, `src/main/hermes/types.ts`
+- Internal Hermes Gateway BFF clients: `src/main/hermes/bff/*`
 - Brand source and generated assets: `brand/README.md`, `brand/source/mercury-logo-source.png`, `scripts/generate-brand-assets.mjs`, `build/icon.*`, `resources/icon.png`, `docs/assets/mercury-logo.png`
 - Contract tests: `tests/ipc-handlers.test.ts`, `tests/preload-api-surface.test.ts`, `tests/cli-*.test.ts`
 

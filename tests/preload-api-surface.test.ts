@@ -202,6 +202,14 @@ describe("New APIs from v0.8/v0.9 features", () => {
     expect(typeMethods).toContain("importSkillMarkdown");
   });
 
+  it("has batch skill mutation API", () => {
+    expect(preloadMethods).toContain("mutateSkills");
+    expect(typeMethods).toContain("mutateSkills");
+    expect(preloadSrc).toContain('ipcRenderer.invoke("mutate-skills", targets, profile)');
+    expect(preloadTypes).toContain("SkillMutationBatchResult");
+    expect(preloadTypes).toContain("SkillMutationTarget");
+  });
+
   it("has local chat trace API", () => {
     expect(preloadMethods).toContain("recordLocalChatTrace");
     expect(typeMethods).toContain("recordLocalChatTrace");
@@ -296,6 +304,7 @@ describe("Legacy APIs preserved (backward compat)", () => {
     "getSkillMetadata",
     "installSkill",
     "uninstallSkill",
+    "mutateSkills",
     "importSkillMarkdown",
     // Models
     "listModels",

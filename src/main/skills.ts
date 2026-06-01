@@ -1,18 +1,31 @@
 import { execFileSync } from "child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "fs";
-import { join } from "path";
-import type { SkillAssociatedFile, SkillMetadata } from "../shared/skills";
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+} from "fs";
+import { dirname, isAbsolute, join, relative, resolve } from "path";
+import type {
+  InstalledSkillSummary,
+  SkillAssociatedFile,
+  SkillMetadata,
+  SkillMutationBatchResult,
+  SkillMutationErrorCode,
+  SkillMutationItemResult,
+  SkillMutationTarget,
+} from "../shared/skills";
 import { homedir } from "os";
 import { HERMES_HOME, HERMES_PYTHON, HERMES_SCRIPT, HERMES_REPO, getEnhancedPath } from "./install/paths";
 import { profileHome } from "./utils";
 export { prepareSkillMarkdownImport, isValidSkillImportProfile, importSkillMarkdown } from "./skills/importer";
 
-export interface InstalledSkill {
-  name: string;
-  category: string;
-  description: string;
-  path: string;
-}
+export interface InstalledSkill extends InstalledSkillSummary {}
 
 export interface SkillSearchResult {
   name: string;
@@ -20,7 +33,18 @@ export interface SkillSearchResult {
   category: string;
   source: string;
   installed: boolean;
+  directoryName: string;
 }
+
+type IndexedSkill = InstalledSkill & { resolvedPath: string };
+
+type SkillIndex = {
+  skills: IndexedSkill[];
+  byPath: Map<string, IndexedSkill>;
+  byCategoryDirectory: Map<string, IndexedSkill[]>;
+  byCategoryName: Map<string, IndexedSkill[]>;
+  byName: Map<string, IndexedSkill[]>;
+};
 
 /**
  * Parse SKILL.md frontmatter (YAML between --- markers) for name/description.
@@ -57,6 +81,31 @@ function parseSkillFrontmatter(content: string): {
   return result;
 }
 
+function readSkillAt(skillPath: string, category: string, directoryName: string): InstalledSkill | null {
+  const skillFile = join(skillPath, "SKILL.md");
+  if (!existsSync(skillFile)) return null;
+
+  try {
+    const content = readFileSync(skillFile, "utf-8").slice(0, 4000);
+    const meta = parseSkillFrontmatter(content);
+    return {
+      name: meta.name || directoryName,
+      category,
+      description: meta.description || "",
+      path: skillPath,
+      directoryName,
+    };
+  } catch {
+    return {
+      name: directoryName,
+      category,
+      description: "",
+      path: skillPath,
+      directoryName,
+    };
+  }
+}
+
 /**
  * Walk the skills directory to find all installed skills.
  * Structure: skills/<category>/<skill-name>/SKILL.md
@@ -79,27 +128,8 @@ export function listInstalledSkills(profile?: string): InstalledSkill[] {
         const entryPath = join(categoryPath, entry);
         if (!statSync(entryPath).isDirectory()) continue;
 
-        const skillFile = join(entryPath, "SKILL.md");
-        if (!existsSync(skillFile)) continue;
-
-        try {
-          const content = readFileSync(skillFile, "utf-8").slice(0, 4000);
-          const meta = parseSkillFrontmatter(content);
-
-          skills.push({
-            name: meta.name || entry,
-            category,
-            description: meta.description || "",
-            path: entryPath,
-          });
-        } catch {
-          skills.push({
-            name: entry,
-            category,
-            description: "",
-            path: entryPath,
-          });
-        }
+        const skill = readSkillAt(entryPath, category, entry);
+        if (skill) skills.push(skill);
       }
     }
   } catch {
@@ -247,6 +277,7 @@ export function searchSkills(query: string): SkillSearchResult[] {
           category: r.category || "",
           source: r.source || "",
           installed: false,
+          directoryName: r.directoryName || r.directory_name || r.name || "",
         }));
       }
     } catch {
@@ -281,29 +312,17 @@ export function listBundledSkills(): SkillSearchResult[] {
         const entryPath = join(catPath, entry);
         if (!statSync(entryPath).isDirectory()) continue;
 
-        const skillFile = join(entryPath, "SKILL.md");
-        if (!existsSync(skillFile)) continue;
+        const skill = readSkillAt(entryPath, category, entry);
+        if (!skill) continue;
 
-        try {
-          const content = readFileSync(skillFile, "utf-8").slice(0, 4000);
-          const meta = parseSkillFrontmatter(content);
-
-          skills.push({
-            name: meta.name || entry,
-            description: meta.description || "",
-            category,
-            source: "bundled",
-            installed: false,
-          });
-        } catch {
-          skills.push({
-            name: entry,
-            description: "",
-            category,
-            source: "bundled",
-            installed: false,
-          });
-        }
+        skills.push({
+          name: skill.name,
+          description: skill.description,
+          category,
+          source: "bundled",
+          installed: false,
+          directoryName: entry,
+        });
       }
     }
   } catch {
@@ -314,6 +333,358 @@ export function listBundledSkills(): SkillSearchResult[] {
     (a, b) =>
       a.category.localeCompare(b.category) || a.name.localeCompare(b.name),
   );
+}
+
+function normalized(value: string | undefined): string {
+  return (value || "").trim().toLowerCase();
+}
+
+function categoryKey(category: string | undefined, value: string | undefined): string {
+  return `${normalized(category)}\u0000${normalized(value)}`;
+}
+
+function pushIndex(map: Map<string, IndexedSkill[]>, key: string, skill: IndexedSkill): void {
+  if (!key || key === "\u0000") return;
+  const existing = map.get(key) || [];
+  existing.push(skill);
+  map.set(key, existing);
+}
+
+function buildIndex(skills: InstalledSkill[]): SkillIndex {
+  const index: SkillIndex = {
+    skills: [],
+    byPath: new Map(),
+    byCategoryDirectory: new Map(),
+    byCategoryName: new Map(),
+    byName: new Map(),
+  };
+
+  for (const skill of skills) {
+    const indexed = { ...skill, resolvedPath: resolve(skill.path) };
+    index.skills.push(indexed);
+    index.byPath.set(indexed.resolvedPath, indexed);
+    pushIndex(index.byCategoryDirectory, categoryKey(skill.category, skill.directoryName), indexed);
+    pushIndex(index.byCategoryName, categoryKey(skill.category, skill.name), indexed);
+    pushIndex(index.byName, normalized(skill.name), indexed);
+  }
+
+  return index;
+}
+
+function bundledSkillsWithPaths(): InstalledSkill[] {
+  return listBundledSkills().map((skill) => ({
+    name: skill.name,
+    category: skill.category,
+    description: skill.description,
+    path: join(HERMES_REPO, "skills", skill.category, skill.directoryName),
+    directoryName: skill.directoryName,
+  }));
+}
+
+function isInside(parent: string, child: string): boolean {
+  const rel = relative(parent, child);
+  return rel === "" || (Boolean(rel) && !rel.startsWith("..") && !isAbsolute(rel));
+}
+
+function isInsideReal(parent: string, child: string): boolean {
+  return isInside(realpathSync.native(parent), realpathSync.native(child));
+}
+
+function hasSymlinkInPath(root: string, target: string): boolean {
+  if (!existsSync(root)) return false;
+  let current = resolve(root);
+  try {
+    if (lstatSync(current).isSymbolicLink()) return true;
+  } catch {
+    return false;
+  }
+
+  const rel = relative(current, resolve(target));
+  if (!rel || rel.startsWith("..") || isAbsolute(rel)) return false;
+  for (const part of rel.split(/[\\/]/)) {
+    current = join(current, part);
+    if (!existsSync(current)) return false;
+    if (lstatSync(current).isSymbolicLink()) return true;
+  }
+  return false;
+}
+
+function safeExistingMutationPath(root: string, target: string): boolean {
+  return (
+    existsSync(root) &&
+    existsSync(target) &&
+    isInside(root, target) &&
+    isInsideReal(root, target) &&
+    !hasSymlinkInPath(root, target)
+  );
+}
+
+function safeDestinationParent(root: string, destination: string): boolean {
+  const parent = dirname(destination);
+  return (
+    existsSync(root) &&
+    existsSync(parent) &&
+    isInside(root, destination) &&
+    isInsideReal(root, parent) &&
+    !hasSymlinkInPath(root, parent)
+  );
+}
+
+function isSafeSegment(value: string | undefined): boolean {
+  return Boolean(value && !value.includes("/") && !value.includes("\\") && !value.includes("\0"));
+}
+
+function failure(
+  target: SkillMutationTarget,
+  code: SkillMutationErrorCode,
+  error: string,
+): SkillMutationItemResult {
+  return {
+    success: false,
+    action: target.action,
+    target,
+    name: target.name,
+    category: target.category,
+    code,
+    error,
+  };
+}
+
+function success(
+  target: SkillMutationTarget,
+  changed: boolean,
+  skill?: InstalledSkill,
+): SkillMutationItemResult {
+  return {
+    success: true,
+    action: target.action,
+    target,
+    name: skill?.name || target.name,
+    category: skill?.category || target.category,
+    changed,
+    skill,
+  };
+}
+
+function uniqueMatch(
+  target: SkillMutationTarget,
+  matches: IndexedSkill[],
+): IndexedSkill | SkillMutationItemResult | null {
+  const unique = [...new Map(matches.map((skill) => [skill.resolvedPath, skill])).values()];
+  if (unique.length === 0) return null;
+  if (unique.length === 1) return unique[0];
+  const labels = unique
+    .map((skill) => `${skill.category}/${skill.directoryName}`)
+    .sort()
+    .join(", ");
+  return failure(
+    target,
+    "ambiguous-skill",
+    `Skill target "${target.name}" is ambiguous. Matches: ${labels}.`,
+  );
+}
+
+function resolveIndexedTarget(
+  target: SkillMutationTarget,
+  index: SkillIndex,
+  skillsRoot: string,
+): IndexedSkill | SkillMutationItemResult | null {
+  if (target.path) {
+    if (target.path.includes("\0")) {
+      return failure(target, "invalid-target", "Skill path is invalid.");
+    }
+    const resolvedPath = resolve(target.path);
+    if (!isInside(skillsRoot, resolvedPath)) {
+      return failure(target, "invalid-target", "Skill path is outside the selected profile.");
+    }
+    const fromIndex = index.byPath.get(resolvedPath);
+    if (fromIndex) return fromIndex;
+    if (existsSync(join(resolvedPath, "SKILL.md"))) {
+      const rel = relative(skillsRoot, resolvedPath).split(/[\\/]/);
+      if (rel.length >= 2) {
+        const skill = readSkillAt(resolvedPath, rel[0], rel[1]);
+        if (skill) return { ...skill, resolvedPath };
+      }
+    }
+    return null;
+  }
+
+  const matches: IndexedSkill[] = [];
+  if (target.category && target.directoryName) {
+    matches.push(...(index.byCategoryDirectory.get(categoryKey(target.category, target.directoryName)) || []));
+  }
+  if (target.category && target.name) {
+    matches.push(...(index.byCategoryName.get(categoryKey(target.category, target.name)) || []));
+  }
+  if (matches.length > 0) return uniqueMatch(target, matches);
+  return uniqueMatch(target, index.byName.get(normalized(target.name)) || []);
+}
+
+function resolveBundledTarget(
+  target: SkillMutationTarget,
+  bundledIndex: SkillIndex,
+): IndexedSkill | SkillMutationItemResult | null {
+  const matches: IndexedSkill[] = [];
+  if (target.category && target.directoryName) {
+    matches.push(...(bundledIndex.byCategoryDirectory.get(categoryKey(target.category, target.directoryName)) || []));
+  }
+  if (target.category && target.name) {
+    matches.push(...(bundledIndex.byCategoryName.get(categoryKey(target.category, target.name)) || []));
+  }
+  if (matches.length > 0) return uniqueMatch(target, matches);
+  return uniqueMatch(target, bundledIndex.byName.get(normalized(target.name)) || []);
+}
+
+function commandFailureCode(error: string): SkillMutationErrorCode {
+  return /timed out/i.test(error) ? "timeout" : "command-failed";
+}
+
+function validateTarget(target: SkillMutationTarget): SkillMutationItemResult | null {
+  if (!target || (target.action !== "install" && target.action !== "uninstall")) {
+    return failure(
+      target || { action: "install", name: "" },
+      "invalid-target",
+      "Skill mutation target is invalid.",
+    );
+  }
+  if (!target.name?.trim()) {
+    return failure(target, "invalid-target", "Skill mutation target requires a name.");
+  }
+  if (target.category && !isSafeSegment(target.category)) {
+    return failure(target, "invalid-target", "Skill category is invalid.");
+  }
+  if (target.directoryName && !isSafeSegment(target.directoryName)) {
+    return failure(target, "invalid-target", "Skill directory name is invalid.");
+  }
+  return null;
+}
+
+function summarizeBatch(results: SkillMutationItemResult[]): SkillMutationBatchResult {
+  const updated = results.filter((result) => result.success && result.changed).length;
+  const failed = results.filter((result) => !result.success).length;
+  return { success: failed === 0, updated, failed, results };
+}
+
+export async function mutateLocalSkills(
+  targets: SkillMutationTarget[],
+  profile?: string,
+): Promise<SkillMutationBatchResult> {
+  const skillsRoot = resolve(profileHome(profile), "skills");
+  const bundledRoot = resolve(HERMES_REPO, "skills");
+  const results: SkillMutationItemResult[] = [];
+  let installedIndex = buildIndex(listInstalledSkills(profile));
+  const bundledIndex = buildIndex(bundledSkillsWithPaths());
+
+  for (const target of targets) {
+    const invalid = validateTarget(target);
+    if (invalid) {
+      results.push(invalid);
+      continue;
+    }
+
+    if (target.action === "install") {
+      const source = resolveBundledTarget(target, bundledIndex);
+      if (source && "success" in source) {
+        results.push(source);
+        continue;
+      }
+
+      if (source) {
+        if (!isInside(bundledRoot, source.resolvedPath) || !existsSync(join(source.resolvedPath, "SKILL.md"))) {
+          results.push(failure(target, "invalid-target", "Bundled skill source is invalid."));
+          continue;
+        }
+
+        mkdirSync(skillsRoot, { recursive: true });
+        const destination = resolve(skillsRoot, source.category, source.directoryName);
+        if (!isInside(skillsRoot, destination)) {
+          results.push(failure(target, "invalid-target", "Skill destination is invalid."));
+          continue;
+        }
+        mkdirSync(dirname(destination), { recursive: true });
+        if (!safeDestinationParent(skillsRoot, destination)) {
+          results.push(failure(target, "invalid-target", "Skill destination is not safe to write."));
+          continue;
+        }
+        if (existsSync(join(destination, "SKILL.md"))) {
+          const installed = readSkillAt(destination, source.category, source.directoryName) || source;
+          results.push(success(target, false, installed));
+          continue;
+        }
+        if (existsSync(destination)) {
+          results.push(
+            failure(
+              target,
+              "duplicate",
+              `Cannot install ${source.category}/${source.directoryName}: destination already exists but is not a skill.`,
+            ),
+          );
+          continue;
+        }
+
+        try {
+          cpSync(source.resolvedPath, destination, { recursive: true, errorOnExist: true, force: false });
+          const installed = readSkillAt(destination, source.category, source.directoryName) || {
+            name: source.name,
+            category: source.category,
+            description: source.description,
+            path: destination,
+            directoryName: source.directoryName,
+          };
+          results.push(success(target, true, installed));
+          installedIndex = buildIndex(listInstalledSkills(profile));
+        } catch (err) {
+          results.push(failure(target, "write-failed", (err as Error).message));
+        }
+        continue;
+      }
+
+      const cliResult = installSkill(target.name, profile);
+      if (cliResult.success) {
+        results.push(success(target, true));
+        installedIndex = buildIndex(listInstalledSkills(profile));
+      } else {
+        const error = cliResult.error || `Failed to install skill ${target.name}.`;
+        results.push(failure(target, commandFailureCode(error), error));
+      }
+      continue;
+    }
+
+    const match = resolveIndexedTarget(target, installedIndex, skillsRoot);
+    if (match && "success" in match) {
+      results.push(match);
+      continue;
+    }
+    if (!match) {
+      results.push(failure(target, "not-found", `Installed skill "${target.name}" was not found.`));
+      continue;
+    }
+
+    try {
+      if (
+        !safeExistingMutationPath(skillsRoot, match.resolvedPath) ||
+        !existsSync(join(match.resolvedPath, "SKILL.md"))
+      ) {
+        results.push(failure(target, "invalid-target", "Installed skill target is invalid."));
+        continue;
+      }
+      rmSync(match.resolvedPath, { recursive: true, force: false });
+      const categoryPath = dirname(match.resolvedPath);
+      try {
+        if (safeExistingMutationPath(skillsRoot, categoryPath) && readdirSync(categoryPath).length === 0) {
+          rmSync(categoryPath, { recursive: false, force: false });
+        }
+      } catch {
+        // Best-effort cleanup of empty category directory.
+      }
+      results.push(success(target, true, match));
+      installedIndex = buildIndex(listInstalledSkills(profile));
+    } catch (err) {
+      results.push(failure(target, "write-failed", (err as Error).message));
+    }
+  }
+
+  return summarizeBatch(results);
 }
 
 export function installSkill(

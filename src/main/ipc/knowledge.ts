@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import type { SkillMarkdownImportRequest } from "../../shared/skills";
+import type { SkillMarkdownImportRequest, SkillMutationTarget } from "../../shared/skills";
 import {
   addMemoryEntryForProfile,
   getSkillContentForConnection,
@@ -7,6 +7,7 @@ import {
   getToolsetsForProfile,
   importSkillMarkdownForProfile,
   installSkillForProfile,
+  mutateSkillsForProfile,
   listBundledSkillsForConnection,
   listInstalledSkillsForProfile,
   readMemoryForProfile,
@@ -89,6 +90,11 @@ export function registerKnowledgeIpc(): void {
     "uninstall-skill",
     (_event, name: string, profile?: string) =>
       uninstallSkillForProfile(name, profile),
+  );
+  ipcMain.handle(
+    "mutate-skills",
+    (_event, targets: SkillMutationTarget[], profile?: string) =>
+      mutateSkillsForProfile(targets, profile),
   );
   ipcMain.handle(
     "import-skill-markdown",

@@ -18,6 +18,7 @@ This document maps Mercury's current contract tests and deterministic contract c
 - System runtime revalidation: `tests/system-service.test.ts`
 - Trace-store persistence and skill-training derivation: `tests/trace-store.test.ts`
 - Manual Markdown skill import: `tests/skills-import.test.ts`
+- Skill batch mutation: `tests/skills-mutation.test.ts`
 - Session cache sync: `tests/session-cache-sync.test.ts`
 - Profile discovery: `tests/profiles.test.ts`
 - Profile-aware local sessions: `tests/sessions-profile-db.test.ts`
@@ -68,7 +69,7 @@ Current assertions:
 - Every preload invoke channel has a matching main handler.
 - Every main handler has a matching preload invoke.
 - Every `src/main/ipc/*.ts` module, except `index.ts` and `types.ts`, exports a `register*Ipc(...)` function and is wired by `src/main/ipc/index.ts`.
-- Specific newer channels remain present: `run-hermes-backup`, `run-hermes-import`, `read-logs`, `run-hermes-dump`, `list-mcp-servers`, `discover-memory-providers`, `import-skill-markdown`, and `record-local-chat-trace`.
+- Specific newer channels remain present: `run-hermes-backup`, `run-hermes-import`, `read-logs`, `run-hermes-dump`, `list-mcp-servers`, `discover-memory-providers`, `mutate-skills`, `import-skill-markdown`, and `record-local-chat-trace`.
 - Legacy channels such as `check-install`, `start-install`, `send-message`, `abort-chat`, `start-gateway`, `list-sessions`, `list-profiles`, `create-cron-job`, and `open-external` remain registered.
 
 Run this test when changing:
@@ -89,7 +90,7 @@ Current assertions:
 - Every preload method has a type declaration.
 - Every type declaration has a preload implementation.
 - Every split preload API fragment in `src/preload/api/*.ts` is imported and spread from `src/preload/api/index.ts`.
-- Newer APIs such as backup/import, log viewer, debug dump, MCP server list, memory provider discovery, Markdown skill import, and local chat trace recording exist in both implementation and types.
+- Newer APIs such as backup/import, log viewer, debug dump, MCP server list, memory provider discovery, `mutateSkills`, Markdown skill import, and local chat trace recording exist in both implementation and types.
 - Required legacy APIs remain present in implementation and types.
 - `ipcRenderer.invoke(...)` and `ipcRenderer.on(...)` channels use quoted kebab-case string channel names.
 
@@ -404,6 +405,7 @@ Current assertions:
 - Local toolset toggles are treated as next-message config writes and do not mark the profile runtime stale or query gateway status.
 - SSH toolset toggles follow the same next-message config-write policy and do not mark the profile runtime stale or query gateway status.
 - Profile memory mutations still mark the selected profile runtime stale.
+- Skill batch mutations mark the selected profile runtime stale once when at least one target changes, preserve partial failures, and fail closed in pure remote HTTP mode.
 
 Run this test when changing:
 
@@ -470,6 +472,7 @@ Protects profile discovery and active-profile marking.
 
 Current assertions:
 
+- Profile creation passes upstream Hermes `--no-skills`; clone/config-copy mode copies only default config/API key files and excludes skills.
 - Profile directories are listed even when they have neither `config.yaml` nor `.env`.
 - Profiles with only `.env` expose `hasEnv`.
 - Profiles with only `config.yaml` expose parsed provider/model metadata.
@@ -480,6 +483,7 @@ Current assertions:
 Run this test when changing:
 
 - `src/main/profiles.ts`
+- `src/main/services/sessions-service.ts` profile create/delete/use mode routing
 - `src/main/installer.ts` `HERMES_HOME` handling that affects profile paths
 - Profile list handlers in `src/main/ipc/config.ts`
 - Storage/profile docs that describe active-profile behavior
@@ -535,11 +539,13 @@ Run this test when changing:
 
 ### `tests/ssh-remote.test.ts`
 
-Protects SSH remote config-write validation before shelling out to the remote host.
+Protects SSH remote config-write validation and profile/skill command safety before shelling out to the remote host.
 
 Current assertions:
 
 - `sshSetConfigValue()` rejects quote, backslash, newline, and carriage-return values before issuing remote config writes.
+- SSH profile creation uses singular `hermes profile create`, passes `--no-skills`, and does not hide failures behind a `mkdir -p` fallback.
+- SSH skill mutations preserve profile-aware command routing and exact-target uninstall safety.
 
 Run this test when changing:
 

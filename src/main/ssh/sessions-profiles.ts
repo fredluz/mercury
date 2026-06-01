@@ -52,7 +52,11 @@ result.sort(key=lambda r: r["startedAt"] or 0, reverse=True)
 print(json.dumps(result[offset:offset + limit]))
 `;
   try {
-    const out = await sshPython(config, script, pythonJsonInput({ profile, limit, offset }));
+    const out = await sshPython(
+      config,
+      script,
+      pythonJsonInput({ profile, limit, offset }),
+    );
     return JSON.parse(out.trim() || "[]");
   } catch {
     return [];
@@ -99,7 +103,11 @@ for _profile_name, db in scopes():
 print("[]")
 `;
   try {
-    const out = await sshPython(config, script, pythonJsonInput({ profile, sessionId }));
+    const out = await sshPython(
+      config,
+      script,
+      pythonJsonInput({ profile, sessionId }),
+    );
     return JSON.parse(out.trim() || "[]");
   } catch {
     return [];
@@ -152,7 +160,11 @@ result.sort(key=lambda r: r["startedAt"] or 0, reverse=True)
 print(json.dumps(result[:limit]))
 `;
   try {
-    const out = await sshPython(config, script, pythonJsonInput({ profile, query, limit }));
+    const out = await sshPython(
+      config,
+      script,
+      pythonJsonInput({ profile, query, limit }),
+    );
     return JSON.parse(out.trim() || "[]");
   } catch {
     return [];
@@ -174,7 +186,9 @@ export interface SshProfileInfo {
   gatewayRunning: boolean;
 }
 
-export async function sshListProfiles(config: SshConfig): Promise<SshProfileInfo[]> {
+export async function sshListProfiles(
+  config: SshConfig,
+): Promise<SshProfileInfo[]> {
   const script = `
 import os, json
 hermes_home = os.path.expanduser("~/.hermes")
@@ -246,36 +260,124 @@ print(json.dumps(profiles))
     const out = await sshPython(config, script);
     return JSON.parse(out.trim() || "[]");
   } catch {
-    return [{ name: "default", path: "~/.hermes", isDefault: true, isActive: true, model: "", provider: "auto", hasEnv: false, hasSoul: false, skillCount: 0, gatewayRunning: false }];
+    return [
+      {
+        name: "default",
+        path: "~/.hermes",
+        isDefault: true,
+        isActive: true,
+        model: "",
+        provider: "auto",
+        hasEnv: false,
+        hasSoul: false,
+        skillCount: 0,
+        gatewayRunning: false,
+      },
+    ];
   }
 }
+
+export interface SshProfileMutationResult {
+  success: boolean;
+  error?: string;
+}
+
+const SSH_PROFILE_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 export async function sshCreateProfile(
   config: SshConfig,
   name: string,
-  clone: boolean,
-): Promise<boolean> {
+  copyDefaultConfig: boolean,
+): Promise<SshProfileMutationResult> {
+  if (!SSH_PROFILE_NAME_PATTERN.test(name)) {
+    return {
+      success: false,
+      error:
+        "Profile names must start with a lowercase letter or number and contain only lowercase letters, numbers, underscores, or hyphens.",
+    };
+  }
+
+  const script = `
+import json, os, shutil, subprocess, sys, traceback
+payload = json.load(sys.stdin)
+name = payload.get("name") or ""
+copy_default_config = bool(payload.get("copyDefaultConfig"))
+
+def finish(result):
+    print(json.dumps(result))
+    sys.exit(0)
+
+try:
+    proc = subprocess.run(
+        ["hermes", "profile", "create", name, "--no-skills"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=15,
+    )
+    if proc.returncode != 0:
+        finish({"success": False, "error": (proc.stderr or proc.stdout or "Profile creation failed").strip()})
+
+    if copy_default_config:
+        hermes_home = os.path.expanduser("~/.hermes")
+        profile_home = os.path.join(hermes_home, "profiles", name)
+        try:
+            for filename in ["config.yaml", ".env"]:
+                source = os.path.join(hermes_home, filename)
+                if os.path.exists(source):
+                    shutil.copy2(source, os.path.join(profile_home, filename))
+        except Exception as copy_error:
+            rollback = subprocess.run(
+                ["hermes", "profile", "delete", name, "--yes"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=15,
+            )
+            error = str(copy_error)
+            if rollback.returncode != 0:
+                rollback_error = (rollback.stderr or rollback.stdout or "rollback failed").strip()
+                error = f"{error} Rollback attempted but failed: {rollback_error}"
+            finish({"success": False, "error": error})
+
+    finish({"success": True})
+except subprocess.TimeoutExpired:
+    finish({"success": False, "error": "Profile creation timed out"})
+except Exception as exc:
+    finish({"success": False, "error": str(exc) or traceback.format_exc()})
+`;
+
   try {
-    const safe = name.replace(/[^a-zA-Z0-9_-]/g, "");
-    if (!safe) return false;
-    const quoted = shellQuote(safe);
-    if (clone) {
-      await sshExec(config, `hermes profiles create ${quoted} --clone-from default 2>&1 || mkdir -p ~/.hermes/profiles/${quoted}`);
-    } else {
-      await sshExec(config, `hermes profiles create ${quoted} 2>&1 || mkdir -p ~/.hermes/profiles/${quoted}`);
-    }
-    return true;
-  } catch {
-    return false;
+    const out = await sshPython(
+      config,
+      script,
+      pythonJsonInput({ name, copyDefaultConfig }),
+      30000,
+    );
+    return JSON.parse(
+      out.trim() ||
+        '{"success":false,"error":"Profile creation returned no result"}',
+    );
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Profile creation failed",
+    };
   }
 }
 
-export async function sshDeleteProfile(config: SshConfig, name: string): Promise<boolean> {
+export async function sshDeleteProfile(
+  config: SshConfig,
+  name: string,
+): Promise<boolean> {
   try {
     const safe = name.replace(/[^a-zA-Z0-9_-]/g, "");
     if (!safe || safe === "default") return false;
     const quoted = shellQuote(safe);
-    await sshExec(config, `hermes profiles delete ${quoted} --yes 2>&1 || rm -rf ~/.hermes/profiles/${quoted}`);
+    await sshExec(
+      config,
+      `hermes profiles delete ${quoted} --yes 2>&1 || rm -rf ~/.hermes/profiles/${quoted}`,
+    );
     return true;
   } catch {
     return false;

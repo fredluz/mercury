@@ -1,17 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { join } from "path";
-import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
+import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "fs";
 
 // `vi.hoisted` runs before module imports, so we can't reference imported
 // `join` / `tmpdir` here — use the bare Node modules via require, which is
 // the documented escape hatch for hoisted setup.
-const { TEST_HOME } = vi.hoisted(() => {
+const { TEST_HOME, execFileSyncMock } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const path = require("path");
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const os = require("os");
   return {
     TEST_HOME: path.join(os.tmpdir(), `hermes-profiles-test-${Date.now()}`),
+    execFileSyncMock: vi.fn(),
   };
 });
 
@@ -24,12 +25,25 @@ vi.mock("../src/main/installer", () => ({
   getEnhancedPath: () => process.env.PATH || "",
 }));
 
+vi.mock("child_process", () => ({
+  default: { execFileSync: execFileSyncMock },
+  execFileSync: execFileSyncMock,
+}));
+
 // Import AFTER the mock so PROFILES_DIR is resolved against TEST_HOME.
-import { listProfiles } from "../src/main/profiles";
+import { createProfile, listProfiles } from "../src/main/profiles";
 
 const PROFILES_DIR = join(TEST_HOME, "profiles");
 
 beforeEach(() => {
+  execFileSyncMock.mockReset();
+  execFileSyncMock.mockImplementation((_bin: string, args: string[]) => {
+    const createIndex = args.findIndex((arg) => arg === "create");
+    if (args[0] === "/dev/null" && args[1] === "profile" && createIndex === 2) {
+      mkdirSync(join(PROFILES_DIR, args[3]), { recursive: true });
+    }
+    return Buffer.from("");
+  });
   mkdirSync(TEST_HOME, { recursive: true });
   mkdirSync(PROFILES_DIR, { recursive: true });
 });
@@ -39,6 +53,51 @@ afterEach(() => {
   if (existsSync(TEST_HOME)) {
     rmSync(TEST_HOME, { recursive: true, force: true });
   }
+});
+
+describe("createProfile", () => {
+  it("always creates local profiles with upstream skills disabled", () => {
+    const result = createProfile("fresh", false);
+
+    expect(result).toEqual({ success: true });
+    expect(execFileSyncMock).toHaveBeenCalledWith(
+      "/usr/bin/python3",
+      ["/dev/null", "profile", "create", "fresh", "--no-skills"],
+      expect.objectContaining({ timeout: 15000 }),
+    );
+    expect(execFileSyncMock.mock.calls[0][1]).not.toContain("--clone");
+  });
+
+  it("copies only default config and API keys when requested", () => {
+    writeFileSync(
+      join(TEST_HOME, "config.yaml"),
+      "model:\n  default: gpt-4o\n",
+    );
+    writeFileSync(join(TEST_HOME, ".env"), "OPENAI_API_KEY=sk-test\n");
+    mkdirSync(join(TEST_HOME, "skills", "system", "demo"), { recursive: true });
+    writeFileSync(
+      join(TEST_HOME, "skills", "system", "demo", "SKILL.md"),
+      "demo",
+    );
+
+    const result = createProfile("copy", true);
+
+    expect(result).toEqual({ success: true });
+    expect(
+      readFileSync(join(PROFILES_DIR, "copy", "config.yaml"), "utf8"),
+    ).toContain("gpt-4o");
+    expect(readFileSync(join(PROFILES_DIR, "copy", ".env"), "utf8")).toContain(
+      "OPENAI_API_KEY",
+    );
+    expect(existsSync(join(PROFILES_DIR, "copy", "skills"))).toBe(false);
+  });
+
+  it("rejects unsafe profile names before invoking Hermes", () => {
+    const result = createProfile("Bad Name", false);
+
+    expect(result.success).toBe(false);
+    expect(execFileSyncMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("listProfiles", () => {

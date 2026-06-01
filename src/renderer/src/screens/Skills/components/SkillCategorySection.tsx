@@ -6,6 +6,7 @@ export interface InstalledSkill {
   category: string;
   description: string;
   path: string;
+  directoryName: string;
 }
 
 export type SkillListItem =
@@ -15,6 +16,7 @@ export type SkillListItem =
       category: string;
       description: string;
       path: string;
+      directoryName: string;
       enabled: true;
       installedSkill: InstalledSkill;
     }
@@ -24,6 +26,7 @@ export type SkillListItem =
       category: string;
       description: string;
       sourceLabel: string;
+      directoryName: string;
       enabled: boolean;
       installedSkill?: InstalledSkill;
     };
@@ -43,7 +46,7 @@ interface SkillCategorySectionProps {
   onDisableSkill: (skill: SkillListItem) => void;
   onEnableCategory: (category: string, skills: SkillListItem[]) => void;
   onDisableCategory: (category: string, skills: SkillListItem[]) => void;
-  skillKey: (skill: { category: string; name: string }) => string;
+  skillKey: (skill: SkillListItem) => string;
   t: (key: string, options?: Record<string, unknown>) => string;
 }
 

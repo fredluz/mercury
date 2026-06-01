@@ -76,6 +76,8 @@ function installHermesApiMock(): void {
         codexAuthPath: "",
       }),
       setActiveProfile: vi.fn().mockResolvedValue(true),
+      createProfile: vi.fn().mockResolvedValue({ success: true }),
+      setModelConfig: vi.fn().mockResolvedValue(true),
     };
 }
 
@@ -83,6 +85,34 @@ describe("Agents create model picker", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     installHermesApiMock();
+  });
+
+  it("creates agents with config-copy enabled by default", async () => {
+    render(
+      <Agents
+        activeProfile="work"
+        onSelectProfile={vi.fn()}
+        onProfileAction={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "agents.newAgent" }),
+    );
+    fireEvent.change(
+      await screen.findByPlaceholderText("agents.namePlaceholder"),
+      {
+        target: { value: "coder" },
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "agents.create" }));
+
+    await waitFor(() => {
+      expect(window.hermesAPI.createProfile).toHaveBeenCalledWith(
+        "coder",
+        true,
+      );
+    });
   });
 
   it("lists only providers connected in Mercury Providers settings", async () => {

@@ -28,6 +28,10 @@ const mocks = vi.hoisted(() => ({
   sshCreateProfile: vi.fn(),
   sshDeleteProfile: vi.fn(),
   sshListCachedSessions: vi.fn(),
+  listProfiles: vi.fn(),
+  createProfile: vi.fn(),
+  deleteProfile: vi.fn(),
+  setActiveProfile: vi.fn(),
 }));
 
 vi.mock("../src/main/config", () => ({
@@ -56,10 +60,10 @@ vi.mock("../src/main/session-cache", () => ({
 }));
 
 vi.mock("../src/main/profiles", () => ({
-  listProfiles: vi.fn(),
-  createProfile: vi.fn(),
-  deleteProfile: vi.fn(),
-  setActiveProfile: vi.fn(),
+  listProfiles: mocks.listProfiles,
+  createProfile: mocks.createProfile,
+  deleteProfile: mocks.deleteProfile,
+  setActiveProfile: mocks.setActiveProfile,
 }));
 
 vi.mock("../src/main/ssh-remote", () => ({
@@ -79,7 +83,12 @@ vi.mock("../src/main/services/hermes-sessions-api", () => ({
   updateHermesSessionTitle: mocks.updateHermesSessionTitle,
   deleteHermesSession: mocks.deleteHermesSession,
   forkHermesSession: mocks.forkHermesSession,
-  cachedSessionFromServerSession: (session: { id: string; title?: string | null; startedAt?: number; profile?: string }) => ({
+  cachedSessionFromServerSession: (session: {
+    id: string;
+    title?: string | null;
+    startedAt?: number;
+    profile?: string;
+  }) => ({
     id: session.id,
     title: session.title || "New Conversation",
     startedAt: session.startedAt || 1,
@@ -88,7 +97,12 @@ vi.mock("../src/main/services/hermes-sessions-api", () => ({
     model: "",
     profile: session.profile || "work",
   }),
-  summaryFromServerSession: (session: { id: string; title?: string | null; startedAt?: number; profile?: string }) => ({
+  summaryFromServerSession: (session: {
+    id: string;
+    title?: string | null;
+    startedAt?: number;
+    profile?: string;
+  }) => ({
     id: session.id,
     source: "api",
     startedAt: session.startedAt || 1,
@@ -102,9 +116,12 @@ vi.mock("../src/main/services/hermes-sessions-api", () => ({
 }));
 
 import {
+  createProfileForConnection,
+  deleteProfileForConnection,
   deleteServerSessionForProfile,
   getSessionMessagesForProfile,
   listServerSessionsForProfile,
+  setActiveProfileForConnection,
   updateServerSessionTitleForProfile,
 } from "../src/main/services/sessions-service";
 
@@ -144,6 +161,55 @@ describe("sessions-service source-of-truth policy", () => {
     tempDir = undefined;
   });
 
+  it("fails closed for pure remote profile creation, deletion, and activation", async () => {
+    mocks.connection = { mode: "remote" };
+    mocks.createProfile.mockReturnValue({ success: true });
+    mocks.deleteProfile.mockReturnValue({ success: true });
+
+    expect(createProfileForConnection("remote-agent", true)).toEqual({
+      success: false,
+      error: "Agent creation is only available in local and SSH modes.",
+    });
+    await expect(deleteProfileForConnection("remote-agent")).resolves.toEqual({
+      success: false,
+      error: "Agent deletion is only available in local and SSH modes.",
+    });
+    expect(setActiveProfileForConnection("remote-agent")).toBe(false);
+
+    expect(mocks.createProfile).not.toHaveBeenCalled();
+    expect(mocks.deleteProfile).not.toHaveBeenCalled();
+    expect(mocks.setActiveProfile).not.toHaveBeenCalled();
+  });
+
+  it("forwards structured SSH profile creation results", async () => {
+    const ssh = { host: "example.test" };
+    mocks.connection = { mode: "ssh", ssh };
+    mocks.sshCreateProfile.mockResolvedValue({ success: true });
+
+    await expect(
+      createProfileForConnection("ssh-agent", true),
+    ).resolves.toEqual({
+      success: true,
+    });
+
+    expect(mocks.sshCreateProfile).toHaveBeenCalledWith(ssh, "ssh-agent", true);
+    expect(mocks.createProfile).not.toHaveBeenCalled();
+  });
+
+  it("wraps SSH profile deletion as a structured result", async () => {
+    const ssh = { host: "example.test" };
+    mocks.connection = { mode: "ssh", ssh };
+    mocks.sshDeleteProfile.mockResolvedValue(true);
+
+    await expect(deleteProfileForConnection("ssh-agent")).resolves.toEqual({
+      success: true,
+      error: undefined,
+    });
+
+    expect(mocks.sshDeleteProfile).toHaveBeenCalledWith(ssh, "ssh-agent");
+    expect(mocks.deleteProfile).not.toHaveBeenCalled();
+  });
+
   it("falls back to local sessions only when runtime resolution fails and records a diagnostic", async () => {
     tempDir = mkdtempSync(join(tmpdir(), "mercury-sessions-service-"));
     const diagFile = join(tempDir, "sessions.ndjson");
@@ -153,7 +219,9 @@ describe("sessions-service source-of-truth policy", () => {
     mocks.resolveRuntime.mockRejectedValue(new Error("gateway unavailable"));
     mocks.listSessions.mockReturnValue(localRows);
 
-    await expect(listServerSessionsForProfile(10, 0, "work")).resolves.toBe(localRows);
+    await expect(listServerSessionsForProfile(10, 0, "work")).resolves.toBe(
+      localRows,
+    );
 
     expect(mocks.listHermesSessions).not.toHaveBeenCalled();
     expect(mocks.listSessions).toHaveBeenCalledWith(10, 0, "work");
@@ -175,7 +243,9 @@ describe("sessions-service source-of-truth policy", () => {
 
   it("does not fall back to local list results after a verified Gateway sessions API failure", async () => {
     mocks.resolveRuntime.mockResolvedValue(runtime());
-    mocks.listHermesSessions.mockRejectedValue(new Error("Gateway sessions failed"));
+    mocks.listHermesSessions.mockRejectedValue(
+      new Error("Gateway sessions failed"),
+    );
     mocks.listSessions.mockReturnValue([{ id: "local-session" }]);
 
     await expect(listServerSessionsForProfile(10, 0, "work")).rejects.toThrow(
@@ -188,7 +258,9 @@ describe("sessions-service source-of-truth policy", () => {
 
   it("keeps pure remote runtime resolution failures fail-closed instead of showing local sessions", async () => {
     mocks.connection = { mode: "remote" };
-    mocks.resolveRuntime.mockRejectedValue(new Error("remote profiles are unsupported"));
+    mocks.resolveRuntime.mockRejectedValue(
+      new Error("remote profiles are unsupported"),
+    );
     mocks.listSessions.mockReturnValue([{ id: "local-session" }]);
 
     await expect(listServerSessionsForProfile(10, 0, "work")).rejects.toThrow(
@@ -200,11 +272,15 @@ describe("sessions-service source-of-truth policy", () => {
   });
 
   it("falls back to local messages only when runtime resolution fails", async () => {
-    const localMessages = [{ id: 1, role: "user", content: "local", timestamp: 1 }];
+    const localMessages = [
+      { id: 1, role: "user", content: "local", timestamp: 1 },
+    ];
     mocks.resolveRuntime.mockRejectedValue(new Error("offline"));
     mocks.getSessionMessages.mockReturnValue(localMessages);
 
-    await expect(getSessionMessagesForProfile("s1", "work")).resolves.toBe(localMessages);
+    await expect(getSessionMessagesForProfile("s1", "work")).resolves.toBe(
+      localMessages,
+    );
 
     expect(mocks.readHermesSession).not.toHaveBeenCalled();
     expect(mocks.getSessionMessages).toHaveBeenCalledWith("s1", "work");
@@ -212,9 +288,18 @@ describe("sessions-service source-of-truth policy", () => {
 
   it("does not fall back to local messages after a verified Gateway messages API failure", async () => {
     mocks.resolveRuntime.mockResolvedValue(runtime());
-    mocks.readHermesSession.mockResolvedValue({ id: "s1", title: "Remote", startedAt: 2, profile: "work" });
-    mocks.getHermesSessionMessages.mockRejectedValue(new Error("messages endpoint failed"));
-    mocks.getSessionMessages.mockReturnValue([{ id: 1, role: "user", content: "local", timestamp: 1 }]);
+    mocks.readHermesSession.mockResolvedValue({
+      id: "s1",
+      title: "Remote",
+      startedAt: 2,
+      profile: "work",
+    });
+    mocks.getHermesSessionMessages.mockRejectedValue(
+      new Error("messages endpoint failed"),
+    );
+    mocks.getSessionMessages.mockReturnValue([
+      { id: 1, role: "user", content: "local", timestamp: 1 },
+    ]);
 
     await expect(getSessionMessagesForProfile("s1", "work")).rejects.toThrow(
       "messages endpoint failed",
@@ -225,10 +310,14 @@ describe("sessions-service source-of-truth policy", () => {
 
   it("does not update the local title after a verified Gateway title update failure", async () => {
     mocks.resolveRuntime.mockResolvedValue(runtime());
-    mocks.updateHermesSessionTitle.mockRejectedValue(new Error("title update failed"));
+    mocks.updateHermesSessionTitle.mockRejectedValue(
+      new Error("title update failed"),
+    );
     mocks.updateSessionTitle.mockReturnValue(true);
 
-    await expect(updateServerSessionTitleForProfile("s1", "Renamed", "work")).resolves.toBe(false);
+    await expect(
+      updateServerSessionTitleForProfile("s1", "Renamed", "work"),
+    ).resolves.toBe(false);
 
     expect(mocks.updateSessionTitle).not.toHaveBeenCalled();
     expect(mocks.projectCachedSession).not.toHaveBeenCalled();
@@ -238,20 +327,28 @@ describe("sessions-service source-of-truth policy", () => {
     mocks.resolveRuntime.mockRejectedValue(new Error("not verified yet"));
     mocks.updateSessionTitle.mockReturnValue(true);
 
-    await expect(updateServerSessionTitleForProfile("s1", "Renamed", "work")).resolves.toBe(true);
+    await expect(
+      updateServerSessionTitleForProfile("s1", "Renamed", "work"),
+    ).resolves.toBe(true);
 
-    expect(mocks.updateSessionTitle).toHaveBeenCalledWith("s1", "Renamed", "work");
+    expect(mocks.updateSessionTitle).toHaveBeenCalledWith(
+      "s1",
+      "Renamed",
+      "work",
+    );
     expect(mocks.updateHermesSessionTitle).not.toHaveBeenCalled();
   });
 
   it("does not mutate local titles for pure remote runtime resolution failures", async () => {
     mocks.connection = { mode: "remote" };
-    mocks.resolveRuntime.mockRejectedValue(new Error("remote profiles are unsupported"));
+    mocks.resolveRuntime.mockRejectedValue(
+      new Error("remote profiles are unsupported"),
+    );
     mocks.updateSessionTitle.mockReturnValue(true);
 
-    await expect(updateServerSessionTitleForProfile("s1", "Renamed", "work")).rejects.toThrow(
-      "remote profiles are unsupported",
-    );
+    await expect(
+      updateServerSessionTitleForProfile("s1", "Renamed", "work"),
+    ).rejects.toThrow("remote profiles are unsupported");
 
     expect(mocks.updateSessionTitle).not.toHaveBeenCalled();
     expect(mocks.updateHermesSessionTitle).not.toHaveBeenCalled();
@@ -262,7 +359,9 @@ describe("sessions-service source-of-truth policy", () => {
     mocks.deleteHermesSession.mockRejectedValue(new Error("delete failed"));
     mocks.removeCachedSession.mockReturnValue(true);
 
-    await expect(deleteServerSessionForProfile("s1", "work")).resolves.toBe(false);
+    await expect(deleteServerSessionForProfile("s1", "work")).resolves.toBe(
+      false,
+    );
 
     expect(mocks.removeCachedSession).not.toHaveBeenCalled();
   });
@@ -271,7 +370,9 @@ describe("sessions-service source-of-truth policy", () => {
     mocks.resolveRuntime.mockRejectedValue(new Error("not verified yet"));
     mocks.removeCachedSession.mockReturnValue(true);
 
-    await expect(deleteServerSessionForProfile("s1", "work")).resolves.toBe(true);
+    await expect(deleteServerSessionForProfile("s1", "work")).resolves.toBe(
+      true,
+    );
 
     expect(mocks.removeCachedSession).toHaveBeenCalledWith("s1", "work");
     expect(mocks.deleteHermesSession).not.toHaveBeenCalled();

@@ -13,13 +13,15 @@ import {
   listBundledSkills,
   getSkillContent,
   getSkillMetadata,
-  installSkill,
-  uninstallSkill,
+  mutateLocalSkills,
   importSkillMarkdown,
 } from "../skills";
 import type {
   SkillMarkdownImportRequest,
   SkillMetadata,
+  SkillMutationBatchResult,
+  SkillMutationItemResult,
+  SkillMutationTarget,
 } from "../../shared/skills";
 import { isGatewayRunning, markRuntimeStale } from "../hermes";
 import {
@@ -37,14 +39,86 @@ import {
   sshListBundledSkills,
   sshGetSkillContent,
   sshGetSkillMetadata,
-  sshInstallSkill,
-  sshUninstallSkill,
+  sshMutateSkills,
   sshImportSkillMarkdown,
   sshGatewayStatus,
 } from "../ssh-remote";
 
 function markProfileMutation(profile: string | undefined, area: string): void {
   markRuntimeStale(profile, `${area} changed for profile runtime.`);
+}
+
+const skillMutationQueues = new Map<string, Promise<SkillMutationBatchResult>>();
+
+function skillQueueKey(profile: string | undefined): string {
+  return profile?.trim() || "default";
+}
+
+async function enqueueSkillMutation(
+  profile: string | undefined,
+  task: () => Promise<SkillMutationBatchResult>,
+): Promise<SkillMutationBatchResult> {
+  const key = skillQueueKey(profile);
+  const previous = skillMutationQueues.get(key) ?? Promise.resolve({
+    success: true,
+    updated: 0,
+    failed: 0,
+    results: [],
+  });
+  const current = previous.catch(() => ({
+    success: false,
+    updated: 0,
+    failed: 0,
+    results: [],
+  })).then(task);
+  skillMutationQueues.set(key, current);
+  try {
+    return await current;
+  } finally {
+    if (skillMutationQueues.get(key) === current) {
+      skillMutationQueues.delete(key);
+    }
+  }
+}
+
+function isSkillMutationTargetLike(target: unknown): target is SkillMutationTarget {
+  return (
+    Boolean(target) &&
+    typeof target === "object" &&
+    ((target as SkillMutationTarget).action === "install" ||
+      (target as SkillMutationTarget).action === "uninstall") &&
+    typeof (target as SkillMutationTarget).name === "string" &&
+    (target as SkillMutationTarget).name.trim().length > 0
+  );
+}
+
+function remoteSkillMutationFailure(target: unknown): SkillMutationItemResult {
+  if (!isSkillMutationTargetLike(target)) {
+    const fallback = { action: "install" as const, name: "" };
+    return {
+      success: false,
+      action: fallback.action,
+      target: fallback,
+      name: fallback.name,
+      code: "invalid-target",
+      error: "Skill mutation target is invalid.",
+    };
+  }
+  return {
+    success: false,
+    action: target.action,
+    target,
+    name: target.name,
+    category: target.category,
+    code: "unsupported-remote-mode",
+    error:
+      "Skill mutations are only available in local and SSH modes because they write to the selected profile's filesystem.",
+  };
+}
+
+function remoteSkillMutationBatch(targets: SkillMutationTarget[]): SkillMutationBatchResult {
+  const results = targets.map(remoteSkillMutationFailure);
+  return { success: results.length === 0, updated: 0, failed: results.length, results };
 }
 
 export function readMemoryForProfile(profile?: string) {
@@ -192,27 +266,51 @@ export function getSkillMetadataForConnection(
   return getSkillMetadata(skillPath);
 }
 
+export async function mutateSkillsForProfile(
+  targets: SkillMutationTarget[],
+  profile?: string,
+): Promise<SkillMutationBatchResult> {
+  const safeTargets = Array.isArray(targets) ? targets : [];
+  if (safeTargets.length === 0) {
+    return { success: true, updated: 0, failed: 0, results: [] };
+  }
+
+  const conn = getConnectionConfig();
+  if (conn.mode === "remote") {
+    return remoteSkillMutationBatch(safeTargets);
+  }
+
+  return enqueueSkillMutation(profile, async () => {
+    const result =
+      conn.mode === "ssh" && conn.ssh
+        ? await sshMutateSkills(conn.ssh, safeTargets, profile)
+        : await mutateLocalSkills(safeTargets, profile);
+    if (result.results.some((item) => item.success && item.changed)) {
+      markProfileMutation(profile, "Skills");
+    }
+    return result;
+  });
+}
+
 export async function installSkillForProfile(
   identifier: string,
   profile?: string,
 ) {
-  const conn = getConnectionConfig();
-  const result =
-    conn.mode === "ssh" && conn.ssh
-      ? await sshInstallSkill(conn.ssh, identifier, profile)
-      : installSkill(identifier, profile);
-  if (result.success) markProfileMutation(profile, "Skills");
-  return result;
+  const result = await mutateSkillsForProfile(
+    [{ action: "install", name: identifier }],
+    profile,
+  );
+  const item = result.results[0];
+  return item?.success ? { success: true } : { success: false, error: item?.error || "Failed to install skill." };
 }
 
 export async function uninstallSkillForProfile(name: string, profile?: string) {
-  const conn = getConnectionConfig();
-  const result =
-    conn.mode === "ssh" && conn.ssh
-      ? await sshUninstallSkill(conn.ssh, name, profile)
-      : uninstallSkill(name, profile);
-  if (result.success) markProfileMutation(profile, "Skills");
-  return result;
+  const result = await mutateSkillsForProfile(
+    [{ action: "uninstall", name }],
+    profile,
+  );
+  const item = result.results[0];
+  return item?.success ? { success: true } : { success: false, error: item?.error || "Failed to uninstall skill." };
 }
 
 export async function importSkillMarkdownForProfile(

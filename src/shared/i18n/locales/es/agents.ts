@@ -5,7 +5,7 @@ export default {
   newAgent: "Nuevo agente",
   namePlaceholder: "Nombre del agente (p. ej. coder)",
   cloneConfig:
-    "Clonar la configuración y las API keys del agente predeterminado",
+    "Copiar configuración y API keys predeterminadas; empezar sin habilidades",
   createFailed: "No se pudo crear el agente",
   creating: "Creando...",
   create: "Crear",

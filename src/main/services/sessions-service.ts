@@ -110,7 +110,8 @@ function attachCachedProfiles<
   );
   const idOnlyProfiles = new Map<string, string | undefined>();
   for (const session of cachedSessions) {
-    if (!idOnlyProfiles.has(session.id)) idOnlyProfiles.set(session.id, session.profile);
+    if (!idOnlyProfiles.has(session.id))
+      idOnlyProfiles.set(session.id, session.profile);
   }
   return results.map((result) => ({
     ...result,
@@ -155,7 +156,11 @@ async function withSessionsDiag<T>(
   }
 }
 
-export function listSessionsForProfile(limit?: number, offset?: number, profile?: string) {
+export function listSessionsForProfile(
+  limit?: number,
+  offset?: number,
+  profile?: string,
+) {
   const conn = getConnectionConfig();
   if (conn.mode === "ssh" && conn.ssh)
     return sshListSessions(conn.ssh, limit, offset, profile);
@@ -222,27 +227,28 @@ export async function getSessionMessagesForProfile(
 ) {
   const conn = getConnectionConfig();
   const mode = conn.mode;
-  const meta = { mode, sessionId, profile, hasProfile: Boolean(profile?.trim()) };
-  return withSessionsDiag(
-    "get-session-messages",
-    meta,
-    async () => {
-      let runtime: ProfileRuntimeHandle;
-      try {
-        runtime = await resolveSessionsRuntime(profile);
-      } catch (error) {
-        if (!shouldUseLegacySessionsFallback(conn)) throw error;
-        recordRuntimeResolutionFallback("get-session-messages", meta, error);
-        if (conn.mode === "ssh" && conn.ssh)
-          return sshGetSessionMessages(conn.ssh, sessionId, profile);
-        return getSessionMessages(sessionId, profile);
-      }
+  const meta = {
+    mode,
+    sessionId,
+    profile,
+    hasProfile: Boolean(profile?.trim()),
+  };
+  return withSessionsDiag("get-session-messages", meta, async () => {
+    let runtime: ProfileRuntimeHandle;
+    try {
+      runtime = await resolveSessionsRuntime(profile);
+    } catch (error) {
+      if (!shouldUseLegacySessionsFallback(conn)) throw error;
+      recordRuntimeResolutionFallback("get-session-messages", meta, error);
+      if (conn.mode === "ssh" && conn.ssh)
+        return sshGetSessionMessages(conn.ssh, sessionId, profile);
+      return getSessionMessages(sessionId, profile);
+    }
 
-      const session = await readHermesSession(runtime, sessionId);
-      projectCachedSession(cachedSessionFromServerSession(session));
-      return await getHermesSessionMessages(runtime, sessionId);
-    },
-  );
+    const session = await readHermesSession(runtime, sessionId);
+    projectCachedSession(cachedSessionFromServerSession(session));
+    return await getHermesSessionMessages(runtime, sessionId);
+  });
 }
 
 export function listProfilesForConnection() {
@@ -251,20 +257,55 @@ export function listProfilesForConnection() {
   return listProfiles();
 }
 
-export function createProfileForConnection(name: string, clone: boolean) {
+export function createProfileForConnection(
+  name: string,
+  copyDefaultConfig: boolean,
+) {
   const conn = getConnectionConfig();
-  if (conn.mode === "ssh" && conn.ssh) return sshCreateProfile(conn.ssh, name, clone);
-  return createProfile(name, clone);
+  if (conn.mode === "ssh") {
+    if (conn.ssh) return sshCreateProfile(conn.ssh, name, copyDefaultConfig);
+    return {
+      success: false,
+      error: "SSH agent creation requires SSH configuration.",
+    };
+  }
+  if (conn.mode === "remote") {
+    return {
+      success: false,
+      error: "Agent creation is only available in local and SSH modes.",
+    };
+  }
+  return createProfile(name, copyDefaultConfig);
 }
 
-export function deleteProfileForConnection(name: string) {
+export async function deleteProfileForConnection(name: string) {
   const conn = getConnectionConfig();
-  if (conn.mode === "ssh" && conn.ssh) return sshDeleteProfile(conn.ssh, name);
+  if (conn.mode === "ssh") {
+    if (!conn.ssh) {
+      return {
+        success: false,
+        error: "SSH agent deletion requires SSH configuration.",
+      };
+    }
+    const success = await sshDeleteProfile(conn.ssh, name);
+    return {
+      success,
+      error: success ? undefined : "Failed to delete SSH agent.",
+    };
+  }
+  if (conn.mode === "remote") {
+    return {
+      success: false,
+      error: "Agent deletion is only available in local and SSH modes.",
+    };
+  }
   return deleteProfile(name);
 }
 
 export function setActiveProfileForConnection(name: string): boolean {
-  if (getConnectionConfig().mode !== "ssh") setActiveProfile(name);
+  const conn = getConnectionConfig();
+  if (conn.mode === "remote") return false;
+  if (conn.mode !== "ssh") setActiveProfile(name);
   return true;
 }
 
@@ -366,7 +407,11 @@ export async function updateServerSessionTitleForProfile(
       }
 
       try {
-        const session = await updateHermesSessionTitle(runtime, sessionId, title);
+        const session = await updateHermesSessionTitle(
+          runtime,
+          sessionId,
+          title,
+        );
         projectCachedSession(cachedSessionFromServerSession(session));
         return true;
       } catch {

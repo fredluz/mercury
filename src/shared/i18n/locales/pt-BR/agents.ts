@@ -4,7 +4,8 @@ export default {
     "Cada agente é um espaço de trabalho isolado do Hermes com sua própria configuração, memória e habilidades",
   newAgent: "Novo Agente",
   namePlaceholder: "Nome do agente (ex: coder)",
-  cloneConfig: "Clonar configuração e chaves de API do padrão",
+  cloneConfig:
+    "Copiar configuração e chaves de API padrão; iniciar sem habilidades",
   createFailed: "Falha ao criar o agente",
   creating: "Criando...",
   create: "Criar",

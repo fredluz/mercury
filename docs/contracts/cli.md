@@ -492,15 +492,16 @@ mercury profiles use <name>
 Output:
 
 - `profiles list`: `{ profiles: [...] }` where each entry includes profile metadata from the service.
-- `profiles create`: `{ success: true, name, clone }` after service success.
+- `profiles create`: `{ success: true, name, clone }` after service success. `clone` is compatibility naming for copying default config/API key files only; new profiles start with skills off.
 - `profiles delete`: `{ success: true, name }`; `--yes` is required.
 - `profiles use`: `{ success: true, name }` after setting the active local profile.
 
 Mode notes:
 
-- Local mode uses local profile directories and `active_profile` storage.
-- SSH mode routes list/create/delete through remote SSH helpers when configured.
-- `profiles use` only writes active profile locally when not in SSH mode, but returns success in SSH mode for UI/CLI parity with the current service contract.
+- Local mode uses local profile directories and `active_profile` storage. Creation passes upstream Hermes `--no-skills`, then optionally copies default config/API key files without copying skills.
+- SSH mode routes list/create/delete through remote SSH helpers when configured and uses the same no-skills creation semantics.
+- Pure remote HTTP mode fails closed for create/delete/use mutations because Mercury cannot safely mutate remote profile files through the local filesystem path.
+- `profiles use` writes active profile in local mode, returns success in SSH mode for UI/CLI parity with the current service contract, and fails closed in pure remote HTTP mode.
 
 Examples:
 
@@ -680,14 +681,15 @@ Output:
 - `skills bundled`: bundled/catalog skills for the current connection.
 - `skills content`: raw skill markdown/content string.
 - `skills metadata`: `SkillMetadata` with scripts/references and availability flags.
-- `skills install` / `skills uninstall`: service result with success/error fields.
+- `skills install` / `skills uninstall`: legacy single-target service result with success/error fields; internally these route through the batch mutation service.
 - `skills import`: `SkillMarkdownImportResult`; successful local/SSH imports may include `warning: "gateway-restart-required"` inside the data result when a gateway is running.
 
 Mode notes:
 
 - Local and SSH modes support installed/bundled/content/metadata/install/uninstall/import through the shared service.
+- Batch skill mutations preserve per-target failure details and mark the selected profile runtime stale once when at least one target changes installed skills.
 - Pure remote `skills metadata` returns unavailable metadata with `unavailableReason` because remote HTTP cannot inspect arbitrary skill files.
-- Pure remote Markdown import returns a failed service result because import writes to the selected profile filesystem; the CLI converts unsuccessful service results into validation failures.
+- Pure remote skill install/uninstall and Markdown import return failed service results because they write to the selected profile filesystem; the CLI converts unsuccessful service results into validation failures.
 
 Examples:
 

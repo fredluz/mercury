@@ -12,7 +12,12 @@ import {
   type SkillAgentUsage,
 } from "./components/SkillDetailPanel";
 import { useI18n } from "../../components/useI18n";
-import type { SkillMarkdownImportRequest } from "../../../../shared/skills";
+import type {
+  SkillMarkdownImportRequest,
+  SkillMutationBatchResult,
+  SkillMutationItemResult,
+  SkillMutationTarget,
+} from "../../../../shared/skills";
 
 interface BundledSkill {
   name: string;
@@ -20,6 +25,7 @@ interface BundledSkill {
   category: string;
   source: string;
   installed: boolean;
+  directoryName: string;
 }
 
 interface ProfileInfo {
@@ -44,8 +50,34 @@ function normalizePart(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function skillKey(skill: { category: string; name: string }): string {
-  return `${normalizePart(skill.category)}\u0000${normalizePart(skill.name)}`;
+type SkillIdentity = { category?: string; name: string; directoryName?: string };
+type SkillActionIdentity = SkillIdentity & {
+  source?: string;
+  path?: string;
+  installedSkill?: InstalledSkill;
+};
+
+function skillDirectoryPart(skill: SkillIdentity): string {
+  return normalizePart(skill.directoryName || skill.name);
+}
+
+function skillIdentityKey(skill: SkillIdentity): string {
+  return `${normalizePart(skill.category || "")}\u0000${skillDirectoryPart(skill)}`;
+}
+
+function skillActionKey(skill: SkillActionIdentity): string {
+  const source = skill.source || "installed";
+  const path = skill.installedSkill?.path || skill.path || "";
+  return [source, normalizePart(skill.category || ""), skillDirectoryPart(skill), path].join("\u0000");
+}
+
+function skillTargetLabel(target: SkillMutationTarget): string {
+  const qualifier = [target.category, target.directoryName].filter(Boolean).join("/");
+  return qualifier ? `${target.name} (${qualifier})` : target.name;
+}
+
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback;
 }
 
 function groupSkills(skills: SkillListItem[]): GroupedSkills {
@@ -69,6 +101,50 @@ function groupSkills(skills: SkillListItem[]): GroupedSkills {
 
 function selectedProfileName(profile?: string): string {
   return profile || "default";
+}
+
+function mutationFailureDetails(result: SkillMutationBatchResult): string {
+  return result.results
+    .filter((item): item is Extract<SkillMutationItemResult, { success: false }> => !item.success)
+    .map((item) => `${skillTargetLabel(item.target)}: ${item.error}`)
+    .join("; ");
+}
+
+function installTargetForSkill(skill: SkillListItem): SkillMutationTarget {
+  return {
+    action: "install",
+    name: skill.name,
+    category: skill.category,
+    directoryName: skill.directoryName,
+  };
+}
+
+function installedTargetFromSkill(skill: SkillListItem | InstalledSkill): InstalledSkill | undefined {
+  return "source" in skill ? skill.installedSkill : skill;
+}
+
+function uninstallTargetForSkill(skill: SkillListItem | InstalledSkill): SkillMutationTarget | null {
+  const installedSkill = installedTargetFromSkill(skill);
+  if (!installedSkill) return null;
+  return {
+    action: "uninstall",
+    name: installedSkill.name,
+    category: installedSkill.category,
+    directoryName: installedSkill.directoryName,
+    path: installedSkill.path,
+  };
+}
+
+function mutationResultDisablesSkill(
+  result: SkillMutationBatchResult,
+  skill: InstalledSkill,
+): boolean {
+  return result.results.some((item) => {
+    if (!item.success || item.action !== "uninstall") return false;
+    const target = item.target;
+    if (target.path && target.path === skill.path) return true;
+    return skillIdentityKey(target) === skillIdentityKey(skill);
+  });
 }
 
 function Skills({ profile }: SkillsProps): React.JSX.Element {
@@ -124,7 +200,7 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
 
   const installedByKey = useMemo(() => {
     const map = new Map<string, InstalledSkill>();
-    for (const skill of installedSkills) map.set(skillKey(skill), skill);
+    for (const skill of installedSkills) map.set(skillIdentityKey(skill), skill);
     return map;
   }, [installedSkills]);
 
@@ -142,7 +218,7 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
     const results = await Promise.allSettled(
       profiles.map(async (agent) => {
         const skills = await window.hermesAPI.listInstalledSkills(agent.name);
-        return skills.some((candidate) => skillKey(candidate) === skillKey(skill))
+        return skills.some((candidate) => skillIdentityKey(candidate) === skillIdentityKey(skill))
           ? { name: agent.name, isSelected: agent.name === selected || (agent.isDefault && selected === "default") }
           : null;
       }),
@@ -191,7 +267,7 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
     if (detailRequestRef.current !== requestId) return;
 
     setSelectedDetail((current) => {
-      if (!current || skillKey(current.skill) !== skillKey(installedSkill)) return current;
+      if (!current || skillActionKey(current.skill) !== skillActionKey(installedSkill)) return current;
       const next: SelectedSkillDetail = {
         ...current,
         markdownLoading: false,
@@ -229,41 +305,53 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
   }
 
   async function handleInstallSkill(skill: SkillListItem): Promise<void> {
-    const key = skillKey(skill);
+    const key = skillActionKey(skill);
     setActionInProgress(key);
     setError("");
     setNotice("");
     try {
-      const result = await window.hermesAPI.installSkill(skill.name, profile);
-      if (result.success) {
+      const result = await window.hermesAPI.mutateSkills([installTargetForSkill(skill)], profile);
+      const item = result.results[0];
+      if (item?.success) {
         await loadInstalled();
         setNotice(t("skills.skillEnabled", { name: skill.name }));
       } else {
-        setError(result.error || t("skills.installFailed"));
+        setError(item?.error || mutationFailureDetails(result) || t("skills.installFailed"));
       }
+    } catch (err) {
+      setError(errorMessage(err, t("skills.operationFailed")));
     } finally {
       setActionInProgress(null);
     }
   }
 
   async function handleDisableSkill(skill: SkillListItem | InstalledSkill): Promise<void> {
-    const installedSkill = "installedSkill" in skill ? skill.installedSkill : skill;
+    const installedSkill = installedTargetFromSkill(skill);
+    const target = uninstallTargetForSkill(skill);
     const targetName = installedSkill?.name || skill.name;
-    const key = skillKey(skill);
+    const key = skillActionKey(skill);
     setActionInProgress(key);
     setError("");
     setNotice("");
+    if (!target) {
+      setError(t("skills.uninstallFailed"));
+      setActionInProgress(null);
+      return;
+    }
     try {
-      const result = await window.hermesAPI.uninstallSkill(targetName, profile);
-      if (result.success) {
-        if (selectedDetail && skillKey(selectedDetail.skill) === key) {
+      const result = await window.hermesAPI.mutateSkills([target], profile);
+      const item = result.results[0];
+      if (item?.success) {
+        if (selectedDetail && mutationResultDisablesSkill(result, selectedDetail.skill)) {
           setSelectedDetail(null);
         }
         await loadInstalled();
         setNotice(t("skills.skillDisabled", { name: targetName }));
       } else {
-        setError(result.error || t("skills.uninstallFailed"));
+        setError(item?.error || mutationFailureDetails(result) || t("skills.uninstallFailed"));
       }
+    } catch (err) {
+      setError(errorMessage(err, t("skills.operationFailed")));
     } finally {
       setActionInProgress(null);
     }
@@ -274,42 +362,43 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
     skills: SkillListItem[],
     action: "enable" | "disable",
   ): Promise<void> {
-    const targets = skills.filter((skill) => (action === "enable" ? !skill.enabled : skill.enabled));
+    const skillsToMutate = skills.filter((skill) => (action === "enable" ? !skill.enabled : skill.enabled));
+    const targets = skillsToMutate
+      .map((skill) => (action === "enable" ? installTargetForSkill(skill) : uninstallTargetForSkill(skill)))
+      .filter((target): target is SkillMutationTarget => target !== null);
     if (targets.length === 0) return;
 
     setBulkActionInProgress(`${category}:${action}`);
     setError("");
     setNotice("");
-    let updated = 0;
-    const failures: string[] = [];
 
-    for (const target of targets) {
-      try {
-        const result = action === "enable"
-          ? await window.hermesAPI.installSkill(target.name, profile)
-          : await window.hermesAPI.uninstallSkill(target.installedSkill?.name || target.name, profile);
-        if (result.success) {
-          updated += 1;
-        } else {
-          failures.push(target.name);
-        }
-      } catch {
-        failures.push(target.name);
-      }
-    }
-
-    setBulkActionInProgress(null);
     try {
-      await loadInstalled();
-    } catch (err) {
-      setError((err as Error).message || t("skills.loadFailed"));
-    }
+      const result = await window.hermesAPI.mutateSkills(targets, profile);
+      let loadError = "";
+      try {
+        await loadInstalled();
+      } catch (err) {
+        loadError = errorMessage(err, t("skills.loadFailed"));
+      }
 
-    if (updated > 0) {
-      setNotice(t("skills.bulkActionSucceeded", { count: updated }));
-    }
-    if (failures.length > 0) {
-      setError(t("skills.bulkActionFailed", { names: failures.join(", ") }));
+      if (action === "disable" && selectedDetail && mutationResultDisablesSkill(result, selectedDetail.skill)) {
+        setSelectedDetail(null);
+      }
+      if (result.updated > 0) {
+        setNotice(t("skills.bulkActionSucceeded", { count: result.updated }));
+      }
+      const failureDetails = mutationFailureDetails(result);
+      if (failureDetails || loadError) {
+        const messages = [
+          failureDetails ? t("skills.bulkActionFailedDetailed", { details: failureDetails }) : "",
+          loadError,
+        ].filter(Boolean);
+        setError(messages.join(" "));
+      }
+    } catch (err) {
+      setError(errorMessage(err, t("skills.operationFailed")));
+    } finally {
+      setBulkActionInProgress(null);
     }
   }
 
@@ -363,6 +452,7 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
         category: skill.category,
         description: skill.description,
         path: skill.path,
+        directoryName: skill.directoryName,
         enabled: true,
         installedSkill: skill,
       })),
@@ -372,7 +462,7 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
   const bundledItems: SkillListItem[] = useMemo(
     () =>
       bundledSkills.map((skill) => {
-        const exactInstalled = installedByKey.get(skillKey(skill));
+        const exactInstalled = installedByKey.get(skillIdentityKey(skill));
         const fallbackInstalled = exactInstalled ?? installedSkills.find(
           (installed) =>
             !installed.category && normalizePart(installed.name) === normalizePart(skill.name),
@@ -383,6 +473,7 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
           category: skill.category,
           description: skill.description,
           sourceLabel: skill.source,
+          directoryName: skill.directoryName,
           enabled: Boolean(fallbackInstalled),
           installedSkill: fallbackInstalled,
         };
@@ -414,7 +505,7 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
   });
 
   const visibleGroups = groupSkills(tab === "installed" ? filteredInstalled : filteredBundled);
-  const selectedKey = selectedDetail ? skillKey(selectedDetail.skill) : null;
+  const selectedKey = selectedDetail ? skillActionKey(selectedDetail.skill) : null;
   const categories = Array.from(new Set(bundledSkills.map((s) => s.category))).sort();
 
   function toggleCategory(category: string): void {
@@ -505,7 +596,7 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
           actionInProgress={actionInProgress}
           onBack={() => setSelectedDetail(null)}
           onDisable={handleDisableSkill}
-          skillKey={skillKey}
+          skillKey={skillActionKey}
           t={t}
         />
       ) : (
@@ -606,7 +697,7 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
                   onDisableSkill={handleDisableSkill}
                   onEnableCategory={(category, skills) => handleCategoryAction(category, skills, "enable")}
                   onDisableCategory={(category, skills) => handleCategoryAction(category, skills, "disable")}
-                  skillKey={skillKey}
+                  skillKey={skillActionKey}
                   t={t}
                 />
               ))}
