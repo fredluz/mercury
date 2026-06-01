@@ -5,6 +5,7 @@ import { navigationApi } from "./navigation";
 import { knowledgeApi } from "./knowledge";
 import { modelsApi } from "./models";
 import { appApi } from "./app";
+import { agentsApi } from "./agents";
 
 export const hermesAPI = {
   ...installApi,
@@ -14,4 +15,5 @@ export const hermesAPI = {
   ...knowledgeApi,
   ...modelsApi,
   ...appApi,
+  ...agentsApi,
 };

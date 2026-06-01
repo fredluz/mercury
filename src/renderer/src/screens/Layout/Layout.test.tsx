@@ -178,6 +178,12 @@ const layoutProfiles = [
     hasSoul: true,
     skillCount: 1,
     gatewayRunning: false,
+    displayName: "Mercury",
+    kind: "builtin" as const,
+    immutable: true,
+    deletable: false,
+    selectedPackIds: [],
+    docsPointers: [],
   },
   {
     name: "work",
@@ -190,6 +196,13 @@ const layoutProfiles = [
     hasSoul: true,
     skillCount: 2,
     gatewayRunning: false,
+    displayName: "work",
+    kind: "custom" as const,
+    immutable: false,
+    deletable: true,
+    description: "Work agent",
+    selectedPackIds: [],
+    docsPointers: [],
   },
 ];
 

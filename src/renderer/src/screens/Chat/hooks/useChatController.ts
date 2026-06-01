@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
+import type { AgentChatOptions } from "../../../../../shared/agents";
 import { calculateContextUsage } from "../../../../../shared/chat-metadata";
 import {
   detectCodexAuthRecovery,
@@ -35,6 +36,7 @@ interface UseChatControllerArgs {
   sessionTitle?: string | null;
   conversationVersion: number;
   profile?: string;
+  chatOptions?: AgentChatOptions;
   onSessionStarted?: () => void;
   onSessionResolved?: (sessionId: string) => void;
   onSessionTitleChange?: (title: string) => void;
@@ -49,6 +51,7 @@ export function useChatController({
   sessionTitle,
   conversationVersion,
   profile,
+  chatOptions,
   onSessionStarted,
   onSessionResolved,
   onSessionTitleChange,
@@ -275,6 +278,7 @@ export function useChatController({
       messages,
       setMessages,
       profile,
+      chatOptions,
       beginChatRun: runState.beginChatRun,
       finalizeChatRun: runState.finalizeChatRun,
       beginActivityGroup: activity.beginActivityGroup,
@@ -292,6 +296,7 @@ export function useChatController({
   }, [
     activity.beginActivityGroup,
     appendFallbackSendError,
+    chatOptions,
     getResumeSessionId,
     input,
     messages,
@@ -320,6 +325,7 @@ export function useChatController({
       messages,
       setMessages,
       profile,
+      chatOptions,
       beginChatRun: runState.beginChatRun,
       finalizeChatRun: runState.finalizeChatRun,
       beginActivityGroup: activity.beginActivityGroup,
@@ -334,6 +340,7 @@ export function useChatController({
   }, [
     activity.beginActivityGroup,
     appendFallbackSendError,
+    chatOptions,
     getResumeSessionId,
     input,
     messages,
@@ -396,6 +403,7 @@ export function useChatController({
       messages,
       setMessages,
       profile,
+      chatOptions,
       beginChatRun: runState.beginChatRun,
       finalizeChatRun: runState.finalizeChatRun,
       beginActivityGroup: activity.beginActivityGroup,
@@ -405,6 +413,7 @@ export function useChatController({
   }, [
     activity.beginActivityGroup,
     appendFallbackSendError,
+    chatOptions,
     getResumeSessionId,
     messages,
     perf.reset,
@@ -423,6 +432,7 @@ export function useChatController({
       messages,
       setMessages,
       profile,
+      chatOptions,
       beginChatRun: runState.beginChatRun,
       finalizeChatRun: runState.finalizeChatRun,
       beginActivityGroup: activity.beginActivityGroup,
@@ -432,6 +442,7 @@ export function useChatController({
   }, [
     activity.beginActivityGroup,
     appendFallbackSendError,
+    chatOptions,
     getResumeSessionId,
     messages,
     perf.reset,

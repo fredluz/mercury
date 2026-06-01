@@ -184,6 +184,11 @@ describe("New IPC handlers from v0.8/v0.9 features", () => {
     "record-perf-event",
     "create-schedule-job",
     "update-cron-job",
+    "create-agent-draft",
+    "get-agent-draft",
+    "update-agent-draft",
+    "abandon-agent-draft",
+    "commit-agent-draft",
   ];
 
   for (const ch of newChannels) {

@@ -45,6 +45,7 @@ Current fragments in `src/preload/api/index.ts` are:
 | `knowledgeApi` | `src/preload/api/knowledge.ts` | memory, user profile, soul, tools, skills, skill content/metadata, batch skill mutation, Markdown skill import, skill source preview/import |
 | `modelsApi` | `src/preload/api/models.ts` | session cache/search, Codex app-server OAuth/model auth recovery, credential pool, provider model inventory, direct agent model config, provider inventory, legacy/manual models |
 | `appApi` | `src/preload/api/app.ts` | runtime diagnostics/revalidation/debug agent launch, updates, menu events, cron/schedule jobs, shell, backup/import, dump/log/system helpers, local perf telemetry |
+| `agentsApi` | `src/preload/api/agents.ts` | Agent creation draft lifecycle, draft commit, and draft-change listener; Agent identity/listing uses profile APIs |
 
 Current `window.hermesAPI` preload methods by fragment are:
 
@@ -55,6 +56,7 @@ Current `window.hermesAPI` preload methods by fragment are:
 - `knowledgeApi`: `readMemory`, `addMemoryEntry`, `updateMemoryEntry`, `removeMemoryEntry`, `writeUserProfile`, `readSoul`, `writeSoul`, `resetSoul`, `getToolsets`, `setToolsetEnabled`, `listInstalledSkills`, `listBundledSkills`, `getSkillContent`, `getSkillMetadata`, `installSkill`, `uninstallSkill`, `mutateSkills`, `importSkillMarkdown`, `previewSkillSource`, `importSkillSource`.
 - `modelsApi`: `listCachedSessions`, `syncSessionCache`, `updateSessionTitle`, `searchSessions`, `getCodexAuthStatus`, `startCodexDeviceAuth`, `pollCodexDeviceAuth`, `configureCodexAppServer`, `getCredentialPool`, `setCredentialPool`, `listModels`, `addModel`, `removeModel`, `updateModel`.
 - `appApi`: `getRuntimeDiagnostic`, `revalidateRuntime`, `launchRuntimeDebugAgent`, `checkForUpdates`, `downloadUpdate`, `installUpdate`, `getAppVersion`, `getPerfTelemetryConfig`, `recordPerfEvent`, `onUpdateAvailable`, `onUpdateDownloadProgress`, `onUpdateDownloaded`, `onUpdateNotAvailable`, `onUpdateError`, `onMenuNewChat`, `onMenuSearchSessions`, `listCronJobs`, `createCronJob`, `createScheduleJob`, `updateCronJob`, `removeCronJob`, `pauseCronJob`, `resumeCronJob`, `triggerCronJob`, `openExternal`, `runHermesBackup`, `runHermesImport`, `runHermesDump`, `discoverMemoryProviders`, `listMcpServers`, `readLogs`.
+- `agentsApi`: `createAgentDraft`, `getAgentDraft`, `updateAgentDraft`, `abandonAgentDraft`, `commitAgentDraft`, `onAgentDraftChanged`.
 
 ## IPC composition and handler ownership
 
@@ -72,6 +74,7 @@ Current `window.hermesAPI` preload methods by fragment are:
 | `src/main/ipc/models.ts` | Codex app-server OAuth/model auth recovery, credential pool, and model CRUD |
 | `src/main/ipc/cron.ts` | cron/schedule job listing, creation, update, and lifecycle actions |
 | `src/main/ipc/system.ts` | external URLs, runtime diagnostics/revalidation/debug agent launch, backup/import, debug dump, MCP servers, memory providers, logs, local perf telemetry |
+| `src/main/ipc/agents.ts` | Agent creation draft lifecycle, commit executor entrypoint, and draft-change event forwarding. It does not own Agent identity/list/delete/activate channels; those remain profile channels. |
 
 `src/main/index.ts` also registers updater/version invoke handlers in `setupUpdater()` and sends native menu/update events to the renderer.
 
@@ -89,10 +92,26 @@ Examples by domain:
 - Trace Lab: `list-trace-runs`, `get-trace-run`, `list-trace-runs-for-schedule`, `list-completed-scheduled-runs-since`, `list-skill-training-runs`, `record-local-chat-trace`.
 - Gateway/platform: `start-gateway`, `stop-gateway`, `gateway-status`, `restart-gateway`, `get-platform-enabled`, `set-platform-enabled`.
 - Sessions/profiles/cache/search: `list-sessions`, `get-session-messages`, `list-profiles`, `create-profile`, `delete-profile`, `set-active-profile`, `list-cached-sessions`, `sync-session-cache`, `update-session-title`, `search-sessions`.
-  These API names remain profile-based for compatibility and Hermes storage/runtime identity; renderer product copy presents them to users as Agents.
+  These API names remain profile-based for compatibility and Hermes storage/runtime identity.
+- Agent creation drafts: `create-agent-draft`, `get-agent-draft`, `update-agent-draft`, `abandon-agent-draft`, `commit-agent-draft`. Renderer Agent identity surfaces use the profile channels (`list-profiles`, `delete-profile`, `set-active-profile`) and display the extended `ProfileInfo` fields; the removed `list-agents`, `get-agent`, `delete-agent`, and `set-active-agent` channels are not part of the current contract.
 - Knowledge/skills: `read-memory`, `add-memory-entry`, `update-memory-entry`, `remove-memory-entry`, `write-user-profile`, `read-soul`, `write-soul`, `reset-soul`, `get-toolsets`, `set-toolset-enabled`, `list-installed-skills`, `list-bundled-skills`, `get-skill-content`, `get-skill-metadata`, `install-skill`, `uninstall-skill`, `mutate-skills`, `import-skill-markdown`, `preview-skill-source`, `import-skill-source`.
 - Codex auth/model recovery and models/credentials: `get-codex-auth-status`, `start-codex-device-auth`, `poll-codex-device-auth`, `configure-codex-app-server`, `get-credential-pool`, `set-credential-pool`, `list-models`, `add-model`, `remove-model`, `update-model`.
 - Cron/schedule/system/perf: `list-cron-jobs`, `create-cron-job`, `create-schedule-job`, `update-cron-job`, `remove-cron-job`, `pause-cron-job`, `resume-cron-job`, `trigger-cron-job`, `open-external`, `run-hermes-backup`, `run-hermes-import`, `run-hermes-dump`, `discover-memory-providers`, `list-mcp-servers`, `read-logs`, `get-perf-telemetry-config`, `record-perf-event`. Remote cron HTTP is handled by the internal BFF jobs subclient; local cron file/CLI behavior remains local to main.
+
+#### Product Agent draft and commit contract
+
+Agent creation draft channels are implemented by `src/preload/api/agents.ts` and `src/main/ipc/agents.ts`:
+
+```text
+window.hermesAPI.commitAgentDraft(request)
+→ ipcRenderer.invoke("commit-agent-draft", request)
+→ ipcMain.handle("commit-agent-draft", ...)
+→ commitAgentDraft(request)
+```
+
+`commitAgentDraft` validates draft status/revision/display name/profile id/model/pack ids, fails closed in pure remote HTTP mode before profile creation or remote fetch/write, creates a backend profile through `createProfileForConnection(profile, true)`, applies model/persona/memory, applies exact known toolset state, applies selected pack skills once, writes profile-scoped `desktop/profile-agent.json` metadata with selected pack ids/docs pointers only after side effects succeed, optionally activates the backend profile, and returns the extended `ProfileInfo` on success. Docs-pointer pack members are metadata only; they are not installed as skills and are not sent to `mutateSkillsForProfile`.
+
+If a failure occurs after profile creation before metadata is written, the service best-effort deletes the new backend profile and returns `commit-failed` or `rollback-failed` without persisting committed Agent metadata. `expectedRevision` conflicts return the current draft and perform no writes. SSH mode routes through the existing profile/config/knowledge service branches and reads/writes `profile-agent.json` under the remote profile home.
 
 #### Skills batch mutation contract
 
@@ -196,6 +215,7 @@ These channels are local-only diagnostics, not external analytics. Renderer call
 Current event channels exposed through preload listeners include:
 
 - Chat streaming: `chat-chunk`, `chat-done`, `chat-tool-progress`, `chat-trace-event`, `chat-usage`, `chat-error`.
+- Agent draft updates: `agent-draft-changed` from `onAgentDraftChanged(callback)`, carrying the draft id, revision, changed paths, snapshot, and optional notification text.
 - Installer/update/migration progress: `install-progress`.
 - Auto-update state: `update-available`, `update-download-progress`, `update-downloaded`, `update-not-available`, `update-error`.
 - Native menu actions: `menu-new-chat`, `menu-search-sessions`.

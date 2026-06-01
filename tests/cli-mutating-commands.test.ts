@@ -48,6 +48,7 @@ describe("mutating CLI commands", () => {
 
   afterEach(() => {
     process.env.HERMES_HOME = oldHome;
+    vi.doUnmock("child_process");
     vi.doUnmock("../src/main/services/cron-service");
     vi.doUnmock("../src/main/services/install-service");
     vi.doUnmock("../src/main/services/knowledge-service");
@@ -304,6 +305,51 @@ describe("mutating CLI commands", () => {
       JSON.parse(readFileSync(join(home, "desktop", "sessions.json"), "utf-8"))
         .sessions[0].title,
     ).toBe("New Title");
+  });
+
+  it("treats agents mutating commands as a raw profiles alias", async () => {
+    const home = tempHome();
+    const execFileSyncMock = vi.fn((_bin: string, args: string[]) => {
+      if (args[1] === "profile" && args[2] === "create") {
+        mkdirSync(join(home, "profiles", args[3]), { recursive: true });
+      }
+      return Buffer.from("");
+    });
+    vi.doMock("child_process", () => ({
+      default: { execFileSync: execFileSyncMock },
+      execFileSync: execFileSyncMock,
+    }));
+
+    const createAgent = await runJson(home, ["agents", "create", "helper", "--clone"]);
+    expect(createAgent.exitCode).toBe(0);
+    expect(createAgent.json.data).toEqual({ success: true, name: "helper", clone: true });
+    expect(createAgent.json.data).not.toHaveProperty("draft");
+    expect(execFileSyncMock).toHaveBeenCalledWith(
+      expect.any(String),
+      [expect.any(String), "profile", "create", "helper", "--no-skills"],
+      expect.objectContaining({ timeout: 15000 }),
+    );
+
+    execFileSyncMock.mockClear();
+    const useMercury = await runJson(home, ["agents", "use", "mercury"]);
+    expect(useMercury.exitCode).toBe(0);
+    expect(useMercury.json.data).toEqual({ success: true, name: "mercury" });
+    expect(execFileSyncMock).toHaveBeenCalledWith(
+      expect.any(String),
+      [expect.any(String), "profile", "use", "mercury"],
+      expect.objectContaining({ timeout: 10000 }),
+    );
+
+    execFileSyncMock.mockClear();
+    const deleteDefaultAgent = await runJson(home, [
+      "agents",
+      "delete",
+      "default",
+      "--yes",
+    ]);
+    expect(deleteDefaultAgent.exitCode).toBe(8);
+    expect(deleteDefaultAgent.error.error.message).toBe("Cannot delete the default profile");
+    expect(execFileSyncMock).not.toHaveBeenCalled();
   });
 
   it("forwards skills add sources and import flags to the source import service", async () => {

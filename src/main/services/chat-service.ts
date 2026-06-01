@@ -12,6 +12,7 @@ import { extractArtifactEventsFromText } from "../hermes/trace-events";
 import type {
   ChatCallbacks,
   ChatTransportDiagnostic,
+  ChatTraceCallbackEvent,
   ProfileRuntimeHandle,
 } from "../hermes/types";
 import { profileRuntimeManager } from "../hermes/runtime";
@@ -46,12 +47,14 @@ import {
 import { generateChatTitle as resolveChatTitle } from "../hermes/title";
 import { isSyntheticChatStreamEnabled } from "../hermes/synthetic-chat";
 import type { ChatErrorInfo } from "../../shared/codex-auth-recovery";
+import type { AgentChatOptions, AgentDraftChangeEvent } from "../../shared/agents";
 import type { TraceEvent, TraceEventType, TraceUsage } from "../../shared/traces";
 import {
   normalizeGenerateChatTitleRequest,
   type GenerateChatTitleRequest,
 } from "../../shared/chat-metadata";
 import { classifyChatRemediation } from "../../shared/chat-remediation";
+import { updateAgentDraft } from "./agents-service";
 
 export type ChatResponse = { response: string; sessionId?: string };
 
@@ -68,6 +71,7 @@ export interface RunChatRequest {
   resumeSessionId?: string;
   history?: Array<{ role: string; content: string }>;
   callbacks?: ChatServiceCallbacks;
+  options?: AgentChatOptions;
 }
 
 export interface ChatServiceCallbacks {
@@ -75,6 +79,7 @@ export interface ChatServiceCallbacks {
   onDone?: (sessionId?: string) => void;
   onError?: (error: string, info?: ChatErrorInfo) => void;
   onLiveTraceEvent?: (event: TraceEvent) => void;
+  onAgentDraftChanged?: (event: AgentDraftChangeEvent) => void;
   onToolProgress?: (tool: string) => void;
   onUsage?: (usage: TraceUsage) => void;
   onCompleted?: (result: ChatResponse & { durationMs: number }) => void;
@@ -124,6 +129,33 @@ function emitLiveTrace(
 ): void {
   if (!event || !isLiveChatActivityEvent(event.type)) return;
   notify("live trace callback", () => callbacks?.onLiveTraceEvent?.(event));
+}
+
+function extractAgentDraftMutationPayload(
+  traceEvent: ChatTraceCallbackEvent,
+): unknown {
+  const metadata = traceEvent.metadata;
+  if (!metadata || typeof metadata !== "object") return undefined;
+  const candidates = [
+    metadata.agentDraftMutationRequest,
+    metadata.agentDraftMutation,
+    metadata.draftMutation,
+    metadata.payload,
+    typeof metadata.agentDraft === "object" && metadata.agentDraft !== null
+      ? (metadata.agentDraft as Record<string, unknown>).mutation
+      : undefined,
+  ];
+  return candidates.find((candidate) => candidate !== undefined);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function draftIdFromPayload(payload: unknown): string | undefined {
+  return isRecord(payload) && typeof payload.draftId === "string"
+    ? payload.draftId
+    : undefined;
 }
 
 function abortCurrentRun(detail: string): void {
@@ -197,6 +229,7 @@ export async function runChatMessage({
   resumeSessionId,
   history,
   callbacks,
+  options,
 }: RunChatRequest): Promise<ChatResponse> {
   abortCurrentRun("Superseded by a new Hermes message.");
   let effectiveSessionId = resumeSessionId;
@@ -233,6 +266,34 @@ export async function runChatMessage({
     runBestEffort(label, () =>
       finishTraceRun(traceRunId, status, sessionId, detail),
     );
+  };
+  const processAgentDraftTraceEvent = async (
+    traceEvent: ChatTraceCallbackEvent,
+  ): Promise<void> => {
+    if (options?.mode !== "agent-creation" || !options.agentDraftId) return;
+    if (!traceEvent.type.startsWith("tool.")) return;
+
+    const payload = extractAgentDraftMutationPayload(traceEvent);
+    if (payload === undefined) return;
+    if (draftIdFromPayload(payload) !== options.agentDraftId) return;
+
+    const result = await updateAgentDraft(payload, {
+      onChange: callbacks?.onAgentDraftChanged,
+    });
+    if (!result.success) {
+      const recordedEvent = recordChatTraceEvent(
+        "trace agent draft mutation failed",
+        "tool.failed",
+        "Agent draft update failed",
+        result.error,
+        {
+          source: "agent-draft",
+          code: result.code,
+          draftId: options.agentDraftId,
+        },
+      );
+      emitLiveTrace(callbacks, recordedEvent ?? null);
+    }
   };
 
   if (resumeSessionId) {
@@ -426,6 +487,7 @@ export async function runChatMessage({
         traceEvent.metadata,
       );
       emitLiveTrace(callbacks, recordedEvent ?? null);
+      void processAgentDraftTraceEvent(traceEvent);
     },
     onDiagnostic: (diagnostic) => {
       if (shouldIgnoreCallback()) return;

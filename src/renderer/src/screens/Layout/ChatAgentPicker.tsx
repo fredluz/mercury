@@ -1,57 +1,35 @@
 import { useEffect, useMemo, useState } from "react";
 import { MessageSquarePlus, RefreshCw } from "lucide-react";
+import type { ProfileInfo } from "../../../../shared/profiles";
 import MercuryMark from "../../components/common/MercuryMark";
 import { useI18n } from "../../components/useI18n";
-import { formatSessionModel } from "../Sessions/sessionListUtils";
-
-type ProfileSummary = Awaited<
-  ReturnType<Window["hermesAPI"]["listProfiles"]>
->[number];
 
 interface ChatAgentPickerProps {
   activeProfile: string;
   onStartNewChat: (profile: string) => Promise<void> | void;
 }
 
-function fallbackProfile(name: string): ProfileSummary {
-  return {
-    name: name.trim() || "default",
-    path: "",
-    isDefault: name.trim() === "default" || !name.trim(),
-    isActive: true,
-    model: "",
-    provider: "",
-    hasEnv: false,
-    hasSoul: false,
-    skillCount: 0,
-    gatewayRunning: false,
-  };
-}
-
 function sortProfiles(
-  profiles: ProfileSummary[],
+  profiles: ProfileInfo[],
   activeProfile: string,
-): ProfileSummary[] {
+): ProfileInfo[] {
   const active = activeProfile.trim() || "default";
   return [...profiles].sort((a, b) => {
-    const aName = a.name.trim() || "default";
-    const bName = b.name.trim() || "default";
-    if (aName === active && bName !== active) return -1;
-    if (bName === active && aName !== active) return 1;
-    if (aName === "default" && bName !== "default") return -1;
-    if (bName === "default" && aName !== "default") return 1;
-    return aName.localeCompare(bName);
+    if (a.name === active && b.name !== active) return -1;
+    if (b.name === active && a.name !== active) return 1;
+    if (a.name === "default" && b.name !== "default") return -1;
+    if (b.name === "default" && a.name !== "default") return 1;
+    return displayNameFor(a).localeCompare(displayNameFor(b));
   });
 }
 
-function providerLabel(provider: string, t: (key: string) => string): string {
-  if (!provider || provider === "auto") return t("chat.agentPickerAuto");
-  if (provider === "custom") return t("chat.agentPickerLocal");
-  return provider.charAt(0).toUpperCase() + provider.slice(1);
+function displayNameFor(profile: ProfileInfo): string {
+  return profile.displayName.trim() || profile.name;
 }
 
-function AgentAvatar({ name }: { name: string }): React.JSX.Element {
-  if (name === "default") {
+function AgentAvatar({ profile }: { profile: ProfileInfo }): React.JSX.Element {
+  const name = displayNameFor(profile);
+  if (profile.name === "default") {
     return (
       <div className="chat-agent-picker-avatar chat-agent-picker-avatar-mark">
         <MercuryMark size={32} decorative />
@@ -71,9 +49,7 @@ function ChatAgentPicker({
   onStartNewChat,
 }: ChatAgentPickerProps): React.JSX.Element {
   const { t } = useI18n();
-  const [profiles, setProfiles] = useState<ProfileSummary[]>([
-    fallbackProfile(activeProfile),
-  ]);
+  const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [startingProfile, setStartingProfile] = useState<string | null>(null);
@@ -88,12 +64,10 @@ function ChatAgentPicker({
       try {
         const listed = await window.hermesAPI.listProfiles();
         if (cancelled) return;
-        setProfiles(
-          listed.length > 0 ? listed : [fallbackProfile(activeProfile)],
-        );
+        setProfiles(listed);
       } catch {
         if (cancelled) return;
-        setProfiles([fallbackProfile(activeProfile)]);
+        setProfiles([]);
         setLoadError(true);
       } finally {
         if (!cancelled) setLoading(false);
@@ -111,12 +85,12 @@ function ChatAgentPicker({
     [activeProfile, profiles],
   );
 
-  async function startNewChat(profile: string): Promise<void> {
-    const cleanProfile = profile.trim() || "default";
-    setStartingProfile(cleanProfile);
+  async function startNewChat(profile: ProfileInfo): Promise<void> {
+    const backendProfile = profile.name.trim() || "default";
+    setStartingProfile(backendProfile);
     setStartError(null);
     try {
-      await onStartNewChat(cleanProfile);
+      await onStartNewChat(backendProfile);
     } catch {
       setStartError(t("chat.sidebarStartFailed"));
     } finally {
@@ -150,22 +124,24 @@ function ChatAgentPicker({
       ) : (
         <div className="chat-agent-picker-grid">
           {sortedProfiles.map((profile) => {
-            const name = profile.name.trim() || "default";
-            const isActive = name === (activeProfile.trim() || "default");
-            const isStarting = startingProfile === name;
+            const name = displayNameFor(profile);
+            const isActive = profile.name === (activeProfile.trim() || "default");
+            const isStarting = startingProfile === profile.name;
             return (
               <button
-                key={name}
+                key={profile.name}
                 className={`chat-agent-picker-card ${isActive ? "chat-agent-picker-card-active" : ""}`}
-                onClick={() => void startNewChat(name)}
+                onClick={() => void startNewChat(profile)}
                 disabled={startingProfile !== null}
               >
                 <div className="chat-agent-picker-card-top">
-                  <AgentAvatar name={name} />
+                  <AgentAvatar profile={profile} />
                   <div className="chat-agent-picker-card-main">
                     <span className="chat-agent-picker-name">{name}</span>
                     <span className="chat-agent-picker-provider">
-                      {providerLabel(profile.provider, t)}
+                      {profile.kind === "builtin"
+                        ? t("agents.builtin")
+                        : t("agents.custom")}
                     </span>
                   </div>
                   {isActive ? (
@@ -175,18 +151,14 @@ function ChatAgentPicker({
                   ) : null}
                 </div>
                 <div className="chat-agent-picker-model">
-                  {profile.model
-                    ? formatSessionModel(profile.model)
-                    : t("chat.noModel")}
+                  {profile.description || t("agents.noDescription")}
                 </div>
                 <div className="chat-agent-picker-meta">
                   <span>
-                    {t("chat.agentPickerSkills", { count: profile.skillCount })}
+                    {t("agents.packsCount", { count: profile.selectedPackIds.length })}
                   </span>
                   <span>
-                    {profile.gatewayRunning
-                      ? t("chat.agentPickerGatewayOn")
-                      : t("chat.agentPickerGatewayOff")}
+                    {t("agents.docsPointersCount", { count: profile.docsPointers.length })}
                   </span>
                 </div>
                 <div className="chat-agent-picker-action">

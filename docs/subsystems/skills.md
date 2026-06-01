@@ -1,6 +1,6 @@
 # Skills Subsystem
 
-This document describes Mercury's current skill listing, grouped Skills UI, draft/save batching, shared batch mutation contract, content/metadata reads, install/uninstall, Add Skill ingestion from Markdown/GitHub/npx-style commands, validation, local/SSH/pure-remote behavior, test coverage, and the future skill-groups seam. It describes current behavior only: skill groups are not implemented, and runtime restart/reload policy after skill mutations is not solved beyond the stale/restart-warning semantics named here.
+This document describes Mercury's current skill listing, grouped Skills UI, draft/save batching, shared batch mutation contract, content/metadata reads, install/uninstall, Add Skill ingestion from Markdown/GitHub/npx-style commands, Agent pack commit seeding, validation, local/SSH/pure-remote behavior, and test coverage. It describes current behavior only: reusable Agent packs now exist for new-agent commit, while the standalone Skills screen still uses installed-file truth and renderer-local pending drafts.
 
 ## Source anchors
 
@@ -8,6 +8,8 @@ This document describes Mercury's current skill listing, grouped Skills UI, draf
 - Renderer presentation: `src/renderer/src/screens/Skills/components/SkillCategorySection.tsx`, `src/renderer/src/screens/Skills/components/SkillDetailPanel.tsx`, `src/renderer/src/screens/Skills/components/SkillModals.tsx`
 - Renderer styling/copy: `src/renderer/src/assets/styles/skills.css`, `src/shared/i18n/locales/*/skills.ts`
 - Shared skill contracts: `src/shared/skills.ts`
+- Agent pack catalog and expansion helpers: `src/shared/agent-packs.ts`
+- Agent commit executor: `src/main/services/agents-service.ts`
 - Local skill listing/install helpers: `src/main/skills.ts`
 - Markdown import implementation: `src/main/skills/importer.ts`
 - Source import parser/fetch/import implementation: `src/main/skills/source-parser.ts`, `src/main/skills/github-source.ts`, `src/main/skills/source-service.ts`, `src/main/skills/directory-importer.ts`, `src/main/skills/http-fetch.ts`
@@ -102,6 +104,18 @@ selected candidate / single candidate
 
 `previewSkillSource` is read-only and does not mark runtime stale. `importSkillSource` writes files and uses the same pending-draft save gate as Markdown import. If that save fails, import is aborted and the preview result remains visible for retry after the user fixes or discards pending changes.
 
+## Agent pack commit behavior
+
+The new-agent commit path expands selected pack ids with `expandAgentPackSelection(...)` and applies the result deterministically:
+
+1. pack skill members become install `SkillMutationTarget`s and are deduped by `category/directoryName`;
+2. docs-pointer members are metadata only — they are not installed, are not sent to `mutateSkillsForProfile`, do not affect profile `skillCount`, and v1 does not create stub `SKILL.md` files for them;
+3. pack tool members combine with explicit draft tool overrides to form the desired toolset state;
+4. the commit executor reads known toolsets with `getToolsetsForProfile(profile)` and writes every known key to the exact desired enabled state;
+5. skills are applied once with `mutateSkillsForProfile(targets, profile)` after the model/persona/memory/tool writes succeed.
+
+Local and SSH commits use the existing service branches. Pure remote HTTP commit fails closed before profile creation/fetch/write because profile files, config, tools, and skills cannot be safely mutated through the remote chat API.
+
 ## CLI skill commands
 
 The CLI exposes the same skill capabilities for automation through `src/main/services/knowledge-service.ts`; it is not layered through preload.
@@ -131,11 +145,11 @@ The header Add Skill action opens one modal with three source tabs:
 
 `Skills.tsx` owns all import orchestration. `SkillModals.tsx` is presentational and does not call preload directly. Source imports must be previewed before import so the renderer can show discovered candidates. If preview returns one candidate, the modal shows a ready summary and imports that candidate directly. If preview returns multiple candidates, the user must select one candidate before the Import button is enabled. The modal includes a category input backed by existing installed/bundled categories through a datalist, while still allowing free-text categories that the backend validates. In pure remote HTTP mode, the GitHub link and command tabs are hidden; Paste Markdown retains its existing behavior.
 
-Mercury does not persist a separate skill-enabled flag. In the current implementation, newly created Mercury Agents/profiles start with no skills installed because profile creation uses upstream Hermes `--no-skills`; the Agents "copy default config/API keys" option copies credentials/config only, not `skills/`. This is current behavior, not the desired long-term product invariant.
+Mercury does not persist a separate skill-enabled flag. Profile creation still uses upstream Hermes `--no-skills`; the Agents commit executor then installs the selected pack skills through one `mutateSkillsForProfile(targets, profile)` batch. The Default pack is selected on new drafts as a lean, fully trimmable baseline, so committing only Default installs only the Default pack skills and enables its baseline tools. Non-default packs remain opt-in.
 
-TODO / product direction: new Agents should eventually receive skills from a `default` skill category automatically, while non-default categories remain opt-in. That future default-category seeding should still write installed skill files through the same profile-scoped skill mutation/import machinery, not a separate enabled-state flag.
+Agent pack membership is profile-scoped creation/recipe metadata in `<profileHome>/desktop/profile-agent.json`, not skill enabled state. After commit, installed skill files under the profile remain the source of truth for execution and the Skills screen.
 
-Future category taxonomy note: the planned opt-in `inspector-gadget` category is for high-novelty, external-service, media/generative, game, map/search, market, smart-home, or social/browser utility skills that should remain off by default. Current planning classifies these skills as `inspector-gadget`: Bayou Comic Creator, Bayou Infographic, Bayou Article Illustrator, ASCII Video, ASCII Art, Blender Animation, Google Drive, Songwriting and AI Music, Touch Designer MCP, Minecraft Mod Pack Server, Pokemon Player, Find Nearby, GIF Search, Heartmula, Songsee, Spotify, Maps, God mode, polymarket, open hue, xitter, and x-url. New Agents should get the future `default` category by default; `inspector-gadget` remains opt-in.
+The v1 pack taxonomy is static in `src/shared/agent-packs.ts` and sourced from `docs/investigations/skill-pack-mapping-2026-06-01.md`. Unassigned discovered skills are intentionally not selectable until classified. The `inspector-gadget` pack remains opt-in for high-novelty/external-service/media/game/smart-home style utilities.
 
 In the current V1 UI, **enabled for the selected Agent** means the skill is installed in that Agent profile, and **disabled** means the skill is absent from that Agent profile. Installed files are the source of truth. The renderer overlays ephemeral pending state to show the effective state before the user saves.
 

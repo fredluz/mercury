@@ -8,6 +8,7 @@ type IpcHandler = (
   profile?: string,
   resumeSessionId?: string,
   history?: Array<{ role: string; content: string }>,
+  options?: { agentDraftId?: string; mode?: "agent-creation" },
 ) => Promise<{ response: string; sessionId?: string }>;
 
 type GenerateTitleHandler = (
@@ -66,6 +67,7 @@ const mocks = vi.hoisted(() => {
       normalizeProfile: vi.fn(),
       resolveRuntime: vi.fn(),
     },
+    updateAgentDraft: vi.fn(),
   };
 });
 
@@ -131,6 +133,10 @@ vi.mock("../src/main/hermes/title", () => ({
 
 vi.mock("../src/main/hermes/runtime", () => ({
   profileRuntimeManager: mocks.profileRuntimeManager,
+}));
+
+vi.mock("../src/main/services/agents-service", () => ({
+  updateAgentDraft: mocks.updateAgentDraft,
 }));
 
 function resetMockState(): void {
@@ -222,6 +228,11 @@ function resetMockState(): void {
   mocks.profileRuntimeManager.normalizeProfile
     .mockReset()
     .mockImplementation((profile?: string) => profile?.trim() || "default");
+  mocks.updateAgentDraft.mockReset().mockResolvedValue({
+    success: true,
+    changed: false,
+    draft: {},
+  });
   mocks.profileRuntimeManager.resolveRuntime.mockReset().mockResolvedValue({
     request: { profile: "default", mode: "local", purpose: "chat" },
     identity: {
@@ -713,6 +724,93 @@ describe("chat IPC lifecycle hardening", () => {
     expect(JSON.stringify(mocks.recordTraceEvent.mock.calls)).not.toContain(
       "already consumed",
     );
+  });
+
+  it("accepts optional agent creation chat options without changing normal completion", async () => {
+    const handler = await setupHandler();
+    const event = createEvent();
+
+    const invokePromise = handler(event, "hello", "default", undefined, undefined, {
+      agentDraftId: "draft-chat-options",
+      mode: "agent-creation",
+    });
+    const callbacks = await waitForTransportCallbacks();
+    callbacks.onChunk("answer");
+    callbacks.onDone("session-options");
+
+    await expect(invokePromise).resolves.toEqual({
+      response: "answer",
+      sessionId: "session-options",
+    });
+    expect(sentChannels(event.sender, "chat-done")).toEqual([
+      ["chat-done", "session-options"],
+    ]);
+  });
+
+  it("forwards agent-draft change events produced by structured tool traces", async () => {
+    const handler = await setupHandler();
+    const event = createEvent();
+    const draftEvent = {
+      draftId: "draft-chat",
+      revision: 1,
+      changes: [{ path: "displayName", previous: "Old", next: "New" }],
+      snapshot: {
+        id: "draft-chat",
+        status: "draft" as const,
+        revision: 1,
+        profile: "new",
+        displayName: "New",
+        selectedPackIds: [],
+        docsPointers: [],
+        toolsetOverrides: {},
+        mutationIds: [],
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      notification: {
+        text: "Updated display name.",
+        previousText: "Old",
+        nextText: "New",
+        debounced: true,
+      },
+    };
+    mocks.updateAgentDraft.mockImplementationOnce(async (_payload, options) => {
+      options.onChange(draftEvent);
+      return {
+        success: true,
+        changed: true,
+        draft: draftEvent.snapshot,
+        event: draftEvent,
+      };
+    });
+
+    const invokePromise = handler(event, "create agent", "default", undefined, undefined, {
+      agentDraftId: "draft-chat",
+      mode: "agent-creation",
+    });
+    const callbacks = await waitForTransportCallbacks();
+    callbacks.onTraceEvent?.({
+      type: "tool.completed",
+      title: "Agent draft mutation",
+      metadata: {
+        agentDraftMutation: {
+          draftId: "draft-chat",
+          expectedRevision: 0,
+          patch: { displayName: "New" },
+        },
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    callbacks.onDone("session-draft");
+
+    await expect(invokePromise).resolves.toEqual({ response: "", sessionId: "session-draft" });
+    expect(mocks.updateAgentDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ draftId: "draft-chat" }),
+      expect.objectContaining({ onChange: expect.any(Function) }),
+    );
+    expect(sentChannels(event.sender, "agent-draft-changed")).toEqual([
+      ["agent-draft-changed", draftEvent],
+    ]);
   });
 
   it("still sends chat-error and rejects when error side effects throw", async () => {

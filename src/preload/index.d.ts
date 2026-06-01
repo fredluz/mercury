@@ -19,6 +19,7 @@ import type {
   MigrationPromptOptions,
 } from "../shared/migration";
 import type { PerfTelemetryConfig, RendererPerfEvent } from "../shared/perf";
+import type { ProfileInfo } from "../shared/profiles";
 import type {
   ProfileSessionRuntimeActivitySnapshot,
   RuntimeDebugAgentRequest,
@@ -39,6 +40,16 @@ import type {
   TraceScheduleRunSummary,
 } from "../shared/traces";
 import type { ModelCapability } from "../shared/models";
+import type {
+  AgentChatOptions,
+  AgentCommitRequest,
+  AgentCommitResult,
+  AgentCreationDraft,
+  AgentDraftChangeEvent,
+  AgentDraftMutationRequest,
+  AgentDraftMutationResult,
+  CreateAgentDraftRequest,
+} from "../shared/agents";
 
 interface InstallStatus {
   installed: boolean;
@@ -168,6 +179,7 @@ interface HermesAPI {
     profile?: string,
     resumeSessionId?: string,
     history?: Array<{ role: string; content: string }>,
+    options?: AgentChatOptions,
   ) => Promise<{ response: string; sessionId?: string }>;
   abortChat: () => Promise<void>;
   resolveChatRunApproval: (request: {
@@ -202,6 +214,22 @@ interface HermesAPI {
   ) => () => void;
   onChatError: (
     callback: (error: string, info?: ChatErrorInfo) => void,
+  ) => () => void;
+
+  // Product agent drafts
+  createAgentDraft: (
+    request?: CreateAgentDraftRequest,
+  ) => Promise<AgentCreationDraft>;
+  getAgentDraft: (draftId: string) => Promise<AgentCreationDraft | null>;
+  updateAgentDraft: (
+    request: AgentDraftMutationRequest,
+  ) => Promise<AgentDraftMutationResult>;
+  abandonAgentDraft: (
+    draftId: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  commitAgentDraft: (request: AgentCommitRequest) => Promise<AgentCommitResult>;
+  onAgentDraftChanged: (
+    callback: (event: AgentDraftChangeEvent) => void,
   ) => () => void;
 
   // Trace Lab
@@ -260,20 +288,7 @@ interface HermesAPI {
   >;
 
   // Profiles
-  listProfiles: () => Promise<
-    Array<{
-      name: string;
-      path: string;
-      isDefault: boolean;
-      isActive: boolean;
-      model: string;
-      provider: string;
-      hasEnv: boolean;
-      hasSoul: boolean;
-      skillCount: number;
-      gatewayRunning: boolean;
-    }>
-  >;
+  listProfiles: () => Promise<ProfileInfo[]>;
   createProfile: (
     name: string,
     clone: boolean,

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Brain,
   ChatBubble,
@@ -9,26 +9,17 @@ import {
   Wrench,
 } from "../../assets/icons";
 import type { LucideIcon } from "lucide-react";
+import type {
+  AgentCommitResult,
+  AgentCreationDraft,
+  AgentDraftChangeEvent,
+  AgentDraftPatch,
+} from "../../../../shared/agents";
+import type { ProfileInfo } from "../../../../shared/profiles";
 import MercuryMark from "../../components/common/MercuryMark";
 import { AgentModelConfigModal } from "../../components/AgentModelConfigModal";
 import { useI18n } from "../../components/useI18n";
-import {
-  filterInventoryToConnectedProviders,
-  type InventoryModel,
-} from "../../modelInventory";
-
-interface ProfileInfo {
-  name: string;
-  path: string;
-  isDefault: boolean;
-  isActive: boolean;
-  model: string;
-  provider: string;
-  hasEnv: boolean;
-  hasSoul: boolean;
-  skillCount: number;
-  gatewayRunning: boolean;
-}
+import { AgentCreator } from "./AgentCreator";
 
 type ProfileActionView = "chat" | "skills" | "tools" | "soul" | "memory";
 
@@ -52,17 +43,24 @@ interface AgentsProps {
   onProfileAction: (view: ProfileActionView) => void;
 }
 
-function AgentAvatar({ name }: { name: string }): React.JSX.Element {
-  if (name === "default") {
+function displayNameFor(profile: ProfileInfo): string {
+  return profile.displayName.trim() || profile.name;
+}
+
+function AgentAvatar({ profile }: { profile: ProfileInfo }): React.JSX.Element {
+  const label = displayNameFor(profile);
+  if (profile.name === "default") {
     return (
       <div className="agents-card-avatar agents-card-avatar-icon">
         <MercuryMark size={30} decorative />
       </div>
     );
   }
-  return (
-    <div className="agents-card-avatar">{name.charAt(0).toUpperCase()}</div>
-  );
+  return <div className="agents-card-avatar">{label.charAt(0).toUpperCase()}</div>;
+}
+
+function commitFailureMessage(result: Extract<AgentCommitResult, { success: false }>): string {
+  return `${result.code}: ${result.error}`;
 }
 
 function Agents({
@@ -71,166 +69,173 @@ function Agents({
   onProfileAction,
 }: AgentsProps): React.JSX.Element {
   const { t } = useI18n();
-  const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
-  const [inventory, setInventory] = useState<InventoryModel[]>([]);
+  const [agents, setAgents] = useState<ProfileInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [copyDefaultConfig, setCopyDefaultConfig] = useState(true);
-  const [creating, setCreating] = useState(false);
+  const [creatingDraft, setCreatingDraft] = useState(false);
+  const [currentDraft, setCurrentDraft] = useState<AgentCreationDraft | null>(null);
+  const [draftNotifications, setDraftNotifications] = useState<AgentDraftChangeEvent[]>([]);
+  const [committing, setCommitting] = useState(false);
+  const [commitError, setCommitError] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [modelProfile, setModelProfile] = useState<ProfileInfo | null>(null);
-  const [createProvider, setCreateProvider] = useState("");
-  const [createModel, setCreateModel] = useState("");
+  const [modelAgent, setModelAgent] = useState<ProfileInfo | null>(null);
 
-  const loadProfiles = useCallback(async (): Promise<void> => {
+  const loadAgents = useCallback(async (): Promise<void> => {
     const list = await window.hermesAPI.listProfiles();
-    setProfiles(list);
+    setAgents(list);
     setLoading(false);
-  }, []);
-
-  const loadInventory = useCallback(async (): Promise<void> => {
-    // New profile creation can copy default config/API keys without copying
-    // skills, so filter the picker against inherited credentials.
-    const providerProfile = "default";
-    const [models, env, credPool, codexStatus] = await Promise.all([
-      window.hermesAPI.listModels(),
-      window.hermesAPI.getEnv(providerProfile),
-      window.hermesAPI.getCredentialPool(),
-      window.hermesAPI.getCodexAuthStatus(providerProfile).catch(() => null),
-    ]);
-    const normalized = filterInventoryToConnectedProviders(
-      models.map((entry) => ({
-        id: entry.id,
-        provider: entry.provider,
-        model: entry.model,
-        baseUrl: entry.baseUrl,
-      })),
-      { env, credentialPool: credPool, codexStatus },
-    );
-    setInventory(normalized);
-    setCreateProvider((current) => current || normalized[0]?.provider || "");
   }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void Promise.all([loadProfiles(), loadInventory()]);
+      void loadAgents().catch((err) => {
+        setError(err instanceof Error ? err.message : t("agents.loadFailed"));
+        setLoading(false);
+      });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [loadInventory, loadProfiles]);
-
-  const createProviders = useMemo(
-    () => [
-      ...new Set(inventory.map((entry) => entry.provider).filter(Boolean)),
-    ],
-    [inventory],
-  );
-  const createModels = useMemo(
-    () => inventory.filter((entry) => entry.provider === createProvider),
-    [createProvider, inventory],
-  );
+  }, [loadAgents, t]);
 
   useEffect(() => {
-    if (!createProviders.length) return;
-    if (!createProvider) {
-      setCreateProvider(createProviders[0]);
-      return;
-    }
-    if (!createProviders.includes(createProvider)) {
-      setCreateProvider(createProviders[0]);
-    }
-  }, [createProvider, createProviders]);
-
-  useEffect(() => {
-    if (!createProvider) {
-      setCreateModel("");
-      return;
-    }
-    const hasCurrent = createModels.some(
-      (entry) => entry.model === createModel,
-    );
-    if (!hasCurrent) {
-      setCreateModel(createModels[0]?.model || "");
-    }
-  }, [createModel, createModels, createProvider]);
-
-  async function handleCreate(): Promise<void> {
-    const name = newName.trim().toLowerCase();
-    if (!name) return;
-    setCreating(true);
-    setError("");
-    const result = await window.hermesAPI.createProfile(
-      name,
-      copyDefaultConfig,
-    );
-    if (!result.success) {
-      setCreating(false);
-      setError(result.error || t("agents.createFailed"));
-      return;
-    }
-
-    try {
-      const selected = createModels.find(
-        (entry) => entry.model === createModel,
-      );
-      if (selected) {
-        await window.hermesAPI.setModelConfig(
-          selected.provider,
-          selected.model,
-          selected.baseUrl || "",
-          name,
-        );
+    const unsubscribe = window.hermesAPI.onAgentDraftChanged((event) => {
+      setCurrentDraft((draft) => {
+        if (!draft || draft.id !== event.draftId) return draft;
+        return event.snapshot;
+      });
+      if (event.notification) {
+        setDraftNotifications((current) => [event, ...current].slice(0, 6));
       }
-      setShowCreate(false);
-      setNewName("");
-      setError("");
-      await loadProfiles();
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (!currentDraft?.id) return;
+    let cancelled = false;
+    void window.hermesAPI.getAgentDraft(currentDraft.id).then((draft) => {
+      if (!cancelled && draft) setCurrentDraft(draft);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentDraft?.id]);
+
+  async function handleNewAgent(): Promise<void> {
+    setCreatingDraft(true);
+    setError("");
+    setCommitError(null);
+    setDraftNotifications([]);
+    try {
+      const draft = await window.hermesAPI.createAgentDraft();
+      const authoritative = await window.hermesAPI.getAgentDraft(draft.id);
+      setCurrentDraft(authoritative ?? draft);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : t("agents.modelSaveFailed"),
-      );
+      setError(err instanceof Error ? err.message : t("agents.createFailed"));
     } finally {
-      setCreating(false);
+      setCreatingDraft(false);
     }
   }
 
-  async function handleDelete(name: string): Promise<void> {
-    const result = await window.hermesAPI.deleteProfile(name);
+  async function handleDelete(profile: ProfileInfo): Promise<void> {
+    if (!profile.deletable) return;
+    const result = await window.hermesAPI.deleteProfile(profile.name);
     if (result.success) {
-      if (activeProfile === name) onSelectProfile("default");
-      void loadProfiles();
+      if (activeProfile === profile.name) onSelectProfile("default");
+      void loadAgents();
+    } else {
+      setError(result.error || t("agents.deleteFailed"));
     }
     setConfirmDelete(null);
   }
 
-  async function handleSelect(name: string): Promise<void> {
-    await window.hermesAPI.setActiveProfile(name);
-    onSelectProfile(name);
-    void loadProfiles();
+  async function handleSelect(profile: ProfileInfo): Promise<void> {
+    const success = await window.hermesAPI.setActiveProfile(profile.name);
+    if (!success) {
+      setError(t("agents.activateFailed"));
+      return;
+    }
+    onSelectProfile(profile.name);
+    void loadAgents();
   }
 
   async function handleProfileAction(
-    name: string,
+    agent: ProfileInfo,
     view: ProfileActionView,
   ): Promise<void> {
-    await handleSelect(name);
+    await handleSelect(agent);
     onProfileAction(view);
   }
 
-  function providerLabel(provider: string): string {
-    if (!provider || provider === "auto") return t("agents.auto");
-    if (provider === "custom") return t("agents.local");
-    return provider.charAt(0).toUpperCase() + provider.slice(1);
+  async function handleUpdateDraft(patch: AgentDraftPatch): Promise<void> {
+    if (!currentDraft) return;
+    const result = await window.hermesAPI.updateAgentDraft({
+      draftId: currentDraft.id,
+      expectedRevision: currentDraft.revision,
+      mutationId: `ui:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+      patch,
+    });
+    if (result.success) {
+      setCurrentDraft(result.draft);
+      setCommitError(null);
+    } else {
+      setCommitError(`${result.code}: ${result.error}`);
+      if (result.draft) setCurrentDraft(result.draft);
+    }
+  }
+
+  async function handleCommitDraft(): Promise<void> {
+    if (!currentDraft || committing) return;
+    setCommitting(true);
+    setCommitError(null);
+    const result = await window.hermesAPI.commitAgentDraft({
+      draftId: currentDraft.id,
+      expectedRevision: currentDraft.revision,
+      activate: true,
+    });
+    if (result.success) {
+      setCurrentDraft(null);
+      setDraftNotifications([]);
+      onSelectProfile(result.agent.name);
+      await loadAgents();
+      onProfileAction("chat");
+    } else {
+      if (result.draft) setCurrentDraft(result.draft);
+      setCommitError(commitFailureMessage(result));
+    }
+    setCommitting(false);
+  }
+
+  function providerLabel(agent: ProfileInfo): string {
+    if (agent.kind === "builtin") return t("agents.builtin");
+    return t("agents.custom");
   }
 
   function isProfileActionAvailable(
-    profile: ProfileInfo,
+    agent: ProfileInfo,
     view: ProfileActionView,
   ): boolean {
-    void profile;
-    void view;
+    if (agent.immutable && view !== "chat") return false;
     return true;
+  }
+
+  if (currentDraft) {
+    return (
+      <div className="agents-container agents-container-creator">
+        <AgentCreator
+          draft={currentDraft}
+          notifications={draftNotifications}
+          committing={committing}
+          commitError={commitError}
+          onCommit={handleCommitDraft}
+          onUpdateDraft={handleUpdateDraft}
+          onClose={() => {
+            setCurrentDraft(null);
+            setDraftNotifications([]);
+            setCommitError(null);
+          }}
+        />
+      </div>
+    );
   }
 
   if (loading) {
@@ -252,247 +257,147 @@ function Agents({
         </div>
         <button
           className="btn btn-primary btn-sm"
-          onClick={() => setShowCreate(true)}
+          onClick={() => void handleNewAgent()}
+          disabled={creatingDraft}
         >
           <Plus size={14} />
-          {t("agents.newAgent")}
+          {creatingDraft ? t("agents.creating") : t("agents.newAgent")}
         </button>
       </div>
 
-      {showCreate ? (
-        <div className="agents-create">
-          <input
-            className="input"
-            placeholder={t("agents.namePlaceholder")}
-            value={newName}
-            onChange={(e) => {
-              const value = e.target.value
-                .toLowerCase()
-                .replace(/[^a-z0-9_-]/g, "");
-              setNewName(value);
-              setError("");
-            }}
-            onKeyDown={(e) => e.key === "Enter" && void handleCreate()}
-            autoFocus
-          />
-          <label className="agents-create-clone">
-            <input
-              type="checkbox"
-              checked={copyDefaultConfig}
-              onChange={(e) => setCopyDefaultConfig(e.target.checked)}
-            />
-            <span>{t("agents.cloneConfig")}</span>
-          </label>
-          <div className="agents-inline-model-grid">
-            <label className="agents-model-field">
-              <span>{t("agents.modelProvider")}</span>
-              <div className="agents-model-select-wrap">
-                <select
-                  className="agents-model-select"
-                  value={createProvider}
-                  onChange={(e) => setCreateProvider(e.target.value)}
-                  disabled={creating || createProviders.length === 0}
-                >
-                  {createProviders.length === 0 ? (
-                    <option value="">{t("agents.noModelsAvailable")}</option>
-                  ) : null}
-                  {createProviders.map((provider) => (
-                    <option key={provider} value={provider}>
-                      {provider}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </label>
-            <label className="agents-model-field">
-              <span>{t("agents.modelName")}</span>
-              <div className="agents-model-select-wrap">
-                <select
-                  className="agents-model-select"
-                  value={createModel}
-                  onChange={(e) => setCreateModel(e.target.value)}
-                  disabled={creating || createModels.length === 0}
-                >
-                  {createModels.length === 0 ? (
-                    <option value="">{t("agents.noModelsAvailable")}</option>
-                  ) : null}
-                  {createModels.map((entry) => (
-                    <option
-                      key={`${entry.provider}:${entry.model}`}
-                      value={entry.model}
-                    >
-                      {entry.model}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </label>
-          </div>
-          {createProviders.length === 0 ? (
-            <div className="agents-model-empty">
-              {t("agents.noModelsAvailableHint")}
-            </div>
-          ) : null}
-          {error ? <div className="agents-create-error">{error}</div> : null}
-          <div className="agents-create-actions">
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => void handleCreate()}
-              disabled={creating || !newName.trim()}
-            >
-              {creating ? t("agents.creating") : t("agents.create")}
-            </button>
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => {
-                setShowCreate(false);
-                setError("");
-              }}
-            >
-              {t("common.cancel")}
-            </button>
-          </div>
-        </div>
-      ) : null}
+      {error ? <div className="agents-create-error">{error}</div> : null}
 
       <div className="agents-grid">
-        {profiles.map((profile) => (
-          <div
-            key={profile.name}
-            className={`agents-card ${activeProfile === profile.name ? "active" : ""}`}
-            onClick={() => void handleSelect(profile.name)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void handleSelect(profile.name);
-            }}
-          >
-            <div className="agents-card-header">
-              <AgentAvatar name={profile.name} />
-              <div className="agents-card-info">
-                <div className="agents-card-name">{profile.name}</div>
-                <div className="agents-card-provider">
-                  {providerLabel(profile.provider)}
+        {agents.map((agent) => {
+          const name = displayNameFor(agent);
+          const isActive = activeProfile === agent.name;
+          return (
+            <div
+              key={agent.name}
+              className={`agents-card ${isActive ? "active" : ""}`}
+              onClick={() => void handleSelect(agent)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void handleSelect(agent);
+              }}
+            >
+              <div className="agents-card-header">
+                <AgentAvatar profile={agent} />
+                <div className="agents-card-info">
+                  <div className="agents-card-name">{name}</div>
+                  <div className="agents-card-provider">{providerLabel(agent)}</div>
                 </div>
+                {isActive ? (
+                  <span className="agents-card-active-badge">
+                    {t("agents.active")}
+                  </span>
+                ) : null}
               </div>
-              {activeProfile === profile.name ? (
-                <span className="agents-card-active-badge">
-                  {t("agents.active")}
+              <div className="agents-card-model">
+                {agent.description || t("agents.noDescription")}
+              </div>
+              <div className="agents-card-stats">
+                <span>
+                  {t("agents.packsCount", { count: agent.selectedPackIds.length })}
                 </span>
-              ) : null}
-            </div>
-            <div className="agents-card-model">
-              {profile.model
-                ? profile.model.split("/").pop()
-                : t("agents.noModel")}
-            </div>
-            <div className="agents-card-stats">
-              <span>
-                {t("agents.skillsCount", { count: profile.skillCount })}
-              </span>
-              <span className="agents-card-dot" />
-              {profile.gatewayRunning ? (
-                <span className="agents-card-gateway-on">
-                  {t("agents.gatewayRunning")}
+                <span className="agents-card-dot" />
+                <span>
+                  {t("agents.docsPointersCount", { count: agent.docsPointers.length })}
                 </span>
-              ) : (
-                <span>{t("agents.gatewayOff")}</span>
-              )}
-            </div>
-            <div className="agents-card-footer">
-              <div
-                className="agents-card-actions"
-                role="group"
-                aria-label={t("agents.actionsLabel")}
-              >
-                <button
-                  className="agents-card-action-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setModelProfile(profile);
-                  }}
-                  title={t("agents.configureModel")}
-                  aria-label={t("agents.configureModelFor", {
-                    name: profile.name,
-                  })}
+              </div>
+              <div className="agents-card-footer">
+                <div
+                  className="agents-card-actions"
+                  role="group"
+                  aria-label={t("agents.actionsLabel")}
                 >
-                  <Wrench size={15} />
-                </button>
-                {PROFILE_ACTIONS.map(({ view, icon: Icon, labelKey }) => {
-                  const label = t(labelKey, { name: profile.name });
-                  const available = isProfileActionAvailable(profile, view);
-                  return (
+                  {!agent.immutable ? (
                     <button
-                      key={view}
                       className="agents-card-action-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (available)
-                          void handleProfileAction(profile.name, view);
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setModelAgent(agent);
                       }}
-                      title={label}
-                      aria-label={label}
-                      disabled={!available}
+                      title={t("agents.configureModel")}
+                      aria-label={t("agents.configureModelFor", { name })}
                     >
-                      <Icon size={15} />
+                      <Wrench size={15} />
                     </button>
-                  );
-                })}
+                  ) : null}
+                  {PROFILE_ACTIONS.filter(({ view }) =>
+                    isProfileActionAvailable(agent, view),
+                  ).map(({ view, icon: Icon, labelKey }) => {
+                    const label = t(labelKey, { name });
+                    return (
+                      <button
+                        key={view}
+                        className="agents-card-action-btn"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleProfileAction(agent, view);
+                        }}
+                        title={label}
+                        aria-label={label}
+                      >
+                        <Icon size={15} />
+                      </button>
+                    );
+                  })}
+                </div>
+                {agent.deletable ? (
+                  confirmDelete === agent.name ? (
+                    <div
+                      className="agents-card-confirm-delete"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <span>{t("agents.deleteConfirm")}</span>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleDelete(agent);
+                        }}
+                      >
+                        {t("agents.yes")}
+                      </button>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setConfirmDelete(null);
+                        }}
+                      >
+                        {t("agents.no")}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      className="agents-card-delete"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                          setConfirmDelete(agent.name);
+                      }}
+                      title={t("agents.deleteTitle")}
+                    >
+                      <Trash size={14} />
+                    </button>
+                  )
+                ) : null}
               </div>
-              {!profile.isDefault ? (
-                confirmDelete === profile.name ? (
-                  <div
-                    className="agents-card-confirm-delete"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <span>{t("agents.deleteConfirm")}</span>
-                    <button
-                      className="btn btn-primary btn-sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleDelete(profile.name);
-                      }}
-                    >
-                      {t("agents.yes")}
-                    </button>
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setConfirmDelete(null);
-                      }}
-                    >
-                      {t("agents.no")}
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    className="agents-card-delete"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setConfirmDelete(profile.name);
-                    }}
-                    title={t("agents.deleteTitle")}
-                  >
-                    <Trash size={14} />
-                  </button>
-                )
-              ) : null}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <AgentModelConfigModal
-        profile={modelProfile?.name || ""}
+        profile={modelAgent?.name || ""}
         title={t("agents.configureModelFor", {
-          name: modelProfile?.name || "",
+          name: modelAgent ? displayNameFor(modelAgent) : "",
         })}
-        open={Boolean(modelProfile)}
-        initialProvider={modelProfile?.provider}
-        initialModel={modelProfile?.model}
-        onClose={() => setModelProfile(null)}
-        onSaved={loadProfiles}
+        open={Boolean(modelAgent)}
+        onClose={() => setModelAgent(null)}
+        onSaved={loadAgents}
       />
     </div>
   );

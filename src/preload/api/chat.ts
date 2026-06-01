@@ -2,6 +2,7 @@ import { ipcRenderer } from "electron";
 import type { GenerateChatTitleRequest } from "../../shared/chat-metadata";
 import type { ChatErrorInfo } from "../../shared/codex-auth-recovery";
 import type { LocalChatTraceRequest, TraceEvent, TraceRun } from "../../shared/traces";
+import type { AgentChatOptions } from "../../shared/agents";
 
 export const chatApi = {
   // Chat
@@ -10,8 +11,16 @@ export const chatApi = {
     profile?: string,
     resumeSessionId?: string,
     history?: Array<{ role: string; content: string }>,
+    options?: AgentChatOptions,
   ): Promise<{ response: string; sessionId?: string }> =>
-    ipcRenderer.invoke("send-message", message, profile, resumeSessionId, history),
+    ipcRenderer.invoke(
+      "send-message",
+      message,
+      profile,
+      resumeSessionId,
+      history,
+      options,
+    ),
 
   abortChat: (): Promise<void> => ipcRenderer.invoke("abort-chat"),
 

@@ -1,5 +1,6 @@
 import type React from "react";
 import type { MutableRefObject } from "react";
+import type { AgentChatOptions } from "../../../../../shared/agents";
 import type { ChatActivityGroupStatus, ChatMessage } from "../types";
 import type { ChatPerfTracker } from "./chatPerf";
 
@@ -9,6 +10,7 @@ interface BaseSendFlowContext {
   messages: ChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   profile?: string;
+  chatOptions?: AgentChatOptions;
   beginChatRun: () => number;
   finalizeChatRun: (runSeq: number, status: ChatActivityGroupStatus) => boolean;
   beginActivityGroup: (anchorMessageId: string) => void;
@@ -53,6 +55,18 @@ function errorType(error: unknown): string {
   return error instanceof Error ? error.name : typeof error;
 }
 
+function sendMessageWithOptionalOptions(
+  message: string,
+  profile: string | undefined,
+  resumeSessionId: string | undefined,
+  history: HistoryMessage[],
+  options: AgentChatOptions | undefined,
+): Promise<{ response: string; sessionId?: string }> {
+  return options
+    ? window.hermesAPI.sendMessage(message, profile, resumeSessionId, history, options)
+    : window.hermesAPI.sendMessage(message, profile, resumeSessionId, history);
+}
+
 export async function sendNormalMessage(ctx: NormalSendFlowContext): Promise<void> {
   const userMessage: ChatMessage = { id: `user-${Date.now()}`, role: "user", content: ctx.text };
   const requestSeq = ctx.titleRequestSeqRef.current;
@@ -64,11 +78,12 @@ export async function sendNormalMessage(ctx: NormalSendFlowContext): Promise<voi
   ctx.beginActivityGroup(userMessage.id);
   ctx.onSessionStarted?.();
   try {
-    const result = await window.hermesAPI.sendMessage(
+    const result = await sendMessageWithOptionalOptions(
       ctx.text,
       ctx.profile,
       resumeSessionId,
-      historyMessages
+      historyMessages,
+      ctx.chatOptions,
     );
     ctx.perf.markIpcResolved({
       runSeq,
@@ -122,11 +137,12 @@ export async function sendQuickAskMessage(ctx: QuickAskSendFlowContext): Promise
   ctx.setMessages((prev) => [...prev, userMessage]);
   ctx.beginActivityGroup(userMessage.id);
   try {
-    const result = await window.hermesAPI.sendMessage(
+    const result = await sendMessageWithOptionalOptions(
       `/btw ${ctx.text}`,
       ctx.profile,
       resumeSessionId,
-      historyMessages
+      historyMessages,
+      ctx.chatOptions,
     );
     ctx.perf.markIpcResolved({
       runSeq,
@@ -166,13 +182,13 @@ export function sendApprovalCommand(ctx: ApprovalSendFlowContext): void {
   const runSeq = ctx.beginChatRun();
   ctx.setMessages((prev) => [...prev, userMessage]);
   ctx.beginActivityGroup(userMessage.id);
-  window.hermesAPI
-    .sendMessage(
-      ctx.command,
-      ctx.profile,
-      ctx.getResumeSessionId(),
-      historyFrom(ctx.messages)
-    )
+  sendMessageWithOptionalOptions(
+    ctx.command,
+    ctx.profile,
+    ctx.getResumeSessionId(),
+    historyFrom(ctx.messages),
+    ctx.chatOptions,
+  )
     .then(() => ctx.finalizeChatRun(runSeq, "completed"))
     .catch((error) => {
       if (ctx.finalizeChatRun(runSeq, "failed")) ctx.appendFallbackSendError(error);

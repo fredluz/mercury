@@ -80,7 +80,10 @@ describe("read-only CLI commands", () => {
 
     const agents = await runJson(home, ["agents", "list"]);
     expect(agents.exitCode).toBe(0);
-    expect(agents.json.data.agents.map((profile: { name: string }) => profile.name)).toContain("default");
+    expect(agents.json.data.agents).toEqual(profiles.json.data.profiles);
+    expect(agents.json.data.agents).toContainEqual(
+      expect.objectContaining({ name: "default", displayName: "Mercury", immutable: true, deletable: false }),
+    );
 
     const connection = await runJson(home, ["connection", "get"]);
     expect(connection.exitCode).toBe(0);

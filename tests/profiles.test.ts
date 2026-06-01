@@ -31,7 +31,7 @@ vi.mock("child_process", () => ({
 }));
 
 // Import AFTER the mock so PROFILES_DIR is resolved against TEST_HOME.
-import { createProfile, listProfiles } from "../src/main/profiles";
+import { createProfile, deleteProfile, listProfiles } from "../src/main/profiles";
 
 const PROFILES_DIR = join(TEST_HOME, "profiles");
 
@@ -90,12 +90,25 @@ describe("createProfile", () => {
       "OPENAI_API_KEY",
     );
     expect(existsSync(join(PROFILES_DIR, "copy", "skills"))).toBe(false);
+    expect(existsSync(join(PROFILES_DIR, "copy", "desktop", "profile-agent.json"))).toBe(
+      false,
+    );
   });
 
   it("rejects unsafe profile names before invoking Hermes", () => {
     const result = createProfile("Bad Name", false);
 
     expect(result.success).toBe(false);
+    expect(execFileSyncMock).not.toHaveBeenCalled();
+  });
+
+  it("reuses the raw default-profile guard for deleteProfile", () => {
+    const result = deleteProfile("default");
+
+    expect(result).toEqual({
+      success: false,
+      error: "Cannot delete the default profile",
+    });
     expect(execFileSyncMock).not.toHaveBeenCalled();
   });
 });
@@ -194,6 +207,77 @@ describe("listProfiles", () => {
   it("returns the default profile even when ~/.hermes/profiles/ is empty", async () => {
     const profiles = await listProfiles();
     expect(profiles.find((p) => p.isDefault)).toBeDefined();
+  });
+
+  it("projects the default profile as immutable Mercury regardless of metadata", async () => {
+    mkdirSync(join(TEST_HOME, "desktop"), { recursive: true });
+    writeFileSync(
+      join(TEST_HOME, "desktop", "profile-agent.json"),
+      JSON.stringify({
+        version: 1,
+        displayName: "Not Mercury",
+        description: "Default description",
+        selectedPackIds: ["research"],
+        docsPointers: [{ id: "docs", title: "Docs", path: "docs/index.md" }],
+      }),
+    );
+
+    const profiles = await listProfiles();
+    const def = profiles.find((p) => p.name === "default");
+
+    expect(def).toMatchObject({
+      displayName: "Mercury",
+      kind: "builtin",
+      immutable: true,
+      deletable: false,
+      description: "Default description",
+      selectedPackIds: ["research"],
+      docsPointers: [{ id: "docs", title: "Docs", path: "docs/index.md" }],
+    });
+  });
+
+  it("uses named profile display metadata from desktop/profile-agent.json", async () => {
+    const dir = join(PROFILES_DIR, "research-bot");
+    mkdirSync(join(dir, "desktop"), { recursive: true });
+    writeFileSync(
+      join(dir, "desktop", "profile-agent.json"),
+      JSON.stringify({
+        version: 1,
+        displayName: "Research Bot",
+        description: "Finds sources",
+        selectedPackIds: ["research"],
+        docsPointers: [{ id: "guide", title: "Guide", url: "https://example.test" }],
+      }),
+    );
+
+    const profiles = await listProfiles();
+    const found = profiles.find((p) => p.name === "research-bot");
+
+    expect(found).toMatchObject({
+      displayName: "Research Bot",
+      kind: "custom",
+      immutable: false,
+      deletable: true,
+      description: "Finds sources",
+      selectedPackIds: ["research"],
+      docsPointers: [{ id: "guide", title: "Guide", url: "https://example.test" }],
+    });
+  });
+
+  it("falls back to the backend name when named profile metadata is missing", async () => {
+    mkdirSync(join(PROFILES_DIR, "writer"), { recursive: true });
+
+    const profiles = await listProfiles();
+    const found = profiles.find((p) => p.name === "writer");
+
+    expect(found).toMatchObject({
+      displayName: "writer",
+      kind: "custom",
+      immutable: false,
+      deletable: true,
+      selectedPackIds: [],
+      docsPointers: [],
+    });
   });
 
   it("marks the active profile correctly", async () => {

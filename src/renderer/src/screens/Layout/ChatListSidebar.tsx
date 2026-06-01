@@ -41,10 +41,12 @@ interface AgentGroup {
 }
 
 function fallbackProfile(name: string): ProfileSummary {
+  const profileName = name.trim() || "default";
+  const isDefault = profileName === "default";
   return {
-    name: name.trim() || "default",
+    name: profileName,
     path: "",
-    isDefault: name.trim() === "default" || !name.trim(),
+    isDefault,
     isActive: true,
     model: "",
     provider: "",
@@ -52,6 +54,12 @@ function fallbackProfile(name: string): ProfileSummary {
     hasSoul: false,
     skillCount: 0,
     gatewayRunning: false,
+    displayName: isDefault ? "Mercury" : profileName,
+    kind: isDefault ? "builtin" : "custom",
+    immutable: isDefault,
+    deletable: !isDefault,
+    selectedPackIds: [],
+    docsPointers: [],
   };
 }
 
@@ -81,7 +89,12 @@ function buildAgentGroups(
 
   for (const profile of profiles) {
     const name = profile.name.trim() || "default";
-    groups.set(name, { key: name, name, sessions: [], isUnknown: false });
+    groups.set(name, {
+      key: name,
+      name: profile.displayName || name,
+      sessions: [],
+      isUnknown: false,
+    });
   }
 
   for (const session of sessions) {
@@ -318,7 +331,7 @@ function ChatListSidebar({
               {!group.isUnknown ? (
                 <button
                   className="chat-sidebar-agent-new"
-                  onClick={() => void startNewChat(group.name)}
+                  onClick={() => void startNewChat(group.key)}
                   disabled={startingProfile !== null}
                   title={t("chat.sidebarStartWithAgent", { agent: group.name })}
                 >

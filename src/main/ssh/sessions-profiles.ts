@@ -1,5 +1,7 @@
 import type { SshConfig } from "../ssh-tunnel";
 import type { SessionSummary, SessionMessage, SearchResult } from "../sessions";
+import { isValidProfileName } from "../../shared/profile-identity";
+import type { ProfileAgentMetadata, ProfileInfo } from "../../shared/profiles";
 import { pythonJsonInput, shellQuote, sshExec, sshPython } from "./transport";
 
 // ── Sessions ─────────────────────────────────────────────────────────────────
@@ -173,18 +175,7 @@ print(json.dumps(result[:limit]))
 
 // ── Profiles ─────────────────────────────────────────────────────────────────
 
-export interface SshProfileInfo {
-  name: string;
-  path: string;
-  isDefault: boolean;
-  isActive: boolean;
-  model: string;
-  provider: string;
-  hasEnv: boolean;
-  hasSoul: boolean;
-  skillCount: number;
-  gatewayRunning: boolean;
-}
+export interface SshProfileInfo extends ProfileInfo {}
 
 export async function sshListProfiles(
   config: SshConfig,
@@ -223,36 +214,73 @@ def gw_running(path):
     pid_file = os.path.join(path, "gateway.pid")
     if not os.path.exists(pid_file): return False
     try:
-        pid = int(open(pid_file).read().strip())
+        raw = open(pid_file).read().strip()
+        try:
+            parsed = json.loads(raw)
+            pid = int(parsed.get("pid", raw))
+        except Exception:
+            pid = int(raw)
         os.kill(pid, 0)
         return True
-    except:
+    except Exception:
         return False
 
-# Default profile
-model, provider = read_config(hermes_home)
-profiles.append({
-    "name": "default", "path": hermes_home, "isDefault": True, "isActive": True,
-    "model": model, "provider": provider,
-    "hasEnv": os.path.exists(os.path.join(hermes_home, ".env")),
-    "hasSoul": os.path.exists(os.path.join(hermes_home, "SOUL.md")),
-    "skillCount": count_skills(hermes_home),
-    "gatewayRunning": gw_running(hermes_home)
-})
+def read_metadata(path):
+    metadata_file = os.path.join(path, "desktop", "profile-agent.json")
+    try:
+        data = json.load(open(metadata_file))
+        if not isinstance(data, dict): return {}
+        pointers = []
+        for entry in data.get("docsPointers") or []:
+            if isinstance(entry, dict) and isinstance(entry.get("id"), str) and isinstance(entry.get("title"), str):
+                pointer = {"id": entry.get("id"), "title": entry.get("title")}
+                if isinstance(entry.get("path"), str) and entry.get("path").strip(): pointer["path"] = entry.get("path").strip()
+                if isinstance(entry.get("url"), str) and entry.get("url").strip(): pointer["url"] = entry.get("url").strip()
+                pointers.append(pointer)
+        return {
+            "displayName": data.get("displayName") if isinstance(data.get("displayName"), str) and data.get("displayName").strip() else None,
+            "description": data.get("description") if isinstance(data.get("description"), str) and data.get("description").strip() else None,
+            "selectedPackIds": [x for x in (data.get("selectedPackIds") or []) if isinstance(x, str)],
+            "docsPointers": pointers,
+        }
+    except Exception:
+        return {"selectedPackIds": [], "docsPointers": []}
+
+def active_profile():
+    try:
+        value = open(os.path.join(hermes_home, "active_profile")).read().strip()
+        return value or "default"
+    except Exception:
+        return "default"
+
+def append_profile(name, path, is_default, active):
+    model, provider = read_config(path)
+    metadata = read_metadata(path)
+    profile = {
+        "name": name, "path": path, "isDefault": is_default, "isActive": active == name,
+        "model": model, "provider": provider,
+        "hasEnv": os.path.exists(os.path.join(path, ".env")),
+        "hasSoul": os.path.exists(os.path.join(path, "SOUL.md")),
+        "skillCount": count_skills(path),
+        "gatewayRunning": gw_running(path),
+        "displayName": "Mercury" if is_default else (metadata.get("displayName") or name),
+        "kind": "builtin" if is_default else "custom",
+        "immutable": True if is_default else False,
+        "deletable": False if is_default else True,
+        "selectedPackIds": metadata.get("selectedPackIds") or [],
+        "docsPointers": metadata.get("docsPointers") or [],
+    }
+    if metadata.get("description"): profile["description"] = metadata.get("description")
+    profiles.append(profile)
+
+active = active_profile()
+append_profile("default", hermes_home, True, active)
 
 if os.path.isdir(profiles_dir):
     for name in sorted(os.listdir(profiles_dir)):
+        if name.startswith("."): continue
         p = os.path.join(profiles_dir, name)
-        if not os.path.isdir(p): continue
-        model, provider = read_config(p)
-        profiles.append({
-            "name": name, "path": p, "isDefault": False, "isActive": False,
-            "model": model, "provider": provider,
-            "hasEnv": os.path.exists(os.path.join(p, ".env")),
-            "hasSoul": os.path.exists(os.path.join(p, "SOUL.md")),
-            "skillCount": count_skills(p),
-            "gatewayRunning": gw_running(p)
-        })
+        if os.path.isdir(p): append_profile(name, p, False, active)
 
 print(json.dumps(profiles))
 `;
@@ -272,9 +300,77 @@ print(json.dumps(profiles))
         hasSoul: false,
         skillCount: 0,
         gatewayRunning: false,
+        displayName: "Mercury",
+        kind: "builtin",
+        immutable: true,
+        deletable: false,
+        selectedPackIds: [],
+        docsPointers: [],
       },
     ];
   }
+}
+
+export async function sshWriteProfileAgentMetadata(
+  config: SshConfig,
+  profile: string,
+  metadata: ProfileAgentMetadata,
+): Promise<void> {
+  if (profile !== "default" && !isValidProfileName(profile)) {
+    throw new Error("Profile metadata writes require a valid profile name.");
+  }
+
+  const script = `
+import json, os, sys, traceback
+payload = json.load(sys.stdin)
+profile = payload.get("profile") or "default"
+metadata = payload.get("metadata") or {}
+hermes_home = os.path.expanduser("~/.hermes")
+profile_home = hermes_home if profile == "default" else os.path.join(hermes_home, "profiles", profile)
+metadata_path = os.path.join(profile_home, "desktop", "profile-agent.json")
+
+def clean_string(value):
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+def clean_pointer(entry):
+    if not isinstance(entry, dict): return None
+    pointer_id = clean_string(entry.get("id"))
+    title = clean_string(entry.get("title"))
+    if not pointer_id or not title: return None
+    pointer = {"id": pointer_id, "title": title}
+    path = clean_string(entry.get("path"))
+    url = clean_string(entry.get("url"))
+    if path: pointer["path"] = path
+    if url: pointer["url"] = url
+    return pointer
+
+try:
+    normalized = {"version": 1}
+    display_name = clean_string(metadata.get("displayName"))
+    description = clean_string(metadata.get("description"))
+    if display_name: normalized["displayName"] = display_name
+    if description: normalized["description"] = description
+    normalized["selectedPackIds"] = [x for x in (metadata.get("selectedPackIds") or []) if isinstance(x, str)]
+    normalized["docsPointers"] = [p for p in [clean_pointer(x) for x in (metadata.get("docsPointers") or [])] if p]
+    os.makedirs(os.path.dirname(metadata_path), exist_ok=True)
+    with open(metadata_path, "w") as f:
+        json.dump(normalized, f, indent=2)
+        f.write("\\n")
+    print(json.dumps({"success": True}))
+except Exception as exc:
+    print(json.dumps({"success": False, "error": str(exc) or traceback.format_exc()}))
+`;
+
+  const out = await sshPython(
+    config,
+    script,
+    pythonJsonInput({ profile, metadata }),
+    30000,
+  );
+  const result = JSON.parse(
+    out.trim() || '{"success":false,"error":"Profile metadata write returned no result"}',
+  ) as { success?: boolean; error?: string };
+  if (!result.success) throw new Error(result.error || "Profile metadata write failed");
 }
 
 export interface SshProfileMutationResult {
@@ -282,14 +378,12 @@ export interface SshProfileMutationResult {
   error?: string;
 }
 
-const SSH_PROFILE_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
-
 export async function sshCreateProfile(
   config: SshConfig,
   name: string,
   copyDefaultConfig: boolean,
 ): Promise<SshProfileMutationResult> {
-  if (!SSH_PROFILE_NAME_PATTERN.test(name)) {
+  if (!isValidProfileName(name)) {
     return {
       success: false,
       error:

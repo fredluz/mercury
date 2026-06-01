@@ -43,6 +43,7 @@ export {
   sshListProfiles,
   sshCreateProfile,
   sshDeleteProfile,
+  sshWriteProfileAgentMetadata,
   type SshProfileInfo,
 } from "./ssh/sessions-profiles";
 export {

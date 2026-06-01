@@ -8,6 +8,7 @@ import { registerKnowledgeIpc } from "./knowledge";
 import { registerModelsIpc } from "./models";
 import { registerCronIpc } from "./cron";
 import { registerSystemIpc } from "./system";
+import { registerAgentsIpc } from "./agents";
 import type { IpcRegistrationContext } from "./types";
 
 export function registerIpcHandlers(context: IpcRegistrationContext): void {
@@ -21,6 +22,7 @@ export function registerIpcHandlers(context: IpcRegistrationContext): void {
   registerModelsIpc();
   registerCronIpc();
   registerSystemIpc();
+  registerAgentsIpc(context);
 }
 
 export { abortActiveChat } from "./chat";

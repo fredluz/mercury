@@ -249,6 +249,25 @@ describe("New APIs from v0.8/v0.9 features", () => {
     expect(typeMethods).toContain("recordPerfEvent");
   });
 
+  it("has product agent draft APIs and a single listener", () => {
+    const methods = [
+      "createAgentDraft",
+      "getAgentDraft",
+      "updateAgentDraft",
+      "abandonAgentDraft",
+      "commitAgentDraft",
+      "onAgentDraftChanged",
+    ];
+    for (const method of methods) {
+      expect(preloadMethods).toContain(method);
+      expect(typeMethods).toContain(method);
+    }
+    expect(preloadSrc).toContain('ipcRenderer.invoke("update-agent-draft", request)');
+    expect(preloadSrc.match(/ipcRenderer\.on\("agent-draft-changed", handler\)/g) ?? []).toHaveLength(1);
+    expect(preloadTypes).toContain("AgentDraftChangeEvent");
+    expect(preloadTypes).toContain("options?: AgentChatOptions");
+  });
+
 });
 
 // ─── Legacy APIs still present ──────────────────────────

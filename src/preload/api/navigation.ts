@@ -1,4 +1,5 @@
 import { ipcRenderer } from "electron";
+import type { ProfileInfo } from "../../shared/profiles";
 import type {
   SkillTrainingRun,
   TraceRun,
@@ -84,20 +85,7 @@ export const navigationApi = {
   > => ipcRenderer.invoke("get-session-messages", sessionId, profile),
 
   // Profiles
-  listProfiles: (): Promise<
-    Array<{
-      name: string;
-      path: string;
-      isDefault: boolean;
-      isActive: boolean;
-      model: string;
-      provider: string;
-      hasEnv: boolean;
-      hasSoul: boolean;
-      skillCount: number;
-      gatewayRunning: boolean;
-    }>
-  > => ipcRenderer.invoke("list-profiles"),
+  listProfiles: (): Promise<ProfileInfo[]> => ipcRenderer.invoke("list-profiles"),
 
   createProfile: (
     name: string,

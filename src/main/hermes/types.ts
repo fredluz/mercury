@@ -1,5 +1,6 @@
 import type { ChatErrorInfo } from "../../shared/codex-auth-recovery";
 import type { TraceEventType } from "../../shared/traces";
+import type { AgentDraftChangeEvent } from "../../shared/agents";
 
 export type RuntimeMode = "local" | "ssh" | "remote";
 
@@ -173,6 +174,7 @@ export interface ChatCallbacks {
   onToolProgress?: (tool: string) => void;
   onTraceEvent?: (event: ChatTraceCallbackEvent) => void;
   onDiagnostic?: (event: ChatTransportDiagnostic) => void;
+  onAgentDraftChanged?: (event: AgentDraftChangeEvent) => void;
   onUsage?: (usage: {
     promptTokens: number;
     completionTokens: number;

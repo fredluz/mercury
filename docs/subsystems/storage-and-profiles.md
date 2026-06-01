@@ -17,6 +17,7 @@ Every section describes current behavior. The Sessions API section near the end 
 - Model config and inventory: `src/shared/models.ts`, `src/main/services/hermes-model-inventory-service.ts`, `src/main/services/models-service.ts`, `src/main/models.ts`, `src/shared/chat-metadata.ts`
 - IPC routing: `src/main/ipc/config.ts`, `src/main/ipc/sessions.ts`, `src/main/ipc/knowledge.ts`, `src/main/ipc/models.ts`, `src/main/ipc/system.ts`
 - Shared CLI/IPC services: `src/main/services/config-service.ts`, `src/main/services/sessions-service.ts`, `src/main/services/knowledge-service.ts`, `src/main/services/models-service.ts`, `src/main/services/system-service.ts`, `src/main/services/chat-service.ts`
+- Profile-backed Agent metadata and creation drafts: `src/main/profiles.ts`, `src/main/agent-store.ts`, `src/main/services/agents-service.ts`, `src/shared/profiles.ts`, `src/shared/agents.ts`, `src/shared/agent-packs.ts`
 - Runtime identity and diagnostics: `src/main/hermes/runtime.ts`, `src/main/hermes/types.ts`, `src/shared/runtime.ts`
 - SSH implementations: `src/main/ssh/config.ts`, `src/main/ssh/sessions-profiles.ts`, `src/main/ssh/memory-soul.ts`, `src/main/ssh/runtime.ts`, `src/main/ssh/transport.ts`, `src/main/ssh-tunnel.ts`
 - Contract tests: `tests/profiles.test.ts`, `tests/chat-metadata.test.ts`, `tests/session-cache-sync.test.ts`, `tests/hermes-model-inventory.test.ts`, `tests/hermes-runtime.test.ts`, `tests/cron-runtime.test.ts`, `tests/ssh-remote.test.ts`, `tests/reliable-profile-runtime-contract.test.ts`, `tests/knowledge-service.test.ts`, `tests/toolsets-config.test.ts`
@@ -34,8 +35,9 @@ Current behavior visible from callers:
 - Named profiles are any non-dot directories directly under `<HERMES_HOME>/profiles`; they do not need `config.yaml` or `.env` to be visible in the UI.
 - `<HERMES_HOME>/active_profile` is read to mark `ProfileInfo.isActive`. Missing or blank files default the active profile to `"default"`.
 - SSH implementations mirror this shape with remote paths under `~/.hermes` for default and `~/.hermes/profiles/<profile>` for named profiles.
-- Current implementation: new local and SSH profiles created by Mercury start with skills off because profile creation passes upstream Hermes `--no-skills`. The create-time copy option copies default `config.yaml` and `.env`/API key material only; it does not copy `skills/`, SOUL, memories, state databases, gateway files, or logs. This is not the desired long-term invariant: product direction is to install skills from a future `default` skill category for new Agents while keeping other categories opt-in.
-- Pure remote HTTP mode fails closed for profile create/delete/use mutations because those operations require profile filesystem writes that Mercury cannot safely perform through the remote HTTP runtime.
+- Product Agent drafts commit to backend profiles. Commit creates the profile with upstream Hermes `--no-skills` and copy-default-config behavior, then applies model/persona/memory, exact toolset state, and one selected-pack skill batch through existing services. The create-time copy option copies default `config.yaml` and `.env`/API key material only; it does not copy `skills/`, SOUL, memories, state databases, gateway files, or logs.
+- The Default Agent pack is selected for new drafts as a lean, fully trimmable baseline. Pack membership and docs-pointer selections are persisted as profile-scoped creation/recipe metadata in `<profileHome>/desktop/profile-agent.json`; installed skills and `platform_toolsets` remain the executable profile state.
+- Pure remote HTTP mode fails closed for profile create/delete/use and Agent commit mutations because those operations require profile filesystem writes that Mercury cannot safely perform through the remote HTTP runtime.
 
 ## Storage isolation vs runtime isolation
 
@@ -64,6 +66,8 @@ Current local persistent files used by the documented subsystems include:
 | `<HERMES_HOME>/models.json` | `src/main/models.ts` | Legacy/manual saved model library. It is not seeded when missing and is not the canonical provider-served model catalog. |
 | `<profileHome>/state.db` | `src/main/sessions.ts`, `src/main/session-cache.ts`, `src/main/memory.ts` | Hermes SQLite session/message database read by desktop. |
 | `<HERMES_HOME>/desktop/sessions.json` | `src/main/session-cache.ts` | Desktop session cache with generated titles, row `profile` metadata, global `lastSync`, and per-profile `profileSync`. |
+| `<profileHome>/desktop/profile-agent.json` | `src/main/profiles.ts`, `src/main/services/agents-service.ts`, SSH profile helpers | Profile-scoped Agent display/recipe metadata: display name, description, selected pack ids, and docs-pointer selections. Default profile resolves to `<HERMES_HOME>/desktop/profile-agent.json`, sharing the desktop directory with `sessions.json`. This is not a skill/tool enabled-state store. |
+| `<HERMES_HOME>/desktop/agent-drafts.json` | `src/main/agent-store.ts`, `src/main/services/agents-service.ts` | In-progress Agent creation drafts only: draft revisions/status, proposed profile id/display fields, selected pack ids, docs pointers, tool overrides, and idempotency keys. It is not committed identity. |
 | `<profileHome>/memories/MEMORY.md` | `src/main/memory.ts`, `src/main/ssh/memory-soul.ts` | Memory entries separated by `\n§\n`. |
 | `<profileHome>/memories/USER.md` | `src/main/memory.ts`, `src/main/ssh/memory-soul.ts` | User profile text. |
 | `<profileHome>/SOUL.md` | `src/main/soul.ts`, `src/main/ssh/memory-soul.ts` | Persona/soul text. |
@@ -74,13 +78,13 @@ Current local persistent files used by the documented subsystems include:
 
 Remote SSH equivalents generally use `~/.hermes/...` and `~/.hermes/profiles/<profile>/...` paths.
 
-Skill enabled state is profile filesystem state, not a desktop JSON/app-state flag. The only persisted current enabled state is the presence of skill directories under the selected profile's `skills/` root; renderer pending enable/disable drafts are ephemeral until saved. Future default-category seeding or skill-group recipes should remain distinct from this installed-file truth: recipes can decide which targets to install for a new Agent, but after application the profile's installed files remain the source of truth. Product-direction docs should distinguish future `default` category seeding, which should install for new Agents, from future `inspector-gadget` skills, which remain opt-in/off by default.
+Skill enabled state is profile filesystem state, not a desktop JSON/app-state flag. The only persisted current enabled state is the presence of skill directories under the selected profile's `skills/` root; renderer pending enable/disable drafts are ephemeral until saved. Agent pack recipes are distinct from this installed-file truth: recipes decide which targets to install during new-agent commit, but after application the profile's installed files remain the source of truth. Docs-pointer pack members are stored only in profile-scoped Agent recipe metadata and do not create skill files or affect `skillCount`.
 
 ## CLI storage parity
 
 The CLI does not introduce a separate storage root or schema. Commands run against the same `HERMES_HOME`, `desktop.json`, profile homes, session cache, memory/SOUL files, models, credentials, cron state, and trace store documented here. Profile selection follows the CLI contract: explicit `--profile` / `-p` wins, then `MERCURY_PROFILE`, then the default profile used by shared services.
 
-`profiles` and `agents` are CLI aliases for the same profile-backed workspace identity. `mercury profiles list|create|delete|use` and `mercury agents list|create|delete|use` operate on `src/main/profiles.ts` data, including `<HERMES_HOME>/active_profile`, so the desktop Agents screen and CLI see the same workspace set.
+`profiles` commands remain raw profile operations. `agents` commands are a compatibility alias for the same profile operations; they do not use a separate product-Agent identity store and `agents create` creates a backend profile, not a creation draft. Agent display/recipe metadata is surfaced through extended `ProfileInfo` from `listProfiles()`, while backend profile ids remain the runtime identity.
 
 CLI mutations use the same profile-scoped files and service side effects as IPC/preload:
 
@@ -126,6 +130,56 @@ See [Connection modes](connection-modes.md) for runtime interpretation.
 - sets top-level `streaming:` to `true` when the field exists.
 
 `src/main/ipc/config.ts` restarts local or SSH gateways for selected config changes where it can safely do so and marks affected runtimes stale for changes that require revalidation. Connection-mode changes mark all known runtimes stale because the verified transport identity may no longer match the selected mode.
+
+## Agent metadata and pack membership
+
+Mercury has one committed Agent identity source: Hermes profiles returned by `listProfiles()`. The shared `ProfileInfo` shape is extended with display/recipe fields:
+
+```ts
+{
+  name: string;
+  displayName: string;
+  kind: "builtin" | "custom";
+  immutable: boolean;
+  deletable: boolean;
+  selectedPackIds: string[];
+  docsPointers: AgentDocsPointerSelection[];
+  description?: string;
+}
+```
+
+The backend `default` profile is projected as immutable built-in Agent `Mercury` (`immutable: true`, `deletable: false`) regardless of any metadata file. Named profiles default to custom Agents with `displayName` equal to the profile name when no metadata exists.
+
+Per-Agent display and recipe metadata lives in `<profileHome>/desktop/profile-agent.json`:
+
+```ts
+{
+  version: 1,
+  displayName?: string,
+  description?: string,
+  selectedPackIds?: string[],
+  docsPointers?: AgentDocsPointerSelection[]
+}
+```
+
+For the default profile, `<profileHome>` is `<HERMES_HOME>`, so the file is `<HERMES_HOME>/desktop/profile-agent.json` and shares the `desktop/` directory with `sessions.json`. There is no `<HERMES_HOME>/desktop/agents.json` identity source.
+
+`src/main/agent-store.ts` is draft-only and persists in-progress creation state to `<HERMES_HOME>/desktop/agent-drafts.json`:
+
+```ts
+{
+  version: 1,
+  drafts: Record<draftId, AgentCreationDraft>
+}
+```
+
+Drafts are not identity. They hold proposed profile/display/model/pack/docs/tool/persona inputs plus idempotency keys until commit creates a backend profile and writes profile-scoped metadata.
+
+Selected pack ids and docs pointers are creation/recipe metadata. They explain which pack recipe seeded a profile and which instructional docs were selected; they are not live enabled-state. Installed skill directories under `<profileHome>/skills` and `platform_toolsets` in `config.yaml` remain the executable truth.
+
+Commit persistence writes profile-scoped metadata only after profile creation and model/persona/memory/tool/skill application succeed, then marks the draft committed. If profile creation succeeds but a pre-metadata side effect fails, the commit executor best-effort deletes the created backend profile and leaves no committed metadata. If metadata already exists for an idempotent retry, the service reconciles through the profile listing instead of creating a second profile.
+
+SSH mode reads `desktop/profile-agent.json` for each remote profile during `sshListProfiles()` and writes the same file under the remote profile home during Agent draft commit. Pure remote HTTP mode remains metadata-agnostic: read-only profile listings synthesize display fields (`default` → `Mercury`, named profiles → their names), and profile create/delete/use/Agent commit mutations fail closed because Mercury cannot safely write profile files through the remote HTTP runtime.
 
 ## Toolset configuration
 

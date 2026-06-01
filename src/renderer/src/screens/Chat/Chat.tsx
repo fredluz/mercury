@@ -19,6 +19,7 @@ import {
   type ChatScheduleConversationDraft,
 } from "./scheduleDraft";
 import { useChatController } from "./hooks/useChatController";
+import type { AgentChatOptions } from "../../../../shared/agents";
 import type { ChatMessage } from "./types";
 import type { RuntimeDiagnostic } from "../../../../shared/runtime";
 
@@ -32,6 +33,7 @@ export interface ChatProps {
   sessionTitle?: string | null;
   conversationVersion: number;
   profile?: string;
+  chatOptions?: AgentChatOptions;
   runtimeDiagnostic?: RuntimeDiagnostic | null;
   onRuntimeDiagnosticRefresh?: () => void;
   onSessionStarted?: () => void;
@@ -53,6 +55,7 @@ function Chat({
   sessionTitle,
   conversationVersion,
   profile,
+  chatOptions,
   runtimeDiagnostic,
   onRuntimeDiagnosticRefresh,
   onSessionStarted,
@@ -73,6 +76,7 @@ function Chat({
     sessionTitle,
     conversationVersion,
     profile,
+    chatOptions,
     onSessionStarted,
     onSessionResolved,
     onSessionTitleChange,

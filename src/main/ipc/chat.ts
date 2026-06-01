@@ -6,6 +6,7 @@ import {
   runChatMessage,
 } from "../services/chat-service";
 import type { TraceEvent } from "../../shared/traces";
+import type { AgentChatOptions, AgentDraftChangeEvent } from "../../shared/agents";
 import { isGenerateChatTitleRequest } from "../../shared/chat-metadata";
 import type { IpcRegistrationContext } from "./types";
 
@@ -54,6 +55,13 @@ function sendChatTraceEvent(sender: WebContents, event: TraceEvent): void {
   safeSend(sender, "chat-trace-event", event);
 }
 
+function sendAgentDraftChanged(
+  sender: WebContents,
+  event: AgentDraftChangeEvent,
+): void {
+  safeSend(sender, "agent-draft-changed", event);
+}
+
 export function abortActiveChat(): void {
   abortActiveChatRun("Mercury shut down the active Hermes run.");
 }
@@ -74,12 +82,14 @@ export function registerChatIpc({
       profile?: string,
       resumeSessionId?: string,
       history?: Array<{ role: string; content: string }>,
+      options?: AgentChatOptions,
     ) =>
       runChatMessage({
         message,
         profile,
         resumeSessionId,
         history,
+        options,
         callbacks: {
           onChunk: (chunk) => safeSend(event.sender, "chat-chunk", chunk),
           onDone: (sessionId) => safeSend(event.sender, "chat-done", sessionId || ""),
@@ -88,6 +98,8 @@ export function registerChatIpc({
             else safeSend(event.sender, "chat-error", error);
           },
           onLiveTraceEvent: (traceEvent) => sendChatTraceEvent(event.sender, traceEvent),
+          onAgentDraftChanged: (draftEvent) =>
+            sendAgentDraftChanged(event.sender, draftEvent),
           onToolProgress: (tool) => safeSend(event.sender, "chat-tool-progress", tool),
           onUsage: (usage) => safeSend(event.sender, "chat-usage", usage),
           onCompleted: ({ response, durationMs }) => {

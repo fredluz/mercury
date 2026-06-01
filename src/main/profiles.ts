@@ -1,8 +1,10 @@
 import { execFileSync } from "child_process";
-import { join } from "path";
+import { dirname, join } from "path";
 import { homedir } from "os";
 import { promises as fs } from "fs";
 import { copyFileSync, existsSync } from "fs";
+import { isValidProfileName } from "../shared/profile-identity";
+import type { ProfileAgentMetadata, ProfileInfo } from "../shared/profiles";
 import {
   HERMES_HOME,
   HERMES_PYTHON,
@@ -11,20 +13,9 @@ import {
 } from "./installer";
 
 const PROFILES_DIR = join(HERMES_HOME, "profiles");
-const PROFILE_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+const PROFILE_AGENT_METADATA_VERSION = 1;
 
-export interface ProfileInfo {
-  name: string;
-  path: string;
-  isDefault: boolean;
-  isActive: boolean;
-  model: string;
-  provider: string;
-  hasEnv: boolean;
-  hasSoul: boolean;
-  skillCount: number;
-  gatewayRunning: boolean;
-}
+export type { ProfileAgentMetadata, ProfileInfo } from "../shared/profiles";
 
 async function readProfileConfig(profilePath: string): Promise<{
   model: string;
@@ -140,6 +131,126 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
+export function profileAgentMetadataPath(profilePath: string): string {
+  return join(profilePath, "desktop", "profile-agent.json");
+}
+
+export async function readProfileAgentMetadata(
+  profilePath: string,
+): Promise<ProfileAgentMetadata> {
+  try {
+    const raw = await fs.readFile(profileAgentMetadataPath(profilePath), "utf-8");
+    return normalizeProfileAgentMetadata(JSON.parse(raw) as unknown);
+  } catch {
+    return { version: PROFILE_AGENT_METADATA_VERSION };
+  }
+}
+
+export async function writeProfileAgentMetadata(
+  profilePath: string,
+  metadata: ProfileAgentMetadata,
+): Promise<void> {
+  const normalized = normalizeProfileAgentMetadata(metadata);
+  const filePath = profileAgentMetadataPath(profilePath);
+  await fs.mkdir(dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, `${JSON.stringify(normalized, null, 2)}\n`, "utf-8");
+}
+
+function normalizeProfileAgentMetadata(value: unknown): ProfileAgentMetadata {
+  if (!isRecord(value)) return { version: PROFILE_AGENT_METADATA_VERSION };
+  return {
+    version: PROFILE_AGENT_METADATA_VERSION,
+    ...optionalStringField("displayName", value.displayName),
+    ...optionalStringField("description", value.description),
+    selectedPackIds: stringArray(value.selectedPackIds),
+    docsPointers: docsPointers(value.docsPointers),
+  };
+}
+
+function optionalStringField<K extends "displayName" | "description">(
+  key: K,
+  value: unknown,
+): Partial<Pick<ProfileAgentMetadata, K>> {
+  return typeof value === "string" && value.trim()
+    ? ({ [key]: value.trim() } as Partial<Pick<ProfileAgentMetadata, K>>)
+    : {};
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
+function docsPointers(value: unknown): ProfileAgentMetadata["docsPointers"] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry): NonNullable<ProfileAgentMetadata["docsPointers"]> => {
+    if (!isRecord(entry) || typeof entry.id !== "string" || typeof entry.title !== "string") {
+      return [];
+    }
+    return [
+      {
+        id: entry.id,
+        title: entry.title,
+        ...optionalPointerStringField("path", entry.path),
+        ...optionalPointerStringField("url", entry.url),
+      },
+    ];
+  });
+}
+
+function optionalPointerStringField<K extends "path" | "url">(
+  key: K,
+  value: unknown,
+): Partial<Record<K, string>> {
+  return typeof value === "string" && value.trim() ? { [key]: value.trim() } as Partial<Record<K, string>> : {};
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function profileDisplayFields(
+  name: string,
+  isDefault: boolean,
+  metadata: ProfileAgentMetadata,
+): Pick<
+  ProfileInfo,
+  | "displayName"
+  | "kind"
+  | "immutable"
+  | "deletable"
+  | "description"
+  | "selectedPackIds"
+  | "docsPointers"
+> {
+  if (isDefault) {
+    return {
+      displayName: "Mercury",
+      kind: "builtin",
+      immutable: true,
+      deletable: false,
+      ...optionalProfileDescription(metadata.description),
+      selectedPackIds: [...(metadata.selectedPackIds ?? [])],
+      docsPointers: [...(metadata.docsPointers ?? [])],
+    };
+  }
+
+  return {
+    displayName: metadata.displayName || name,
+    kind: "custom",
+    immutable: false,
+    deletable: true,
+    ...optionalProfileDescription(metadata.description),
+    selectedPackIds: [...(metadata.selectedPackIds ?? [])],
+    docsPointers: [...(metadata.docsPointers ?? [])],
+  };
+}
+
+function optionalProfileDescription(description: string | undefined): Pick<ProfileInfo, "description"> | {} {
+  return description ? { description } : {};
+}
+
 export async function listProfiles(): Promise<ProfileInfo[]> {
   const activeName = await getActiveProfileName();
   const profiles: ProfileInfo[] = [];
@@ -151,12 +262,14 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
     defaultHasSoul,
     defaultSkills,
     defaultGw,
+    defaultMetadata,
   ] = await Promise.all([
     readProfileConfig(HERMES_HOME),
     fileExists(join(HERMES_HOME, ".env")),
     fileExists(join(HERMES_HOME, "SOUL.md")),
     countSkills(HERMES_HOME),
     isGatewayRunning(HERMES_HOME),
+    readProfileAgentMetadata(HERMES_HOME),
   ]);
 
   profiles.push({
@@ -170,6 +283,7 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
     hasSoul: defaultHasSoul,
     skillCount: defaultSkills,
     gatewayRunning: defaultGw,
+    ...profileDisplayFields("default", true, defaultMetadata),
   });
 
   // Named profiles under ~/.hermes/profiles/
@@ -188,13 +302,14 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
         // We deliberately do NOT require config.yaml or .env to exist —
         // a freshly created profile may have neither yet, and filtering on
         // them silently hides it from the UI (issue #19).
-        const [config, hasEnvFile, hasSoul, skillCount, gwRunning] =
+        const [config, hasEnvFile, hasSoul, skillCount, gwRunning, metadata] =
           await Promise.all([
             readProfileConfig(profilePath),
             fileExists(join(profilePath, ".env")),
             fileExists(join(profilePath, "SOUL.md")),
             countSkills(profilePath),
             isGatewayRunning(profilePath),
+            readProfileAgentMetadata(profilePath),
           ]);
 
         return {
@@ -208,6 +323,7 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
           hasSoul: hasSoul,
           skillCount,
           gatewayRunning: gwRunning,
+          ...profileDisplayFields(name, false, metadata),
         } as ProfileInfo;
       });
 
@@ -227,7 +343,7 @@ export function createProfile(
   name: string,
   copyDefaultConfig: boolean,
 ): { success: boolean; error?: string } {
-  if (!PROFILE_NAME_PATTERN.test(name)) {
+  if (!isValidProfileName(name)) {
     return {
       success: false,
       error:
