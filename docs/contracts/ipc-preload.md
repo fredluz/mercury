@@ -94,6 +94,28 @@ Examples by domain:
 - Codex auth/model recovery and models/credentials: `get-codex-auth-status`, `start-codex-device-auth`, `poll-codex-device-auth`, `configure-codex-app-server`, `get-credential-pool`, `set-credential-pool`, `list-models`, `add-model`, `remove-model`, `update-model`.
 - Cron/schedule/system/perf: `list-cron-jobs`, `create-cron-job`, `create-schedule-job`, `update-cron-job`, `remove-cron-job`, `pause-cron-job`, `resume-cron-job`, `trigger-cron-job`, `open-external`, `run-hermes-backup`, `run-hermes-import`, `run-hermes-dump`, `discover-memory-providers`, `list-mcp-servers`, `read-logs`, `get-perf-telemetry-config`, `record-perf-event`. Remote cron HTTP is handled by the internal BFF jobs subclient; local cron file/CLI behavior remains local to main.
 
+#### Skills batch mutation contract
+
+`mutate-skills` is the current batch mutation channel for Skills enable/disable saves. The renderer calls `window.hermesAPI.mutateSkills(targets, profile?)`, preload invokes `"mutate-skills"`, IPC calls `mutateSkillsForProfile(targets, profile?)`, and the service routes to the local executor, SSH executor, or pure-remote fail-closed result:
+
+```text
+window.hermesAPI.mutateSkills(...)
+→ ipcRenderer.invoke("mutate-skills", targets, profile?)
+→ ipcMain.handle("mutate-skills", ...)
+→ mutateSkillsForProfile(...)
+→ local/ssh executor or remote fail-closed result
+```
+
+Contract details:
+
+- `targets` is a `SkillMutationTarget[]` from `src/shared/skills.ts`; each item is `install` or `uninstall` with `name`, optional `category`, optional `directoryName`, and uninstall `path` when the renderer has installed truth.
+- `profile` is optional and follows the same profile/Agent identity rules as other knowledge APIs.
+- `SkillMutationBatchResult.results` must stay ordered to match request targets; the Skills renderer reconciles partial success by index after reloading installed truth.
+- `updated` counts successful changed items, not successful no-ops.
+- Pure remote HTTP mode returns structured per-target failures such as `unsupported-remote-mode` or `invalid-target`; unsupported skill mutation should not throw merely because the mode is remote.
+- Legacy `install-skill` and `uninstall-skill` remain renderer/CLI compatibility channels, but service implementations wrap them into one-target `mutateSkillsForProfile(...)` calls.
+- Renderer code must not call main-process local/SSH skill helpers directly. See [Skills subsystem](../subsystems/skills.md) for draft/save batching, partial failure retention, and import-save-before-import behavior.
+
 ### Chat preload API
 
 `window.hermesAPI` exposes these chat methods from `src/preload/api/chat.ts` and `src/preload/index.d.ts`. Run transport details remain hidden in the main-process BFF; the renderer never receives direct Hermes Gateway credentials or endpoint-level proxy access:

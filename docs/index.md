@@ -27,7 +27,7 @@ Use evergreen docs first when you need to understand or change Mercury. These pa
 - [Codex image generation](subsystems/codex-image-generation.md) — `image_gen` toolset, `openai-codex` provider config, Codex OAuth, `$imagegen` built-in behavior, image artifacts, and Trace Lab validation.
 - [Storage and profiles](subsystems/storage-and-profiles.md) — `HERMES_HOME`, profile scoping, persistent files, sessions, memory, soul, models, and backups/imports.
 - [Memory](memory.md) — built-in and provider memory behavior, profile isolation, autonomous agent memory writes, and verification recipes.
-- [Skills](subsystems/skills.md) — skill listing, content, install/uninstall, Markdown import, local/SSH/remote behavior, and restart warnings.
+- [Skills](subsystems/skills.md) — skill listing, renderer draft/save batching, batch mutation contract, content/metadata, Markdown import with pending-save gating, local/SSH/pure-remote behavior, restart warnings, and future default-category / opt-in `inspector-gadget` / skill-groups seam.
 
 ### Testing
 

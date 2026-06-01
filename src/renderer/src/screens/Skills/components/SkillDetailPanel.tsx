@@ -23,10 +23,9 @@ export interface SelectedSkillDetail {
 
 interface SkillDetailPanelProps {
   detail: SelectedSkillDetail;
-  actionInProgress: string | null;
+  saving: boolean;
   onBack: () => void;
   onDisable: (skill: InstalledSkill) => void;
-  skillKey: (skill: InstalledSkill) => string;
   t: (key: string, options?: Record<string, unknown>) => string;
 }
 
@@ -59,13 +58,11 @@ function MetadataList({
 
 export function SkillDetailPanel({
   detail,
-  actionInProgress,
+  saving,
   onBack,
   onDisable,
-  skillKey,
   t,
 }: SkillDetailPanelProps): React.JSX.Element {
-  const key = skillKey(detail.skill);
   const metadata = detail.metadata;
 
   return (
@@ -83,16 +80,10 @@ export function SkillDetailPanel({
             className="btn btn-secondary btn-sm"
             type="button"
             onClick={() => onDisable(detail.skill)}
-            disabled={actionInProgress === key}
+            disabled={saving}
           >
-            {actionInProgress === key ? (
-              t("skills.removing")
-            ) : (
-              <>
-                <Trash size={13} />
-                {t("skills.disable")}
-              </>
-            )}
+            <Trash size={13} />
+            {t("skills.disable")}
           </button>
           <button className="btn-ghost" type="button" onClick={onBack}>
             <X size={18} />

@@ -9,27 +9,31 @@ export interface InstalledSkill {
   directoryName: string;
 }
 
+type SkillListItemDraftState = {
+  baseEnabled: boolean;
+  enabled: boolean;
+  pendingAction?: "install" | "uninstall";
+};
+
 export type SkillListItem =
-  | {
+  | ({
       source: "installed";
       name: string;
       category: string;
       description: string;
       path: string;
       directoryName: string;
-      enabled: true;
       installedSkill: InstalledSkill;
-    }
-  | {
+    } & SkillListItemDraftState)
+  | ({
       source: "bundled";
       name: string;
       category: string;
       description: string;
       sourceLabel: string;
       directoryName: string;
-      enabled: boolean;
       installedSkill?: InstalledSkill;
-    };
+    } & SkillListItemDraftState);
 
 interface SkillCategorySectionProps {
   category: string;
@@ -37,13 +41,14 @@ interface SkillCategorySectionProps {
   collapsed: boolean;
   enabledCount: number;
   totalCount: number;
-  actionInProgress: string | null;
-  bulkActionInProgress: string | null;
+  pendingCount: number;
+  saving: boolean;
   selectedKey: string | null;
   onToggleCollapsed: (category: string) => void;
   onOpenDetail: (skill: SkillListItem) => void;
   onEnableSkill: (skill: SkillListItem) => void;
   onDisableSkill: (skill: SkillListItem) => void;
+  onUndoPendingChange: (skill: SkillListItem) => void;
   onEnableCategory: (category: string, skills: SkillListItem[]) => void;
   onDisableCategory: (category: string, skills: SkillListItem[]) => void;
   skillKey: (skill: SkillListItem) => string;
@@ -56,19 +61,19 @@ export function SkillCategorySection({
   collapsed,
   enabledCount,
   totalCount,
-  actionInProgress,
-  bulkActionInProgress,
+  pendingCount,
+  saving,
   selectedKey,
   onToggleCollapsed,
   onOpenDetail,
   onEnableSkill,
   onDisableSkill,
+  onUndoPendingChange,
   onEnableCategory,
   onDisableCategory,
   skillKey,
   t,
 }: SkillCategorySectionProps): React.JSX.Element {
-  const isBulkWorking = bulkActionInProgress?.startsWith(`${category}:`) ?? false;
   const hasDisabled = enabledCount < totalCount;
   const hasEnabled = enabledCount > 0;
 
@@ -90,13 +95,18 @@ export function SkillCategorySection({
           <span className="skills-category-count">
             {t("skills.categoryEnabledCount", { enabled: enabledCount, total: totalCount })}
           </span>
+          {pendingCount > 0 && (
+            <span className="skills-category-pending">
+              {t("skills.categoryPendingCount", { count: pendingCount })}
+            </span>
+          )}
         </button>
         <div className="skills-category-actions">
           {hasDisabled && (
             <button
               className="btn btn-secondary btn-sm"
               type="button"
-              disabled={isBulkWorking}
+              disabled={saving}
               onClick={() => onEnableCategory(category, skills)}
             >
               {t("skills.enableAll")}
@@ -106,7 +116,7 @@ export function SkillCategorySection({
             <button
               className="btn btn-secondary btn-sm"
               type="button"
-              disabled={isBulkWorking}
+              disabled={saving}
               onClick={() => onDisableCategory(category, skills)}
             >
               {hasDisabled ? t("skills.disableEnabled") : t("skills.disableAll")}
@@ -119,28 +129,45 @@ export function SkillCategorySection({
         <div className="skills-category-body">
           {skills.map((skill) => {
             const key = skillKey(skill);
-            const isActioning = actionInProgress === key;
-            const canViewDetails = Boolean(skill.installedSkill);
+            const isPending = Boolean(skill.pendingAction);
+            const canViewDetails = Boolean(skill.installedSkill) && skill.pendingAction !== "uninstall";
+            const badgeClass = skill.pendingAction
+              ? skill.pendingAction === "install"
+                ? "skills-badge-pending-enable"
+                : "skills-badge-pending-disable"
+              : skill.enabled
+                ? "skills-badge-enabled"
+                : "skills-badge-disabled";
+            const badgeText = skill.pendingAction
+              ? skill.pendingAction === "install"
+                ? t("skills.pendingEnableBadge")
+                : t("skills.pendingDisableBadge")
+              : skill.enabled
+                ? t("skills.enabledBadge")
+                : t("skills.disabledBadge");
             return (
               <div
                 key={key}
-                className={`skills-row ${selectedKey === key ? "skills-row-selected" : ""}`}
+                className={`skills-row ${selectedKey === key ? "skills-row-selected" : ""} ${
+                  isPending ? "skills-row-pending" : ""
+                }`}
               >
                 <div className="skills-row-main">
                   <div className="skills-row-titleline">
                     <div className="skills-card-name">{skill.name}</div>
-                    <span
-                      className={skill.enabled ? "skills-badge-enabled" : "skills-badge-disabled"}
-                    >
-                      {skill.enabled ? t("skills.enabledBadge") : t("skills.disabledBadge")}
-                    </span>
+                    <span className={badgeClass}>{badgeText}</span>
                   </div>
                   {skill.description && (
                     <div className="skills-card-description">{skill.description}</div>
                   )}
-                  {!canViewDetails && (
+                  {!skill.installedSkill && (
                     <div className="skills-row-note">
                       {t("skills.detailUnavailableForBundled")}
+                    </div>
+                  )}
+                  {skill.pendingAction === "uninstall" && (
+                    <div className="skills-row-note">
+                      {t("skills.detailUnavailablePendingDisable")}
                     </div>
                   )}
                 </div>
@@ -150,41 +177,39 @@ export function SkillCategorySection({
                       className="btn btn-secondary btn-sm"
                       type="button"
                       onClick={() => onOpenDetail(skill)}
+                      disabled={saving}
                     >
                       {t("skills.details")}
                     </button>
                   )}
-                  {skill.enabled ? (
+                  {isPending ? (
                     <button
                       className="btn btn-secondary btn-sm"
                       type="button"
-                      disabled={isActioning || isBulkWorking}
+                      disabled={saving}
+                      onClick={() => onUndoPendingChange(skill)}
+                    >
+                      {t("skills.undoPendingChange")}
+                    </button>
+                  ) : skill.enabled ? (
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      type="button"
+                      disabled={saving}
                       onClick={() => onDisableSkill(skill)}
                     >
-                      {isActioning ? (
-                        t("skills.removing")
-                      ) : (
-                        <>
-                          <Trash size={13} />
-                          {t("skills.disable")}
-                        </>
-                      )}
+                      <Trash size={13} />
+                      {t("skills.disable")}
                     </button>
                   ) : (
                     <button
                       className="btn btn-primary btn-sm"
                       type="button"
-                      disabled={isActioning || isBulkWorking}
+                      disabled={saving}
                       onClick={() => onEnableSkill(skill)}
                     >
-                      {isActioning ? (
-                        t("skills.installing")
-                      ) : (
-                        <>
-                          <Download size={13} />
-                          {t("skills.enable")}
-                        </>
-                      )}
+                      <Download size={13} />
+                      {t("skills.enable")}
                     </button>
                   )}
                 </div>

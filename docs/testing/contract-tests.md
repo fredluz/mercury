@@ -18,6 +18,7 @@ This document maps Mercury's current contract tests and deterministic contract c
 - System runtime revalidation: `tests/system-service.test.ts`
 - Trace-store persistence and skill-training derivation: `tests/trace-store.test.ts`
 - Manual Markdown skill import: `tests/skills-import.test.ts`
+- Skills renderer draft/save UX: `src/renderer/src/screens/Skills/Skills.test.tsx`
 - Skill batch mutation: `tests/skills-mutation.test.ts`
 - Session cache sync: `tests/session-cache-sync.test.ts`
 - Profile discovery: `tests/profiles.test.ts`
@@ -373,6 +374,33 @@ Run this test when changing:
 - Local slash-command trace creation in `src/main/ipc/chat.ts`
 - Trace Lab assumptions about skill-training runs
 
+### `src/renderer/src/screens/Skills/Skills.test.tsx`
+
+Protects the Skills screen draft/save UX contract.
+
+Current assertions:
+
+- Skills render grouped by category and category sections collapse.
+- Row/category enable/disable actions stage pending changes without immediate backend mutation.
+- Save emits one flat ordered `mutateSkills(targets, profile?)` batch.
+- Discard clears pending draft state and returns to installed truth.
+- Partial batch failures clear successful reflected changes and retain failed changes.
+- Thrown save errors retain pending changes.
+- Duplicate display-name cases target by directory/path identity rather than display name alone.
+- Detail view loads Markdown/metadata/Agents-using-skill and detail Disable stages an uninstall target.
+- Refresh/reload rebases pending state against installed truth.
+- Manual Markdown import saves pending changes first and aborts import when that pending save fails.
+
+Run this test when changing:
+
+- `src/renderer/src/screens/Skills/Skills.tsx`
+- `src/renderer/src/screens/Skills/components/SkillCategorySection.tsx`
+- `src/renderer/src/screens/Skills/components/SkillDetailPanel.tsx`
+- `src/renderer/src/screens/Skills/components/SkillModals.tsx`
+- `src/renderer/src/assets/styles/skills.css`
+- `src/shared/i18n/locales/*/skills.ts`
+- Renderer-visible behavior of `mutateSkills`, `listInstalledSkills`, `listBundledSkills`, `getSkillContent`, `getSkillMetadata`, or `importSkillMarkdown`
+
 ### `tests/skills-import.test.ts`
 
 Protects manual Markdown skill import behavior.
@@ -386,6 +414,8 @@ Current assertions:
 - Duplicate skills are rejected unless `overwrite` is enabled.
 - Existing frontmatter is normalized while the Markdown body is preserved.
 - Inline dashes inside frontmatter values are not treated as the closing delimiter.
+- Local `getSkillMetadata()` discovers immediate `scripts/` and `references/` entries used by the Skills detail panel.
+- The import path remains compatible with the renderer flow that saves pending enable/disable drafts before import.
 
 Run this test when changing:
 
@@ -405,7 +435,12 @@ Current assertions:
 - Local toolset toggles are treated as next-message config writes and do not mark the profile runtime stale or query gateway status.
 - SSH toolset toggles follow the same next-message config-write policy and do not mark the profile runtime stale or query gateway status.
 - Profile memory mutations still mark the selected profile runtime stale.
-- Skill batch mutations mark the selected profile runtime stale once when at least one target changes, preserve partial failures, and fail closed in pure remote HTTP mode.
+- Skill batch mutations run through the per-profile service queue.
+- Skill batch mutations mark the selected profile runtime stale once when at least one target changes.
+- Partial skill failures are preserved in the ordered batch result.
+- Empty, all-failure, and all-no-op skill batches do not mark runtime stale.
+- Pure remote HTTP skill mutation fails closed without local/SSH side effects.
+- SSH skill batches route through `sshMutateSkills`.
 
 Run this test when changing:
 
@@ -472,7 +507,7 @@ Protects profile discovery and active-profile marking.
 
 Current assertions:
 
-- Profile creation passes upstream Hermes `--no-skills`; clone/config-copy mode copies only default config/API key files and excludes skills.
+- Current implementation: profile creation passes upstream Hermes `--no-skills`; clone/config-copy mode copies only default config/API key files and excludes skills. Treat this as current regression coverage, not a long-term product invariant; future default-category skill seeding for new Agents should update these assertions and docs together.
 - Profile directories are listed even when they have neither `config.yaml` nor `.env`.
 - Profiles with only `.env` expose `hasEnv`.
 - Profiles with only `config.yaml` expose parsed provider/model metadata.
@@ -544,7 +579,7 @@ Protects SSH remote config-write validation and profile/skill command safety bef
 Current assertions:
 
 - `sshSetConfigValue()` rejects quote, backslash, newline, and carriage-return values before issuing remote config writes.
-- SSH profile creation uses singular `hermes profile create`, passes `--no-skills`, and does not hide failures behind a `mkdir -p` fallback.
+- SSH profile creation uses singular `hermes profile create`, currently passes `--no-skills`, and does not hide failures behind a `mkdir -p` fallback. Future default-category skill seeding should remain an explicit post-create behavior, not an implicit profile-create fallback.
 - SSH skill mutations preserve profile-aware command routing and exact-target uninstall safety.
 
 Run this test when changing:

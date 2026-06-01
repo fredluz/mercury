@@ -14,8 +14,6 @@ import {
 import { useI18n } from "../../components/useI18n";
 import type {
   SkillMarkdownImportRequest,
-  SkillMutationBatchResult,
-  SkillMutationItemResult,
   SkillMutationTarget,
 } from "../../../../shared/skills";
 
@@ -39,11 +37,24 @@ interface SkillsProps {
 
 type Tab = "installed" | "browse";
 
+type PendingSkillChange = {
+  key: string;
+  action: "install" | "uninstall";
+  target: SkillMutationTarget;
+  name: string;
+  category?: string;
+  directoryName?: string;
+  sequence: number;
+};
+
+type PendingSkillChanges = Record<string, PendingSkillChange>;
+
 type GroupedSkills = Array<{
   category: string;
   skills: SkillListItem[];
   enabledCount: number;
   totalCount: number;
+  pendingCount: number;
 }>;
 
 function normalizePart(value: string): string {
@@ -96,18 +107,12 @@ function groupSkills(skills: SkillListItem[]): GroupedSkills {
       skills: group.sort((a, b) => a.name.localeCompare(b.name)),
       enabledCount: group.filter((skill) => skill.enabled).length,
       totalCount: group.length,
+      pendingCount: group.filter((skill) => Boolean(skill.pendingAction)).length,
     }));
 }
 
 function selectedProfileName(profile?: string): string {
   return profile || "default";
-}
-
-function mutationFailureDetails(result: SkillMutationBatchResult): string {
-  return result.results
-    .filter((item): item is Extract<SkillMutationItemResult, { success: false }> => !item.success)
-    .map((item) => `${skillTargetLabel(item.target)}: ${item.error}`)
-    .join("; ");
 }
 
 function installTargetForSkill(skill: SkillListItem): SkillMutationTarget {
@@ -135,16 +140,87 @@ function uninstallTargetForSkill(skill: SkillListItem | InstalledSkill): SkillMu
   };
 }
 
-function mutationResultDisablesSkill(
-  result: SkillMutationBatchResult,
-  skill: InstalledSkill,
+function targetMatchesInstalledSkill(target: SkillMutationTarget, skill: InstalledSkill): boolean {
+  if (target.path && target.path === skill.path) return true;
+  return skillIdentityKey(target) === skillIdentityKey(skill);
+}
+
+function targetSatisfiedByInstalledList(
+  target: SkillMutationTarget,
+  installedSkills: InstalledSkill[],
 ): boolean {
-  return result.results.some((item) => {
-    if (!item.success || item.action !== "uninstall") return false;
-    const target = item.target;
-    if (target.path && target.path === skill.path) return true;
-    return skillIdentityKey(target) === skillIdentityKey(skill);
-  });
+  if (target.action === "install") {
+    return installedSkills.some((skill) => skillIdentityKey(skill) === skillIdentityKey(target));
+  }
+
+  if (target.path) {
+    return !installedSkills.some((skill) => skill.path === target.path);
+  }
+
+  return !installedSkills.some((skill) => skillIdentityKey(skill) === skillIdentityKey(target));
+}
+
+function installedMatchForTarget(
+  target: SkillMutationTarget,
+  installedSkills: InstalledSkill[],
+): InstalledSkill | undefined {
+  if (target.path) {
+    const byPath = installedSkills.find((skill) => skill.path === target.path);
+    if (byPath) return byPath;
+  }
+  return installedSkills.find((skill) => skillIdentityKey(skill) === skillIdentityKey(target));
+}
+
+function rebasePendingSkillChanges(
+  pending: PendingSkillChanges,
+  installedSkills: InstalledSkill[],
+): PendingSkillChanges {
+  const next: PendingSkillChanges = {};
+  for (const change of Object.values(pending)) {
+    if (targetSatisfiedByInstalledList(change.target, installedSkills)) continue;
+
+    if (change.action === "uninstall") {
+      const freshInstalled = installedMatchForTarget(change.target, installedSkills);
+      next[change.key] = freshInstalled
+        ? {
+            ...change,
+            target: {
+              ...change.target,
+              name: freshInstalled.name,
+              category: freshInstalled.category,
+              directoryName: freshInstalled.directoryName,
+              path: freshInstalled.path,
+            },
+          }
+        : change;
+    } else {
+      next[change.key] = change;
+    }
+  }
+  return next;
+}
+
+function pendingKeyCandidates(skill: SkillListItem | InstalledSkill): string[] {
+  if ("source" in skill) {
+    const keys = [skill.installedSkill ? skillIdentityKey(skill.installedSkill) : "", skillIdentityKey(skill)];
+    return Array.from(new Set(keys.filter(Boolean)));
+  }
+  return [skillIdentityKey(skill)];
+}
+
+function pendingKeyForSkill(skill: SkillListItem | InstalledSkill): string {
+  return pendingKeyCandidates(skill)[0] ?? skillIdentityKey(skill);
+}
+
+function pendingForSkill(
+  skill: SkillListItem | InstalledSkill,
+  pendingChanges: PendingSkillChanges,
+): PendingSkillChange | undefined {
+  for (const key of pendingKeyCandidates(skill)) {
+    const change = pendingChanges[key];
+    if (change) return change;
+  }
+  return undefined;
 }
 
 function Skills({ profile }: SkillsProps): React.JSX.Element {
@@ -152,13 +228,13 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
   const [tab, setTab] = useState<Tab>("installed");
   const [installedSkills, setInstalledSkills] = useState<InstalledSkill[]>([]);
   const [bundledSkills, setBundledSkills] = useState<BundledSkill[]>([]);
+  const [pendingSkillChanges, setPendingSkillChanges] = useState<PendingSkillChanges>({});
+  const [savingDraft, setSavingDraft] = useState(false);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [selectedDetail, setSelectedDetail] = useState<SelectedSkillDetail | null>(null);
-  const [actionInProgress, setActionInProgress] = useState<string | null>(null);
-  const [bulkActionInProgress, setBulkActionInProgress] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [importOpen, setImportOpen] = useState(false);
@@ -171,10 +247,21 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
   const [importError, setImportError] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const detailRequestRef = useRef(0);
+  const draftSequenceRef = useRef(0);
 
-  const loadInstalled = useCallback(async (): Promise<void> => {
+  const pendingChanges = useMemo(
+    () => Object.values(pendingSkillChanges).sort((a, b) => a.sequence - b.sequence),
+    [pendingSkillChanges],
+  );
+  const pendingCount = pendingChanges.length;
+  const pendingEnableCount = pendingChanges.filter((change) => change.action === "install").length;
+  const pendingDisableCount = pendingChanges.filter((change) => change.action === "uninstall").length;
+
+  const loadInstalled = useCallback(async (): Promise<InstalledSkill[]> => {
     const list = await window.hermesAPI.listInstalledSkills(profile);
     setInstalledSkills(list);
+    setPendingSkillChanges((current) => rebasePendingSkillChanges(current, list));
+    return list;
   }, [profile]);
 
   const loadBundled = useCallback(async (): Promise<void> => {
@@ -195,6 +282,8 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
   }, [loadInstalled, loadBundled, t]);
 
   useEffect(() => {
+    setPendingSkillChanges({});
+    setSelectedDetail(null);
     void Promise.resolve().then(() => loadAll());
   }, [loadAll]);
 
@@ -238,8 +327,12 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
 
   async function handleViewDetail(skill: SkillListItem): Promise<void> {
     const installedSkill = skill.installedSkill;
-    if (!installedSkill) {
-      setNotice(t("skills.detailUnavailableForBundled"));
+    if (!installedSkill || skill.pendingAction === "uninstall") {
+      setNotice(
+        skill.pendingAction === "uninstall"
+          ? t("skills.detailUnavailablePendingDisable")
+          : t("skills.detailUnavailableForBundled"),
+      );
       return;
     }
 
@@ -304,101 +397,180 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
     });
   }
 
-  async function handleInstallSkill(skill: SkillListItem): Promise<void> {
-    const key = skillActionKey(skill);
-    setActionInProgress(key);
-    setError("");
-    setNotice("");
-    try {
-      const result = await window.hermesAPI.mutateSkills([installTargetForSkill(skill)], profile);
-      const item = result.results[0];
-      if (item?.success) {
-        await loadInstalled();
-        setNotice(t("skills.skillEnabled", { name: skill.name }));
-      } else {
-        setError(item?.error || mutationFailureDetails(result) || t("skills.installFailed"));
-      }
-    } catch (err) {
-      setError(errorMessage(err, t("skills.operationFailed")));
-    } finally {
-      setActionInProgress(null);
-    }
+  function removePendingForSkill(skill: SkillListItem | InstalledSkill): void {
+    const keys = pendingKeyCandidates(skill);
+    setPendingSkillChanges((current) => {
+      const next = { ...current };
+      for (const key of keys) delete next[key];
+      return next;
+    });
   }
 
-  async function handleDisableSkill(skill: SkillListItem | InstalledSkill): Promise<void> {
-    const installedSkill = installedTargetFromSkill(skill);
-    const target = uninstallTargetForSkill(skill);
-    const targetName = installedSkill?.name || skill.name;
-    const key = skillActionKey(skill);
-    setActionInProgress(key);
+  function stageSkillEnabledState(skill: SkillListItem | InstalledSkill, desiredEnabled: boolean): void {
+    const baseEnabled = "source" in skill ? skill.baseEnabled : true;
+    const key = pendingKeyForSkill(skill);
     setError("");
     setNotice("");
-    if (!target) {
-      setError(t("skills.uninstallFailed"));
-      setActionInProgress(null);
+
+    if (desiredEnabled === baseEnabled) {
+      removePendingForSkill(skill);
       return;
     }
-    try {
-      const result = await window.hermesAPI.mutateSkills([target], profile);
-      const item = result.results[0];
-      if (item?.success) {
-        if (selectedDetail && mutationResultDisablesSkill(result, selectedDetail.skill)) {
-          setSelectedDetail(null);
-        }
-        await loadInstalled();
-        setNotice(t("skills.skillDisabled", { name: targetName }));
-      } else {
-        setError(item?.error || mutationFailureDetails(result) || t("skills.uninstallFailed"));
+
+    const target = desiredEnabled
+      ? installTargetForSkill(skill as SkillListItem)
+      : uninstallTargetForSkill(skill);
+
+    if (!target) {
+      removePendingForSkill(skill);
+      if (desiredEnabled) {
+        setError(t("skills.installFailed"));
       }
-    } catch (err) {
-      setError(errorMessage(err, t("skills.operationFailed")));
-    } finally {
-      setActionInProgress(null);
+      return;
+    }
+
+    if (!desiredEnabled && selectedDetail && targetMatchesInstalledSkill(target, selectedDetail.skill)) {
+      setSelectedDetail(null);
+    }
+
+    const sequence = draftSequenceRef.current + 1;
+    draftSequenceRef.current = sequence;
+    setPendingSkillChanges((current) => ({
+      ...current,
+      [key]: {
+        key,
+        action: target.action,
+        target,
+        name: target.name,
+        category: target.category,
+        directoryName: target.directoryName,
+        sequence,
+      },
+    }));
+  }
+
+  function handleInstallSkill(skill: SkillListItem): void {
+    stageSkillEnabledState(skill, true);
+  }
+
+  function handleDisableSkill(skill: SkillListItem | InstalledSkill): void {
+    stageSkillEnabledState(skill, false);
+  }
+
+  function handleCategoryAction(
+    _category: string,
+    skills: SkillListItem[],
+    action: "enable" | "disable",
+  ): void {
+    const desiredEnabled = action === "enable";
+    for (const skill of skills) {
+      if (skill.enabled !== desiredEnabled) {
+        stageSkillEnabledState(skill, desiredEnabled);
+      }
     }
   }
 
-  async function handleCategoryAction(
-    category: string,
-    skills: SkillListItem[],
-    action: "enable" | "disable",
-  ): Promise<void> {
-    const skillsToMutate = skills.filter((skill) => (action === "enable" ? !skill.enabled : skill.enabled));
-    const targets = skillsToMutate
-      .map((skill) => (action === "enable" ? installTargetForSkill(skill) : uninstallTargetForSkill(skill)))
-      .filter((target): target is SkillMutationTarget => target !== null);
-    if (targets.length === 0) return;
+  async function savePendingChanges(): Promise<boolean> {
+    if (savingDraft) return false;
+    const changes = Object.values(pendingSkillChanges).sort((a, b) => a.sequence - b.sequence);
+    if (changes.length === 0) return true;
 
-    setBulkActionInProgress(`${category}:${action}`);
+    setSavingDraft(true);
     setError("");
     setNotice("");
 
     try {
-      const result = await window.hermesAPI.mutateSkills(targets, profile);
-      let loadError = "";
+      const result = await window.hermesAPI.mutateSkills(
+        changes.map((change) => change.target),
+        profile,
+      );
+
+      let refreshedInstalled: InstalledSkill[];
       try {
-        await loadInstalled();
+        refreshedInstalled = await window.hermesAPI.listInstalledSkills(profile);
+        setInstalledSkills(refreshedInstalled);
       } catch (err) {
-        loadError = errorMessage(err, t("skills.loadFailed"));
+        setError(errorMessage(err, t("skills.loadFailed")));
+        return false;
       }
 
-      if (action === "disable" && selectedDetail && mutationResultDisablesSkill(result, selectedDetail.skill)) {
-        setSelectedDetail(null);
-      }
+      const failedKeys = new Set<string>();
+      const failureMessages: string[] = [];
+
+      changes.forEach((change, index) => {
+        const item = result.results[index];
+        if (!item) {
+          failedKeys.add(change.key);
+          failureMessages.push(
+            `${skillTargetLabel(change.target)}: ${t("skills.pendingSaveMissingResult")}`,
+          );
+          return;
+        }
+
+        if (!item.success) {
+          failedKeys.add(change.key);
+          failureMessages.push(`${skillTargetLabel(item.target)}: ${item.error}`);
+          return;
+        }
+
+        if (!targetSatisfiedByInstalledList(change.target, refreshedInstalled)) {
+          failedKeys.add(change.key);
+          failureMessages.push(
+            `${skillTargetLabel(change.target)}: ${t("skills.pendingSaveNotReflected")}`,
+          );
+        }
+      });
+
+      setPendingSkillChanges((current) => {
+        const failedPending: PendingSkillChanges = {};
+        const pendingToRebase: PendingSkillChanges = {};
+        const attemptedKeys = new Set(changes.map((change) => change.key));
+        for (const [key, change] of Object.entries(current)) {
+          if (failedKeys.has(key)) {
+            failedPending[key] = change;
+          } else if (!attemptedKeys.has(key)) {
+            pendingToRebase[key] = change;
+          }
+        }
+        return {
+          ...rebasePendingSkillChanges(pendingToRebase, refreshedInstalled),
+          ...failedPending,
+        };
+      });
+
       if (result.updated > 0) {
-        setNotice(t("skills.bulkActionSucceeded", { count: result.updated }));
+        setNotice(t("skills.pendingSaved", { count: result.updated }));
+      } else if (failureMessages.length === 0) {
+        setNotice(t("skills.pendingNoChanges"));
       }
-      const failureDetails = mutationFailureDetails(result);
-      if (failureDetails || loadError) {
-        const messages = [
-          failureDetails ? t("skills.bulkActionFailedDetailed", { details: failureDetails }) : "",
-          loadError,
-        ].filter(Boolean);
-        setError(messages.join(" "));
+
+      if (failureMessages.length > 0) {
+        setError(t("skills.pendingSaveFailedDetailed", { details: failureMessages.join("; ") }));
+        return false;
       }
+
+      return true;
     } catch (err) {
       setError(errorMessage(err, t("skills.operationFailed")));
+      return false;
     } finally {
-      setBulkActionInProgress(null);
+      setSavingDraft(false);
+    }
+  }
+
+  async function handleSaveDraft(): Promise<void> {
+    await savePendingChanges();
+  }
+
+  async function handleDiscardDraft(): Promise<void> {
+    setPendingSkillChanges({});
+    setSelectedDetail(null);
+    setError("");
+    setNotice(t("skills.pendingDiscarded"));
+    try {
+      await loadInstalled();
+    } catch (err) {
+      setError(errorMessage(err, t("skills.loadFailed")));
     }
   }
 
@@ -407,6 +579,16 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
     setError("");
     setNotice("");
     setImportError("");
+
+    if (Object.keys(pendingSkillChanges).length > 0) {
+      const saved = await savePendingChanges();
+      if (!saved) {
+        setImportError(t("skills.importPendingSaveFailed"));
+        setImporting(false);
+        return;
+      }
+    }
+
     const request: SkillMarkdownImportRequest = {
       markdown: importMarkdown,
       name: importName.trim() || undefined,
@@ -431,6 +613,7 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
       setImportError("");
       setSelectedDetail(null);
       setTab("installed");
+      setPendingSkillChanges({});
       await loadInstalled();
       setNotice(
         result.warning === "gateway-restart-required"
@@ -446,17 +629,22 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
 
   const installedItems: SkillListItem[] = useMemo(
     () =>
-      installedSkills.map((skill) => ({
-        source: "installed",
-        name: skill.name,
-        category: skill.category,
-        description: skill.description,
-        path: skill.path,
-        directoryName: skill.directoryName,
-        enabled: true,
-        installedSkill: skill,
-      })),
-    [installedSkills],
+      installedSkills.map((skill) => {
+        const pending = pendingForSkill(skill, pendingSkillChanges);
+        return {
+          source: "installed",
+          name: skill.name,
+          category: skill.category,
+          description: skill.description,
+          path: skill.path,
+          directoryName: skill.directoryName,
+          baseEnabled: true,
+          enabled: pending ? pending.action === "install" : true,
+          pendingAction: pending?.action,
+          installedSkill: skill,
+        };
+      }),
+    [installedSkills, pendingSkillChanges],
   );
 
   const bundledItems: SkillListItem[] = useMemo(
@@ -467,6 +655,21 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
           (installed) =>
             !installed.category && normalizePart(installed.name) === normalizePart(skill.name),
         );
+        const baseEnabled = Boolean(fallbackInstalled);
+        const pending = pendingForSkill(
+          {
+            source: "bundled",
+            name: skill.name,
+            category: skill.category,
+            description: skill.description,
+            sourceLabel: skill.source,
+            directoryName: skill.directoryName,
+            baseEnabled,
+            enabled: baseEnabled,
+            installedSkill: fallbackInstalled,
+          },
+          pendingSkillChanges,
+        );
         return {
           source: "bundled",
           name: skill.name,
@@ -474,11 +677,13 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
           description: skill.description,
           sourceLabel: skill.source,
           directoryName: skill.directoryName,
-          enabled: Boolean(fallbackInstalled),
+          baseEnabled,
+          enabled: pending ? pending.action === "install" : baseEnabled,
+          pendingAction: pending?.action,
           installedSkill: fallbackInstalled,
         };
       }),
-    [bundledSkills, installedByKey, installedSkills],
+    [bundledSkills, installedByKey, installedSkills, pendingSkillChanges],
   );
 
   const filteredInstalled = installedItems.filter((skill) => {
@@ -561,11 +766,12 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
               setImportError("");
               setImportOpen(true);
             }}
+            disabled={savingDraft}
           >
             <Plus size={14} />
             {t("skills.importMarkdownAction")}
           </button>
-          <button className="btn btn-secondary btn-sm" onClick={loadAll}>
+          <button className="btn btn-secondary btn-sm" onClick={loadAll} disabled={savingDraft}>
             <Refresh size={14} />
             {t("skills.refresh")}
           </button>
@@ -590,13 +796,45 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
         </div>
       )}
 
+      {pendingCount > 0 && (
+        <div className="skills-draft-bar">
+          <div className="skills-draft-copy">
+            <div className="skills-draft-title">{t("skills.pendingChanges")}</div>
+            <div className="skills-draft-summary">
+              {t("skills.pendingSummary", {
+                enable: pendingEnableCount,
+                disable: pendingDisableCount,
+              })}
+            </div>
+            <div className="skills-draft-help">{t("skills.pendingHelp")}</div>
+          </div>
+          <div className="skills-draft-actions">
+            <button
+              className="btn btn-secondary btn-sm"
+              type="button"
+              onClick={handleDiscardDraft}
+              disabled={savingDraft}
+            >
+              {t("skills.discardChanges")}
+            </button>
+            <button
+              className="btn btn-primary btn-sm"
+              type="button"
+              onClick={handleSaveDraft}
+              disabled={savingDraft}
+            >
+              {savingDraft ? t("skills.savingChanges") : t("skills.saveChanges")}
+            </button>
+          </div>
+        </div>
+      )}
+
       {selectedDetail ? (
         <SkillDetailPanel
           detail={selectedDetail}
-          actionInProgress={actionInProgress}
+          saving={savingDraft}
           onBack={() => setSelectedDetail(null)}
           onDisable={handleDisableSkill}
-          skillKey={skillActionKey}
           t={t}
         />
       ) : (
@@ -688,13 +926,14 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
                   collapsed={Boolean(collapsedCategories[group.category])}
                   enabledCount={group.enabledCount}
                   totalCount={group.totalCount}
-                  actionInProgress={actionInProgress}
-                  bulkActionInProgress={bulkActionInProgress}
+                  pendingCount={group.pendingCount}
+                  saving={savingDraft}
                   selectedKey={selectedKey}
                   onToggleCollapsed={toggleCategory}
                   onOpenDetail={handleViewDetail}
                   onEnableSkill={handleInstallSkill}
                   onDisableSkill={handleDisableSkill}
+                  onUndoPendingChange={removePendingForSkill}
                   onEnableCategory={(category, skills) => handleCategoryAction(category, skills, "enable")}
                   onDisableCategory={(category, skills) => handleCategoryAction(category, skills, "disable")}
                   skillKey={skillActionKey}

@@ -70,6 +70,54 @@
   font-size: 13px;
 }
 
+.skills-draft-bar {
+  position: sticky;
+  top: 16px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 28px rgba(45, 35, 20, 0.14);
+  padding: 12px;
+  margin-bottom: 14px;
+}
+
+.skills-draft-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.skills-draft-title {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.skills-draft-summary {
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.skills-draft-help {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.skills-draft-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 /* Tabs */
 .skills-tabs {
   display: flex;
@@ -488,6 +536,15 @@
   color: var(--text-muted);
 }
 
+.skills-category-pending {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-text);
+  background: var(--accent-subtle);
+  border-radius: 10px;
+  padding: 2px 8px;
+}
+
 .skills-category-actions {
   display: flex;
   align-items: center;
@@ -518,6 +575,10 @@
   background: var(--accent-subtle);
 }
 
+.skills-row-pending {
+  border-left: 3px solid var(--accent);
+}
+
 .skills-row-main {
   min-width: 0;
   display: flex;
@@ -546,7 +607,9 @@
 }
 
 .skills-badge-enabled,
-.skills-badge-disabled {
+.skills-badge-disabled,
+.skills-badge-pending-enable,
+.skills-badge-pending-disable {
   font-size: 11px;
   font-weight: 600;
   padding: 2px 8px;
@@ -562,6 +625,18 @@
 .skills-badge-disabled {
   color: var(--text-muted);
   background: var(--bg-tertiary);
+}
+
+.skills-badge-pending-enable {
+  color: var(--success);
+  background: var(--success-bg);
+  border: 1px solid var(--success);
+}
+
+.skills-badge-pending-disable {
+  color: var(--warning, var(--accent-text));
+  background: var(--warning-bg, var(--accent-subtle));
+  border: 1px solid var(--warning, var(--accent));
 }
 
 /* In-screen detail page */
@@ -732,7 +807,13 @@
 
   .skills-row-actions,
   .skills-category-actions,
-  .skills-detail-actions {
+  .skills-detail-actions,
+  .skills-draft-actions {
     justify-content: flex-start;
+  }
+
+  .skills-draft-bar {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

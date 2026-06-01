@@ -492,14 +492,14 @@ mercury profiles use <name>
 Output:
 
 - `profiles list`: `{ profiles: [...] }` where each entry includes profile metadata from the service.
-- `profiles create`: `{ success: true, name, clone }` after service success. `clone` is compatibility naming for copying default config/API key files only; new profiles start with skills off.
+- `profiles create`: `{ success: true, name, clone }` after service success. `clone` is compatibility naming for copying default config/API key files only. Current implementation starts new profiles with skills off; future default-category skill seeding should update this contract.
 - `profiles delete`: `{ success: true, name }`; `--yes` is required.
 - `profiles use`: `{ success: true, name }` after setting the active local profile.
 
 Mode notes:
 
-- Local mode uses local profile directories and `active_profile` storage. Creation passes upstream Hermes `--no-skills`, then optionally copies default config/API key files without copying skills.
-- SSH mode routes list/create/delete through remote SSH helpers when configured and uses the same no-skills creation semantics.
+- Local mode uses local profile directories and `active_profile` storage. Current creation passes upstream Hermes `--no-skills`, then optionally copies default config/API key files without copying skills. This describes current behavior, not the desired long-term invariant: a future `default` skill category should be installed for new Agents while other categories remain opt-in.
+- SSH mode routes list/create/delete through remote SSH helpers when configured and currently mirrors that implementation behavior.
 - Pure remote HTTP mode fails closed for create/delete/use mutations because Mercury cannot safely mutate remote profile files through the local filesystem path.
 - `profiles use` writes active profile in local mode, returns success in SSH mode for UI/CLI parity with the current service contract, and fails closed in pure remote HTTP mode.
 

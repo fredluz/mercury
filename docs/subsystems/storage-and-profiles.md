@@ -34,7 +34,7 @@ Current behavior visible from callers:
 - Named profiles are any non-dot directories directly under `<HERMES_HOME>/profiles`; they do not need `config.yaml` or `.env` to be visible in the UI.
 - `<HERMES_HOME>/active_profile` is read to mark `ProfileInfo.isActive`. Missing or blank files default the active profile to `"default"`.
 - SSH implementations mirror this shape with remote paths under `~/.hermes` for default and `~/.hermes/profiles/<profile>` for named profiles.
-- New local and SSH profiles created by Mercury start with skills off: profile creation passes upstream Hermes `--no-skills`. The create-time copy option copies default `config.yaml` and `.env`/API key material only; it does not copy `skills/`, SOUL, memories, state databases, gateway files, or logs.
+- Current implementation: new local and SSH profiles created by Mercury start with skills off because profile creation passes upstream Hermes `--no-skills`. The create-time copy option copies default `config.yaml` and `.env`/API key material only; it does not copy `skills/`, SOUL, memories, state databases, gateway files, or logs. This is not the desired long-term invariant: product direction is to install skills from a future `default` skill category for new Agents while keeping other categories opt-in.
 - Pure remote HTTP mode fails closed for profile create/delete/use mutations because those operations require profile filesystem writes that Mercury cannot safely perform through the remote HTTP runtime.
 
 ## Storage isolation vs runtime isolation
@@ -67,11 +67,14 @@ Current local persistent files used by the documented subsystems include:
 | `<profileHome>/memories/MEMORY.md` | `src/main/memory.ts`, `src/main/ssh/memory-soul.ts` | Memory entries separated by `\n§\n`. |
 | `<profileHome>/memories/USER.md` | `src/main/memory.ts`, `src/main/ssh/memory-soul.ts` | User profile text. |
 | `<profileHome>/SOUL.md` | `src/main/soul.ts`, `src/main/ssh/memory-soul.ts` | Persona/soul text. |
+| `<profileHome>/skills/<category>/<skill>/SKILL.md` | `src/main/skills.ts`, `src/main/ssh/skills.ts`, `src/main/services/knowledge-service.ts` | Profile-owned installed skill state for the selected Agent. The Skills renderer draft is not persisted here until Save calls the batch mutation API. |
 | `<HERMES_HOME>/desktop-traces.json` | `src/main/trace-store.ts` | Trace runs and trace events. See [Trace schema contract](../contracts/trace-schema.md). |
 | `<profileHome>/gateway.pid` | `src/main/hermes/runtime.ts`, `src/main/ssh/runtime.ts` | Profile-specific gateway process id used for local/SSH gateway status and stop. |
 | `<profileHome>/gateway.log`, `<profileHome>/logs/*.log` | installer/runtime log helpers, SSH runtime log helper | Profile-specific log viewer inputs where available; SSH log reads target the selected remote profile. |
 
 Remote SSH equivalents generally use `~/.hermes/...` and `~/.hermes/profiles/<profile>/...` paths.
+
+Skill enabled state is profile filesystem state, not a desktop JSON/app-state flag. The only persisted current enabled state is the presence of skill directories under the selected profile's `skills/` root; renderer pending enable/disable drafts are ephemeral until saved. Future default-category seeding or skill-group recipes should remain distinct from this installed-file truth: recipes can decide which targets to install for a new Agent, but after application the profile's installed files remain the source of truth. Product-direction docs should distinguish future `default` category seeding, which should install for new Agents, from future `inspector-gadget` skills, which remain opt-in/off by default.
 
 ## CLI storage parity
 

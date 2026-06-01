@@ -3,6 +3,8 @@
 ## Summary
 Skill groups should be implemented as Mercury-owned activation recipes that expand to the existing batch skill mutation API; actual per-agent enabled state remains installed-file backed. The plan must include a Phase 0 runtime-refresh fix because current skill disable can leave chat blocked behind a stale runtime diagnostic that claims Mercury is updating automatically without a guaranteed recovery job.
 
+Current cross-reference: [Skills subsystem](../subsystems/skills.md) is the evergreen reference for existing draft/save batching and batch mutation behavior. Product direction after this investigation: new Agents should eventually install skills from a `default` skill category by default, while other categories remain opt-in; current all-off/`--no-skills` creation is only the present implementation baseline, not the long-term goal. The planned `inspector-gadget` category is explicitly opt-in/off by default; current planning classifies Bayou Comic Creator, Bayou Infographic, Bayou Article Illustrator, ASCII Video, ASCII Art, Blender Animation, Google Drive, Songwriting and AI Music, Touch Designer MCP, Minecraft Mod Pack Server, Pokemon Player, Find Nearby, GIF Search, Heartmula, Songsee, Spotify, Maps, God mode, polymarket, open hue, xitter, and x-url under `inspector-gadget`.
+
 ## Symptoms
 - Users need skill groups/packs so not every skill has to be toggled individually.
 - Some groups should be selectable as defaults for new agents.
@@ -19,6 +21,10 @@ Skill groups should be implemented as Mercury-owned activation recipes that expa
 ## Investigator Findings
 <!-- Pair investigator will append structured findings here. -->
 
+### 2026-06-01 - Draft/save UI seam refinement
+
+The existing Skills row/category enable-disable UI now stages per-skill install/uninstall targets in renderer state and applies them only when the user clicks Save. Future skill groups should feed their expanded `SkillMutationTarget[]` into this same pending batch seam instead of introducing a second renderer mutation path or a separate enabled-state store. Installed files remain the source of truth; group state should still be derived from installed skills after Save/reload.
+
 ### 2026-06-01 - Evidence-backed refinement
 
 #### Current mutation primitive is the right group-apply substrate
@@ -27,7 +33,7 @@ Skill groups should be implemented as Mercury-owned activation recipes that expa
 - `mutateSkillsForProfile` is the cross-mode choke point. It returns no-op success for empty batches, fails closed in pure remote HTTP mode, serializes mutations per profile, routes SSH to `sshMutateSkills`, routes local to `mutateLocalSkills`, and marks the profile runtime stale only when at least one item actually changed (`src/main/services/knowledge-service.ts:51-77`, `src/main/services/knowledge-service.ts:95-121`, `src/main/services/knowledge-service.ts:269-292`).
 - Local mutation resolution already avoids unsafe/ambiguous writes: uninstall prefers `path`, then `category + directoryName`, then `category + name`, then name fallback; install resolves bundled skills by the same stable identity; unsafe segments and escaped paths fail closed (`src/main/skills.ts:469-539`, `src/main/skills.ts:542-566`, `src/main/skills.ts:568-687`).
 - SSH batch mutation mirrors the same contract in one remote Python call, validates profile names before remote writes, prefixes remote installed paths as `REMOTE:`, installs via remote `hermes skills install ... --yes`, and removes resolved installed directories on uninstall (`src/main/ssh/skills.ts:238-257`, `src/main/ssh/skills.ts:301-375`, `src/main/ssh/skills.ts:380-467`).
-- Existing category bulk actions are already a working group prototype: `handleCategoryAction` filters enabled/disabled rows, maps each row to install/uninstall targets, calls one `mutateSkills(targets, profile)`, reloads installed skills once, and renders partial failures (`src/renderer/src/screens/Skills/Skills.tsx:360-404`). `SkillCategorySection` provides the current enable-all/disable-all insertion pattern (`src/renderer/src/screens/Skills/components/SkillCategorySection.tsx:47-105`).
+- Existing category bulk actions are already a working group prototype: `handleCategoryAction` filters effective enabled/disabled rows and stages per-skill install/uninstall targets into the renderer draft. The user-facing Save action is the single renderer call site for `mutateSkills(targets, profile)`, reloads installed skills once, and renders partial failures. `SkillCategorySection` provides the current enable-all/disable-all insertion pattern.
 
 **Conclusion:** skill groups should not introduce a second enabled-skill store or a new filesystem mutation path. Groups should be Mercury-owned recipes that expand to `SkillMutationTarget[]` and then reuse `mutateSkillsForProfile`.
 
@@ -82,7 +88,7 @@ Skill groups should be implemented as Mercury-owned activation recipes that expa
 
 #### UI/i18n/docs insertion points
 - Skills screen: add group management around the current header/tab/category seams (`src/renderer/src/screens/Skills/Skills.tsx:538-712`); reuse or generalize category section layout from `SkillCategorySection` (`src/renderer/src/screens/Skills/components/SkillCategorySection.tsx:34-105`) and category CSS (`src/renderer/src/assets/styles/skills.css:432-499`).
-- Agents screen: add default group selector in the create panel near `cloneConfig` before model selection (`src/renderer/src/screens/Agents/Agents.tsx:274-324`). The current English clone copy explicitly says “start with skills off,” so it must change when defaults are selected (`src/shared/i18n/locales/en/agents.ts:1-8`).
+- Agents screen: add default group selector or default-category explanation in the create panel near `cloneConfig` before model selection (`src/renderer/src/screens/Agents/Agents.tsx:274-324`). The current English clone copy explicitly says “start with skills off,” so it must change when default-category seeding or selected defaults are applied (`src/shared/i18n/locales/en/agents.ts:1-8`).
 - i18n: add `skills.*` group labels and `agents.*` default-group labels across `src/shared/i18n/locales/{en,es,pt-BR,zh-CN}/skills.ts` and `agents.ts`; current skills copy is category-only (`src/shared/i18n/locales/en/skills.ts:1-80`).
 - Docs: update `docs/subsystems/skills.md`, especially renderer API and UI semantics (`docs/subsystems/skills.md:19-32`, `docs/subsystems/skills.md:52-63`), local/SSH/pure-remote behavior (`docs/subsystems/skills.md:217-261`), and contract test map (`docs/subsystems/skills.md:263-291`). Update `docs/subsystems/storage-and-profiles.md` to clarify that skill groups are app-owned recipes while actual profile skill state remains file-backed (`docs/subsystems/storage-and-profiles.md:31-38`, `docs/subsystems/storage-and-profiles.md:127-159`).
 
@@ -251,8 +257,8 @@ Agents screen:
 
 - Add default skill group selector in the create-agent panel.
 - Preselect groups marked `defaultForNewAgents`.
-- Preserve “all skills off by default” when no default groups are selected.
-- Update copy so it does not claim copied config includes skills unless selected groups are explicitly applied.
+- Preserve current all-off creation only as an implementation fallback until default-category seeding exists; the desired future baseline is that `default` category skills install for new Agents while other categories remain opt-in. Keep `inspector-gadget` off by default.
+- Update copy so it does not claim copied config includes skills unless selected groups or the future default category are explicitly applied.
 
 Runtime UX:
 

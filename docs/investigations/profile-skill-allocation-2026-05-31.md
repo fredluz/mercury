@@ -139,7 +139,7 @@ This is not a bug so much as an implementation model to understand:
 
 ## Implementation Notes - 2026-05-31
 
-- Agent/profile creation now intentionally starts with skills off. Local and SSH profile creation pass upstream Hermes `--no-skills`; the UI copy frames the default checkbox as copying config/API keys only, not skills.
+- Agent/profile creation now starts with skills off as the 2026-05-31 implementation state. Local and SSH profile creation pass upstream Hermes `--no-skills`; the UI copy frames the default checkbox as copying config/API keys only, not skills. This is historical/current implementation context, not the later product direction; future docs should prefer the `default` skill category seeding model for new Agents while other categories remain opt-in.
 - Pure remote HTTP mode now fails closed for profile and skill mutation paths that would otherwise mutate local filesystem state. Skill mutation failures use `unsupported-remote-mode` item details for batch calls.
 - Skill mutation now has a batch contract (`mutateSkills`) with ordered per-target results. Service-level orchestration serializes batches per profile and marks the runtime stale once for a batch that actually changed installed skills.
 - Renderer Skills UX now uses batch mutation for individual and category actions, reloads installed skills once after bulk completion, catches thrown IPC errors, preserves per-skill failure details, and uses `directoryName` plus installed path for stable action/row identity.
