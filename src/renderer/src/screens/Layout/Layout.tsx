@@ -87,13 +87,6 @@ const NAV_ITEMS: { view: NavView; icon: LucideIcon; labelKey: string }[] = [
   { view: "settings", icon: SettingsIcon, labelKey: "navigation.settings" },
 ];
 
-const AGENT_SCOPED_BRAND_VIEWS = new Set<View>([
-  "skills",
-  "soul",
-  "memory",
-  "tools",
-]);
-
 function displayNameForProfile(profile: ProfileInfo | null, fallback: string): string {
   if (!profile) return fallback === "default" ? "Mercury" : fallback;
   return profile.displayName.trim() || profile.name;
@@ -132,6 +125,7 @@ function Layout(): React.JSX.Element {
   const [activeProfile, setActiveProfile] = useState("default");
   const [activeAgentProfile, setActiveAgentProfile] =
     useState<ProfileInfo | null>(null);
+  const [profilesRefreshToken, setProfilesRefreshToken] = useState(0);
   const [showChatAgentPicker, setShowChatAgentPicker] = useState(false);
   const [traceLaunch, setTraceLaunch] = useState<TraceLaunchState>({
     mode: "all",
@@ -222,7 +216,7 @@ function Layout(): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [activeProfile]);
+  }, [activeProfile, profilesRefreshToken]);
 
   const refreshRuntimeDiagnostic = useCallback(() => {
     const requestedProfile = activeProfile;
@@ -529,7 +523,6 @@ function Layout(): React.JSX.Element {
   const matchedActiveAgentProfile =
     activeAgentProfile?.name === activeProfile ? activeAgentProfile : null;
   const sidebarShowsAgentBrand =
-    AGENT_SCOPED_BRAND_VIEWS.has(view) &&
     activeProfile !== "default" &&
     matchedActiveAgentProfile?.kind !== "builtin";
   const activeAgentDisplayName = displayNameForProfile(
@@ -753,6 +746,9 @@ function Layout(): React.JSX.Element {
                 activeProfile={activeProfile}
                 onSelectProfile={handleSelectProfile}
                 onProfileAction={handleAgentProfileAction}
+                onProfilesChanged={() =>
+                  setProfilesRefreshToken((value) => value + 1)
+                }
               />
             )}
           </div>

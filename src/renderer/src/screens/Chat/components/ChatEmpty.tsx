@@ -1,17 +1,21 @@
 import type React from "react";
 import { Bell, ChartLine, Clock, Code, Mail, Search } from "lucide-react";
 import MercuryMark from "../../../components/common/MercuryMark";
+import AgentAvatar from "../../../components/common/AgentAvatar";
+import type { ProfileInfo } from "../../../../../shared/profiles";
 
 interface ChatEmptyProps {
   setPrompt: (value: string) => void;
   focusInput: () => void;
   t: (key: string) => string;
+  agentProfile?: ProfileInfo | null;
 }
 
 export function ChatEmpty({
   setPrompt,
   focusInput,
   t,
+  agentProfile,
 }: ChatEmptyProps): React.JSX.Element {
   const suggestions = [
     { icon: Search, text: "Search the web for today's top tech news", label: "chat.suggestionSearch" },
@@ -24,7 +28,16 @@ export function ChatEmpty({
   return (
     <div className="chat-empty">
       <div className="chat-empty-icon">
-        <MercuryMark size={64} decorative />
+        {agentProfile ? (
+          <AgentAvatar
+            profile={agentProfile}
+            className="chat-empty-avatar"
+            markClassName="chat-empty-avatar-mark"
+            markSize={64}
+          />
+        ) : (
+          <MercuryMark size={64} decorative />
+        )}
       </div>
       <div className="chat-empty-text">{t("chat.emptyTitle")}</div>
       <div className="chat-empty-hint">{t("chat.emptyHint")}</div>

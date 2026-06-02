@@ -22,7 +22,7 @@ import type { ProfileInfo } from "../../../../shared/profiles";
 import AgentAvatar from "../../components/common/AgentAvatar";
 import { AgentModelConfigModal } from "../../components/AgentModelConfigModal";
 import { useI18n } from "../../components/useI18n";
-import { normalizeAvatarFileToPngDataUrl } from "../../utils/agent-avatar-image";
+import AvatarCropModal from "./AvatarCropModal";
 import { AgentCreator } from "./AgentCreator";
 
 type ProfileActionView = "chat" | "skills" | "tools" | "soul" | "memory";
@@ -45,6 +45,7 @@ interface AgentsProps {
   activeProfile: string;
   onSelectProfile: (name: string) => void;
   onProfileAction: (view: ProfileActionView) => void;
+  onProfilesChanged?: () => void;
 }
 
 function displayNameFor(profile: ProfileInfo): string {
@@ -59,6 +60,7 @@ function Agents({
   activeProfile,
   onSelectProfile,
   onProfileAction,
+  onProfilesChanged,
 }: AgentsProps): React.JSX.Element {
   const { t } = useI18n();
   const [agents, setAgents] = useState<ProfileInfo[]>([]);
@@ -74,6 +76,7 @@ function Agents({
   const [avatarTarget, setAvatarTarget] = useState<ProfileInfo | null>(null);
   const [avatarMutatingProfile, setAvatarMutatingProfile] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [avatarCropFile, setAvatarCropFile] = useState<File | null>(null);
   const [remoteOnly, setRemoteOnly] = useState(false);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -171,24 +174,38 @@ function Agents({
     avatarFileInputRef.current?.click();
   }
 
-  async function handleAvatarFileChange(
+  function handleAvatarFileChange(
     event: React.ChangeEvent<HTMLInputElement>,
-  ): Promise<void> {
+  ): void {
     const file = event.currentTarget.files?.[0];
     const target = avatarTarget;
     event.currentTarget.value = "";
     if (!file || !target || !canCustomizeAvatar(target)) return;
+    setAvatarError(null);
+    setAvatarCropFile(file);
+  }
 
+  function cancelAvatarCrop(): void {
+    setAvatarCropFile(null);
+    setAvatarTarget(null);
+  }
+
+  async function commitAvatarDataUrl(imageDataUrl: string): Promise<void> {
+    const target = avatarTarget;
+    if (!target || !canCustomizeAvatar(target)) {
+      cancelAvatarCrop();
+      return;
+    }
     setAvatarMutatingProfile(target.name);
     setAvatarError(null);
     try {
-      const imageDataUrl = await normalizeAvatarFileToPngDataUrl(file);
       const result = await window.hermesAPI.setAgentAvatar({
         profile: target.name,
         imageDataUrl,
       });
       if (result.success) {
         await loadAgents();
+        onProfilesChanged?.();
       } else {
         setAvatarError(`${t("agents.avatarUploadFailed")}: ${result.error}`);
       }
@@ -200,6 +217,7 @@ function Agents({
       );
     } finally {
       setAvatarMutatingProfile(null);
+      setAvatarCropFile(null);
       setAvatarTarget(null);
     }
   }
@@ -212,6 +230,7 @@ function Agents({
       const result = await window.hermesAPI.clearAgentAvatar({ profile: profile.name });
       if (result.success) {
         await loadAgents();
+        onProfilesChanged?.();
       } else {
         setAvatarError(`${t("agents.avatarClearFailed")}: ${result.error}`);
       }
@@ -386,6 +405,16 @@ function Agents({
       {error ? <div className="agents-create-error">{error}</div> : null}
       {avatarError ? (
         <div className="agents-create-error">{avatarError}</div>
+      ) : null}
+
+      {avatarCropFile && avatarTarget ? (
+        <AvatarCropModal
+          file={avatarCropFile}
+          title={t("agents.setAvatar")}
+          busy={avatarMutatingProfile !== null}
+          onCancel={cancelAvatarCrop}
+          onConfirm={(dataUrl) => void commitAvatarDataUrl(dataUrl)}
+        />
       ) : null}
 
       <div className="agents-grid">

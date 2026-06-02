@@ -357,6 +357,61 @@
   gap: 16px;
 }
 
+.agents-crop-modal {
+  width: min(340px, calc(100vw - 32px));
+  align-items: center;
+}
+
+.agents-crop-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.agents-crop-viewport {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  background: var(--bg-elevated);
+  box-shadow: inset 0 0 0 1px rgba(21, 23, 22, 0.12);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.agents-crop-viewport:active {
+  cursor: grabbing;
+}
+
+.agents-crop-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: none;
+  pointer-events: none;
+}
+
+.agents-crop-mask {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.65);
+  pointer-events: none;
+}
+
+.agents-crop-zoom {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.agents-crop-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+}
+
 .agents-model-field {
   display: flex;
   flex-direction: column;

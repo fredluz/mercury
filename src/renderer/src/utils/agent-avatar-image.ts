@@ -48,9 +48,17 @@ function loadImageFromFile(file: File): Promise<HTMLImageElement> {
   });
 }
 
-export async function normalizeAvatarFileToPngDataUrl(
+export function avatarInvalidFile(): Error {
+  return avatarInvalidFileError();
+}
+
+/**
+ * Validate and decode an avatar source file into an HTMLImageElement,
+ * enforcing input-size and decoded-dimension limits. Used by the crop UI.
+ */
+export async function loadAvatarImageFromFile(
   file: File,
-): Promise<string> {
+): Promise<HTMLImageElement> {
   assertValidAvatarFile(file);
 
   const image = await loadImageFromFile(file);
@@ -62,6 +70,20 @@ export async function normalizeAvatarFileToPngDataUrl(
     throw avatarInvalidFileError();
   }
 
+  return image;
+}
+
+/**
+ * Render a square region of a decoded image to a 256x256 PNG data URL.
+ * `sourceX`/`sourceY`/`sourceSize` are in source-image pixels and define the
+ * crop window chosen by the user in the crop UI.
+ */
+export function cropAvatarImageToPngDataUrl(
+  image: HTMLImageElement,
+  sourceX: number,
+  sourceY: number,
+  sourceSize: number,
+): string {
   const canvas = document.createElement("canvas");
   canvas.width = AVATAR_EXPORT_SIZE;
   canvas.height = AVATAR_EXPORT_SIZE;
@@ -69,17 +91,14 @@ export async function normalizeAvatarFileToPngDataUrl(
   const context = canvas.getContext("2d");
   if (!context) throw avatarInvalidFileError();
 
-  const side = Math.min(image.naturalWidth, image.naturalHeight);
-  const sourceX = Math.floor((image.naturalWidth - side) / 2);
-  const sourceY = Math.floor((image.naturalHeight - side) / 2);
-
   context.clearRect(0, 0, AVATAR_EXPORT_SIZE, AVATAR_EXPORT_SIZE);
+  context.imageSmoothingQuality = "high";
   context.drawImage(
     image,
     sourceX,
     sourceY,
-    side,
-    side,
+    sourceSize,
+    sourceSize,
     0,
     0,
     AVATAR_EXPORT_SIZE,
@@ -91,4 +110,14 @@ export async function normalizeAvatarFileToPngDataUrl(
     throw avatarInvalidFileError();
   }
   return dataUrl;
+}
+
+export async function normalizeAvatarFileToPngDataUrl(
+  file: File,
+): Promise<string> {
+  const image = await loadAvatarImageFromFile(file);
+  const side = Math.min(image.naturalWidth, image.naturalHeight);
+  const sourceX = Math.floor((image.naturalWidth - side) / 2);
+  const sourceY = Math.floor((image.naturalHeight - side) / 2);
+  return cropAvatarImageToPngDataUrl(image, sourceX, sourceY, side);
 }

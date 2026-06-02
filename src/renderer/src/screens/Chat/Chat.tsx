@@ -167,6 +167,7 @@ function Chat({
             setPrompt={chat.setInput}
             focusInput={() => chat.inputRef.current?.focus()}
             t={t}
+            agentProfile={activeAgentProfile}
           />
         ) : (
           chat.visibleMessages.map((msg, i) => {
