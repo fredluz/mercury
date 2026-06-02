@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createDraftMutationTextParser,
   extractArtifactEventsFromText,
   isStandaloneCliActivityLine,
   normalizeCliProgressLine,
@@ -69,6 +70,29 @@ describe("Hermes trace event normalization", () => {
     expect(isStandaloneCliActivityLine("Running tests now and I will summarize results.")).toBe(false);
     expect(isStandaloneCliActivityLine("Executing the plan requires three steps.")).toBe(false);
     expect(isStandaloneCliActivityLine("Tool usage is documented below.")).toBe(false);
+  });
+
+  it("strips draft mutation blocks while buffering split stream tags", () => {
+    const parser = createDraftMutationTextParser();
+
+    expect(parser.push("Hello <draft-muta")).toEqual({
+      visibleText: "Hello ",
+      mutations: [],
+    });
+    expect(
+      parser.push(
+        'tion>{"patch":{"addPackIds":["research"]}}</draft-mutation> world',
+      ),
+    ).toEqual({
+      visibleText: " world",
+      mutations: [
+        {
+          raw: '<draft-mutation>{"patch":{"addPackIds":["research"]}}</draft-mutation>',
+          payload: { patch: { addPackIds: ["research"] } },
+        },
+      ],
+    });
+    expect(parser.flush()).toEqual({ visibleText: "", mutations: [] });
   });
 
   it("extracts image artifacts from Codex app-server tool progress paths", () => {

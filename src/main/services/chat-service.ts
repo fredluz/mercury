@@ -8,9 +8,14 @@ import {
   setSshRemoteApiKey,
   isRemoteMode,
 } from "../hermes";
-import { extractArtifactEventsFromText } from "../hermes/trace-events";
+import {
+  createDraftMutationTextParser,
+  extractArtifactEventsFromText,
+  type DraftMutationBlock,
+} from "../hermes/trace-events";
 import type {
   ChatCallbacks,
+  ChatRunOptions,
   ChatTransportDiagnostic,
   ChatTraceCallbackEvent,
   ProfileRuntimeHandle,
@@ -47,14 +52,27 @@ import {
 import { generateChatTitle as resolveChatTitle } from "../hermes/title";
 import { isSyntheticChatStreamEnabled } from "../hermes/synthetic-chat";
 import type { ChatErrorInfo } from "../../shared/codex-auth-recovery";
-import type { AgentChatOptions, AgentDraftChangeEvent } from "../../shared/agents";
+import type {
+  AgentChatOptions,
+  AgentCreationDraft,
+  AgentDocsPointerSelection,
+  AgentDraftChangeEvent,
+  AgentDraftMemorySelection,
+  AgentDraftModelSelection,
+  AgentDraftPatch,
+} from "../../shared/agents";
 import type { TraceEvent, TraceEventType, TraceUsage } from "../../shared/traces";
 import {
   normalizeGenerateChatTitleRequest,
   type GenerateChatTitleRequest,
 } from "../../shared/chat-metadata";
 import { classifyChatRemediation } from "../../shared/chat-remediation";
-import { updateAgentDraft } from "./agents-service";
+import {
+  AGENT_PACK_CATALOG,
+  agentPackMemberKey,
+  agentPackMemberLabel,
+} from "../../shared/agent-packs";
+import { getAgentDraft, updateAgentDraft } from "./agents-service";
 
 export type ChatResponse = { response: string; sessionId?: string };
 
@@ -156,6 +174,272 @@ function draftIdFromPayload(payload: unknown): string | undefined {
   return isRecord(payload) && typeof payload.draftId === "string"
     ? payload.draftId
     : undefined;
+}
+
+type NormalizedDraftMutationDelta = {
+  draftId: string;
+  patch: Record<string, unknown>;
+};
+
+async function buildAgentCreationRunOptions(
+  options: AgentChatOptions | undefined,
+): Promise<ChatRunOptions | undefined> {
+  if (!options) return undefined;
+  if (options.mode !== "agent-creation") {
+    return { agentDraftId: options.agentDraftId, mode: options.mode };
+  }
+  if (!options.agentDraftId) {
+    throw new Error("agentDraftId is required for agent-creation chat.");
+  }
+  const draft = await getAgentDraft(options.agentDraftId);
+  if (!draft) {
+    throw new Error(`Agent draft '${options.agentDraftId}' was not found.`);
+  }
+  return {
+    agentDraftId: options.agentDraftId,
+    mode: options.mode,
+    instructions: buildAgentCreationInstructions(draft),
+  };
+}
+
+function buildAgentCreationInstructions(draft: AgentCreationDraft): string {
+  const packs = AGENT_PACK_CATALOG.map((pack) => ({
+    id: pack.id,
+    displayName: pack.displayName,
+    description: pack.description,
+    members: pack.members.map((member) => ({
+      key: agentPackMemberKey(member),
+      kind: member.kind,
+      label: agentPackMemberLabel(member),
+      ...(member.kind === "tool" ? { toolsetOverrideKey: member.key } : {}),
+      ...(member.kind === "skill"
+        ? {
+            category: member.category,
+            directoryName: member.directoryName,
+          }
+        : {}),
+      ...(member.kind === "docs-pointer"
+        ? { id: member.id, title: member.title, path: member.path, url: member.url }
+        : {}),
+    })),
+  }));
+  const toolsetKeys = [
+    ...new Set(
+      AGENT_PACK_CATALOG.flatMap((pack) =>
+        pack.members.flatMap((member) =>
+          member.kind === "tool" ? [member.key] : [],
+        ),
+      ),
+    ),
+  ].sort();
+  const skillOverrideKeys = [
+    ...new Set(
+      AGENT_PACK_CATALOG.flatMap((pack) =>
+        pack.members.flatMap((member) =>
+          member.kind === "docs-pointer" ? [] : [agentPackMemberKey(member)],
+        ),
+      ),
+    ),
+  ].sort();
+  const docsPointerIds = [
+    ...new Set(
+      AGENT_PACK_CATALOG.flatMap((pack) =>
+        pack.members.flatMap((member) =>
+          member.kind === "docs-pointer" ? [member.id] : [],
+        ),
+      ),
+    ),
+  ].sort();
+
+  return `You are Mercury helping Fred build an agent draft in Mercury.
+
+Current persisted draft snapshot (authoritative for this turn):
+${JSON.stringify(draft, null, 2)}
+
+Valid Mercury agent pack/toolset/skill vocabulary:
+${JSON.stringify({ packs, toolsetKeys, skillOverrideKeys, docsPointerIds }, null, 2)}
+
+DELTA CONTRACT:
+- Reply normally to Fred in conversational prose.
+- Whenever you decide or change draft state, include exactly one machine-readable block in your reply:
+  <draft-mutation>{"patch":{...}}</draft-mutation>
+- The block JSON must be valid JSON, with no comments, markdown fences, or trailing commas.
+- Emit ONLY fields that changed in this turn. Omit fields you are preserving.
+- Text fields may include displayName, description, and persona.
+- Packs are deltas: use addPackIds and removePackIds with valid pack ids. Do not invent pack ids.
+- Docs are deltas: use addDocsPointers with complete {id,title,path?,url?} entries and removeDocsPointerIds with ids.
+- toolsetOverrides is a touched-key map keyed by toolsetKeys. Use true/false to set; use null to clear an existing override key.
+- skillOverrides is a touched-key map keyed by skillOverrideKeys. Use true/false to set; use null to clear an existing override key.
+- For model and memory objects, include only changed keys; Mercury will merge them with the current draft snapshot.
+- Never claim a draft change happened unless you emit the corresponding <draft-mutation> block.`;
+}
+
+function normalizeDraftMutationPayload(
+  payload: unknown,
+  fallbackDraftId: string,
+): NormalizedDraftMutationDelta | null {
+  if (!isRecord(payload)) return null;
+  const payloadDraftId = draftIdFromPayload(payload);
+  if (payloadDraftId && payloadDraftId !== fallbackDraftId) return null;
+  const patch = isRecord(payload.patch) ? payload.patch : undefined;
+  if (!patch) return null;
+  return { draftId: payloadDraftId || fallbackDraftId, patch };
+}
+
+function mergeDraftMutationDelta(
+  draft: AgentCreationDraft,
+  delta: Record<string, unknown>,
+): AgentDraftPatch {
+  const patch: AgentDraftPatch = {};
+
+  for (const key of ["displayName", "description", "persona"] as const) {
+    if (typeof delta[key] === "string") patch[key] = delta[key];
+  }
+
+  if (isRecord(delta.model)) {
+    patch.model = mergeModel(draft.model, delta.model);
+  }
+  if (isRecord(delta.memory)) {
+    patch.memory = mergeMemory(draft.memory, delta.memory);
+  }
+
+  const selectedPackIds = mergeStringArrayDelta(
+    draft.selectedPackIds,
+    delta.selectedPackIds,
+    delta.addPackIds,
+    delta.removePackIds,
+  );
+  if (selectedPackIds) patch.selectedPackIds = selectedPackIds;
+
+  const docsPointers = mergeDocsPointerDelta(
+    draft.docsPointers,
+    delta.docsPointers,
+    delta.addDocsPointers,
+    delta.removeDocsPointerIds,
+  );
+  if (docsPointers) patch.docsPointers = docsPointers;
+
+  const toolsetOverrides = mergeBooleanOverrideDelta(
+    draft.toolsetOverrides,
+    delta.toolsetOverrides,
+  );
+  if (toolsetOverrides) patch.toolsetOverrides = toolsetOverrides;
+
+  const skillOverrides = mergeBooleanOverrideDelta(
+    draft.skillOverrides,
+    delta.skillOverrides,
+  );
+  if (skillOverrides) patch.skillOverrides = skillOverrides;
+
+  return patch;
+}
+
+function mergeModel(
+  current: AgentDraftModelSelection | undefined,
+  delta: Record<string, unknown>,
+): AgentDraftModelSelection {
+  const merged: AgentDraftModelSelection = { ...(current ?? {}) };
+  for (const key of ["provider", "model", "baseUrl"] as const) {
+    if (typeof delta[key] === "string") merged[key] = delta[key];
+  }
+  return merged;
+}
+
+function mergeMemory(
+  current: AgentDraftMemorySelection | undefined,
+  delta: Record<string, unknown>,
+): AgentDraftMemorySelection {
+  const merged: AgentDraftMemorySelection = { ...(current ?? {}) };
+  if (typeof delta.userProfile === "string") merged.userProfile = delta.userProfile;
+  if (isStringArray(delta.entries)) merged.entries = [...delta.entries];
+  return merged;
+}
+
+function mergeStringArrayDelta(
+  current: readonly string[],
+  replacement: unknown,
+  additions: unknown,
+  removals: unknown,
+): string[] | undefined {
+  let changed = false;
+  let next = isStringArray(replacement) ? uniqueStrings(replacement) : [...current];
+  if (isStringArray(replacement)) changed = true;
+  if (isStringArray(additions)) {
+    next = uniqueStrings([...next, ...additions]);
+    changed = true;
+  }
+  if (isStringArray(removals)) {
+    const removed = new Set(removals);
+    next = next.filter((entry) => !removed.has(entry));
+    changed = true;
+  }
+  return changed ? next : undefined;
+}
+
+function mergeDocsPointerDelta(
+  current: readonly AgentDocsPointerSelection[],
+  replacement: unknown,
+  additions: unknown,
+  removals: unknown,
+): AgentDocsPointerSelection[] | undefined {
+  let changed = false;
+  const base = isDocsPointerArray(replacement) ? replacement : current;
+  const byId = new Map(base.map((pointer) => [pointer.id, { ...pointer }]));
+  if (isDocsPointerArray(replacement)) changed = true;
+  if (isStringArray(removals)) {
+    for (const id of removals) byId.delete(id);
+    changed = true;
+  }
+  if (isDocsPointerArray(additions)) {
+    for (const pointer of additions) byId.set(pointer.id, { ...pointer });
+    changed = true;
+  }
+  return changed ? [...byId.values()] : undefined;
+}
+
+function mergeBooleanOverrideDelta(
+  current: Readonly<Record<string, boolean>>,
+  delta: unknown,
+): Record<string, boolean> | undefined {
+  if (!isRecord(delta)) return undefined;
+  const next: Record<string, boolean> = { ...current };
+  let changed = false;
+  for (const [key, value] of Object.entries(delta)) {
+    if (value === null) {
+      delete next[key];
+      changed = true;
+    } else if (typeof value === "boolean") {
+      next[key] = value;
+      changed = true;
+    }
+  }
+  return changed ? next : undefined;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values)];
+}
+
+function isDocsPointerArray(value: unknown): value is AgentDocsPointerSelection[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        isRecord(entry) &&
+        typeof entry.id === "string" &&
+        typeof entry.title === "string" &&
+        (entry.path === undefined || typeof entry.path === "string") &&
+        (entry.url === undefined || typeof entry.url === "string"),
+    )
+  );
+}
+
+function hasPatchFields(patch: AgentDraftPatch): boolean {
+  return Object.keys(patch).length > 0;
 }
 
 function abortCurrentRun(detail: string): void {
@@ -266,6 +550,74 @@ export async function runChatMessage({
     runBestEffort(label, () =>
       finishTraceRun(traceRunId, status, sessionId, detail),
     );
+  };
+  const shouldParseDraftMutationBlocks =
+    options?.mode === "agent-creation" && Boolean(options.agentDraftId);
+  const draftMutationParser = shouldParseDraftMutationBlocks
+    ? createDraftMutationTextParser()
+    : undefined;
+  const pendingDraftMutationBlocks: DraftMutationBlock[] = [];
+  const recordDraftMutationFailure = (
+    detail: string,
+    metadata: Record<string, unknown> = {},
+  ): void => {
+    const recordedEvent = recordChatTraceEvent(
+      "trace agent draft mutation failed",
+      "tool.failed",
+      "Agent draft update failed",
+      detail,
+      {
+        source: "agent-draft",
+        draftId: options?.agentDraftId,
+        ...metadata,
+      },
+    );
+    emitLiveTrace(callbacks, recordedEvent ?? null);
+  };
+  const processDraftMutationBlock = async (
+    block: DraftMutationBlock,
+  ): Promise<void> => {
+    try {
+      if (options?.mode !== "agent-creation" || !options.agentDraftId) return;
+      if (block.parseError) {
+        recordDraftMutationFailure(block.parseError, {
+          code: "invalid-draft-mutation-json",
+          raw: block.raw.slice(0, 500),
+        });
+        return;
+      }
+      const request = normalizeDraftMutationPayload(block.payload, options.agentDraftId);
+      if (!request || request.draftId !== options.agentDraftId) {
+        recordDraftMutationFailure("Invalid agent draft mutation block.", {
+          code: "invalid-draft-mutation-payload",
+        });
+        return;
+      }
+      const freshDraft = await getAgentDraft(options.agentDraftId);
+      if (!freshDraft) {
+        recordDraftMutationFailure(
+          `Agent draft '${options.agentDraftId}' was not found.`,
+          { code: "not-found" },
+        );
+        return;
+      }
+      const patch = mergeDraftMutationDelta(freshDraft, request.patch);
+      if (!hasPatchFields(patch)) return;
+      const result = await updateAgentDraft(
+        { draftId: options.agentDraftId, patch },
+        { onChange: callbacks?.onAgentDraftChanged },
+      );
+      if (!result.success) {
+        recordDraftMutationFailure(result.error, {
+          code: result.code,
+        });
+      }
+    } catch (error) {
+      recordDraftMutationFailure(
+        error instanceof Error ? error.message : String(error),
+        { code: "draft-mutation-side-effect-failed" },
+      );
+    }
   };
   const processAgentDraftTraceEvent = async (
     traceEvent: ChatTraceCallbackEvent,
@@ -378,76 +730,105 @@ export async function runChatMessage({
   const transportCallbacks: ChatCallbacks = {
     onChunk: (chunk) => {
       if (shouldIgnoreCallback()) return;
-      fullResponse += chunk;
-      if (!recordedAgentStart && chunk.trim()) {
+      const parsed = draftMutationParser?.push(chunk) ?? {
+        visibleText: chunk,
+        mutations: [],
+      };
+      pendingDraftMutationBlocks.push(...parsed.mutations);
+      const visibleChunk = parsed.visibleText;
+      fullResponse += visibleChunk;
+      if (!recordedAgentStart && visibleChunk.trim()) {
         recordedAgentStart = true;
         recordChatTraceEvent(
           "trace agent start",
           "message.agent.delta",
           "Agent response started",
-          chunk.trim().slice(0, 180),
+          visibleChunk.trim().slice(0, 180),
         );
       }
-      notify("chat chunk callback", () => callbacks?.onChunk?.(chunk));
+      if (visibleChunk) {
+        notify("chat chunk callback", () => callbacks?.onChunk?.(visibleChunk));
+      }
     },
     onDone: (sessionId) => {
       if (shouldIgnoreCallback()) return;
       const completedSessionId = sessionId || effectiveSessionId;
       if (isActiveRun()) activeChatRun = null;
-      if (fullResponse.trim()) {
-        recordChatTraceEvent(
-          "trace agent completion",
-          "message.agent.delta",
-          "Agent response completed",
-          fullResponse.trim().slice(0, 320),
-        );
-      }
-      const artifactEvents =
-        runBestEffort("artifact extraction", () =>
-          extractArtifactEventsFromText(fullResponse),
-        ) ?? [];
-      for (const artifactEvent of artifactEvents) {
-        const recordedEvent = recordChatTraceEvent(
-          "trace artifact event",
-          artifactEvent.type,
-          artifactEvent.title,
-          artifactEvent.detail,
-          artifactEvent.metadata,
-        );
-        emitLiveTrace(callbacks, recordedEvent ?? null);
-      }
-      finishChatTraceRun(
-        "trace completion finalization",
-        "completed",
-        completedSessionId,
-        "Hermes returned a completed response.",
-      );
-      if (!completedSessionId) {
-        recordMissingSessionDiagnostic();
-      }
-      if (completedSessionId) {
-        const profileUpdated = runBestEffort("session profile update", () =>
-          updateSessionProfile(completedSessionId, profile),
-        );
-        if (profileUpdated === false) {
-          console.warn(
-            "[chat-service] Hermes returned a session id, but the session cache/profile row was not updated",
-            {
-              sessionId: completedSessionId,
-              profile: profileRuntimeManager.normalizeProfile(profile),
-            },
+      void (async () => {
+        const flushed = draftMutationParser?.flush() ?? {
+          visibleText: "",
+          mutations: [],
+        };
+        pendingDraftMutationBlocks.push(...flushed.mutations);
+        if (flushed.visibleText) {
+          fullResponse += flushed.visibleText;
+          notify("chat chunk callback", () =>
+            callbacks?.onChunk?.(flushed.visibleText),
           );
         }
-      }
-      notify("chat done callback", () => callbacks?.onDone?.(completedSessionId));
-      const response = { response: fullResponse, sessionId: completedSessionId };
-      settleResolved(response);
-      notify("chat completion callback", () =>
-        callbacks?.onCompleted?.({
-          ...response,
-          durationMs: Date.now() - chatStartTime,
-        }),
-      );
+        for (const block of pendingDraftMutationBlocks) {
+          await processDraftMutationBlock(block);
+        }
+
+        if (fullResponse.trim()) {
+          recordChatTraceEvent(
+            "trace agent completion",
+            "message.agent.delta",
+            "Agent response completed",
+            fullResponse.trim().slice(0, 320),
+          );
+        }
+        const artifactEvents =
+          runBestEffort("artifact extraction", () =>
+            extractArtifactEventsFromText(fullResponse),
+          ) ?? [];
+        for (const artifactEvent of artifactEvents) {
+          const recordedEvent = recordChatTraceEvent(
+            "trace artifact event",
+            artifactEvent.type,
+            artifactEvent.title,
+            artifactEvent.detail,
+            artifactEvent.metadata,
+          );
+          emitLiveTrace(callbacks, recordedEvent ?? null);
+        }
+        finishChatTraceRun(
+          "trace completion finalization",
+          "completed",
+          completedSessionId,
+          "Hermes returned a completed response.",
+        );
+        if (!completedSessionId) {
+          recordMissingSessionDiagnostic();
+        }
+        if (completedSessionId) {
+          const profileUpdated = runBestEffort("session profile update", () =>
+            updateSessionProfile(completedSessionId, profile),
+          );
+          if (profileUpdated === false) {
+            console.warn(
+              "[chat-service] Hermes returned a session id, but the session cache/profile row was not updated",
+              {
+                sessionId: completedSessionId,
+                profile: profileRuntimeManager.normalizeProfile(profile),
+              },
+            );
+          }
+        }
+        notify("chat done callback", () => callbacks?.onDone?.(completedSessionId));
+        const response = { response: fullResponse, sessionId: completedSessionId };
+        settleResolved(response);
+        notify("chat completion callback", () =>
+          callbacks?.onCompleted?.({
+            ...response,
+            durationMs: Date.now() - chatStartTime,
+          }),
+        );
+      })().catch((error) => {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        notify("chat done error callback", () => callbacks?.onError?.(errorMessage));
+        settleRejected(error);
+      });
     },
     onError: (error, info) => {
       if (shouldIgnoreCallback()) return;
@@ -537,6 +918,7 @@ export async function runChatMessage({
         );
       }
     }
+    const enrichedOptions = await buildAgentCreationRunOptions(options);
     const handle = await sendMessage(
       message,
       transportCallbacks,
@@ -544,6 +926,7 @@ export async function runChatMessage({
       effectiveSessionId,
       history,
       runtime,
+      enrichedOptions,
     );
 
     if (!settled) {

@@ -7,6 +7,7 @@ import { chatSessionActivityTracker } from "./session-activity";
 import type {
   ChatCallbacks,
   ChatHandle,
+  ChatRunOptions,
   ChatTraceCallbackEvent,
   ProfileRuntimeHandle,
 } from "./types";
@@ -61,6 +62,7 @@ export function sendMessageViaRunsApi(
   resumeSessionId: string | undefined,
   history: Array<{ role: string; content: string }> | undefined,
   runtime: ProfileRuntimeHandle,
+  options?: ChatRunOptions,
 ): ChatHandle {
   const expectedProfile =
     profile?.trim() || runtime?.request.profile || "default";
@@ -112,6 +114,7 @@ export function sendMessageViaRunsApi(
           activeRunId = runId;
         },
         activityToken,
+        options,
       );
     } finally {
       finishActivity();
@@ -152,24 +155,30 @@ async function sendMessageViaVerifiedRunsApi(
   setActiveRequest: (req: ClientRequest | undefined) => void,
   setActiveRunId: (runId: string) => void,
   activityToken: string,
+  options?: ChatRunOptions,
 ): Promise<void> {
   const mc = await resolveChatRuntimeModel(profile);
+  const instructions = buildRunInstructions(options);
   const requestShape = {
     input: "string",
     model: mc.model || "hermes-agent",
     session_id: resumeSessionId ? "present" : "absent",
     conversation_history_count: history?.length ?? 0,
+    instructions: instructions ? "present" : "absent",
+    agent_creation_mode: options?.mode === "agent-creation",
+  };
+  const body: JsonRecord = {
+    input: message,
+    model: mc.model || "hermes-agent",
+    session_id: resumeSessionId,
+    conversation_history: normalizeHistory(history),
+    ...(instructions ? { instructions } : {}),
   };
   let submitted: SubmittedRun;
   try {
     submitted = await submitRunWithRetry(
       runs,
-      {
-        input: message,
-        model: mc.model || "hermes-agent",
-        session_id: resumeSessionId,
-        conversation_history: normalizeHistory(history),
-      },
+      body,
       signal,
       setActiveRequest,
     );
@@ -250,6 +259,12 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
       { once: true },
     );
   });
+}
+
+function buildRunInstructions(options: ChatRunOptions | undefined): string | undefined {
+  if (options?.mode !== "agent-creation") return undefined;
+  const instructions = options.instructions?.trim();
+  return instructions || undefined;
 }
 
 function normalizeHistory(

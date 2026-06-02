@@ -1,6 +1,7 @@
 import type {
   ChatCallbacks,
   ChatHandle,
+  ChatRunOptions,
   ProfileRuntimeHandle,
 } from "./types";
 import { sendMessageViaRunsApi } from "./runs-api";
@@ -12,9 +13,18 @@ export function sendMessageViaApi(
   resumeSessionId: string | undefined,
   history: Array<{ role: string; content: string }> | undefined,
   runtime: ProfileRuntimeHandle,
+  options?: ChatRunOptions,
 ): Promise<ChatHandle> {
   return Promise.resolve(
-    sendMessageViaRunsApi(message, cb, profile, resumeSessionId, history, runtime),
+    sendMessageViaRunsApi(
+      message,
+      cb,
+      profile,
+      resumeSessionId,
+      history,
+      runtime,
+      options,
+    ),
   );
 }
 

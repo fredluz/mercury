@@ -1,6 +1,6 @@
 import type { ChatErrorInfo } from "../../shared/codex-auth-recovery";
 import type { TraceEventType } from "../../shared/traces";
-import type { AgentDraftChangeEvent } from "../../shared/agents";
+import type { AgentChatOptions, AgentDraftChangeEvent } from "../../shared/agents";
 
 export type RuntimeMode = "local" | "ssh" | "remote";
 
@@ -154,6 +154,11 @@ export type ChatSessionIdHeaderShape =
   | "array"
   | "array-empty"
   | "unsupported";
+
+export interface ChatRunOptions extends AgentChatOptions {
+  /** Mercury-internal per-run prompt; never trusted from renderer/IPC input. */
+  instructions?: string;
+}
 
 export interface ChatTransportDiagnostic {
   code: "missing-session-id";

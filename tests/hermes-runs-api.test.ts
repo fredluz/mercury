@@ -214,6 +214,54 @@ describe("Hermes runs API transport", () => {
     expect(activityMocks.finishRun).toHaveBeenCalledWith("activity-token");
   });
 
+  it("adds per-run instructions for agent creation mode", async () => {
+    const { sendMessageViaApi } = await import("../src/main/hermes/chat-api");
+    const { baseUrl } = await fakeHermes((req, res, body) => {
+      if (req.method === "POST" && req.url === "/v1/runs") {
+        expect(JSON.parse(body)).toMatchObject({
+          input: "help me shape this agent",
+          model: "agent-api-model",
+          instructions: "agent creation prompt",
+        });
+        res.writeHead(202, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ run_id: "run_instructions", status: "started" }));
+        return;
+      }
+      if (
+        req.method === "GET" &&
+        req.url === "/v1/runs/run_instructions/events"
+      ) {
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.write(
+          'data: {"event":"run.completed","run_id":"run_instructions","session_id":"session-instructions"}\n\n',
+        );
+        res.end();
+        return;
+      }
+      res.writeHead(404);
+      res.end("not found");
+    });
+    const cb = callbacks();
+
+    await sendMessageViaApi(
+      "help me shape this agent",
+      cb,
+      "work",
+      undefined,
+      undefined,
+      runtime(baseUrl),
+      {
+        mode: "agent-creation",
+        agentDraftId: "draft-run",
+        instructions: "agent creation prompt",
+      },
+    );
+    await waitFor(() => cb.done.mock.calls.length > 0);
+
+    expect(cb.done).toHaveBeenCalledWith("session-instructions");
+    expect(cb.error).not.toHaveBeenCalled();
+  });
+
   it("polls terminal run status when the SSE stream closes without a terminal event", async () => {
     const { sendMessageViaApi } = await import("../src/main/hermes/chat-api");
     const { baseUrl } = await fakeHermes((req, res) => {

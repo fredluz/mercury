@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AgentCreationDraft,
   AgentDraftChangeEvent,
@@ -7,12 +7,20 @@ import type {
 import { ArrowLeft, Send } from "lucide-react";
 import MercuryMark from "../../components/common/MercuryMark";
 import { useI18n } from "../../components/useI18n";
+import { useChatController } from "../Chat/hooks/useChatController";
+import type { ChatMessage } from "../Chat/types";
 import { AgentDraftNotifications } from "./AgentDraftNotifications";
 import { AgentDraftReview } from "./AgentDraftReview";
 
-interface CreatorMessage {
-  role: "user" | "assistant";
-  content: string;
+function createWelcomeMessage(
+  name: string,
+  t: (key: string, values?: Record<string, string | number>) => string,
+): ChatMessage {
+  return {
+    id: `agent-creator-welcome-${Date.now()}`,
+    role: "agent",
+    content: t("agents.creatorWelcome", { name }),
+  };
 }
 
 interface AgentCreatorProps {
@@ -35,65 +43,36 @@ export function AgentCreator({
   onClose,
 }: AgentCreatorProps): React.JSX.Element {
   const { t } = useI18n();
-  const [messages, setMessages] = useState<CreatorMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
+  const draftIdRef = useRef(draft.id);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [
+    createWelcomeMessage(draft.displayName, t),
+  ]);
+  const [creatorSessionId, setCreatorSessionId] = useState<string | null>(null);
+  const [conversationVersion, setConversationVersion] = useState(0);
 
   useEffect(() => {
-    setMessages((current) => {
-      if (current.length > 0) return current;
-      return [
-        {
-          role: "assistant",
-          content: t("agents.creatorWelcome", { name: draft.displayName }),
-        },
-      ];
-    });
-  }, [draft.displayName, t]);
+    if (draftIdRef.current === draft.id) return;
+    draftIdRef.current = draft.id;
+    setCreatorSessionId(null);
+    setMessages([createWelcomeMessage(draft.displayName, t)]);
+    setConversationVersion((value) => value + 1);
+  }, [draft.displayName, draft.id, t]);
 
-  const history = useMemo(
-    () =>
-      messages.map((message) => ({
-        role: message.role,
-        content: message.content,
-      })),
-    [messages],
+  const chatOptions = useMemo(
+    () => ({ mode: "agent-creation" as const, agentDraftId: draft.id }),
+    [draft.id],
   );
 
-  async function handleSend(): Promise<void> {
-    const text = input.trim();
-    if (!text || sending) return;
-    const nextMessages: CreatorMessage[] = [
-      ...messages,
-      { role: "user", content: text },
-    ];
-    setMessages(nextMessages);
-    setInput("");
-    setSending(true);
-    setSendError(null);
-    try {
-      const result = await window.hermesAPI.sendMessage(
-        text,
-        "default",
-        undefined,
-        history,
-        { mode: "agent-creation", agentDraftId: draft.id },
-      );
-      if (result.response.trim()) {
-        setMessages((current) => [
-          ...current,
-          { role: "assistant", content: result.response },
-        ]);
-      }
-    } catch (error) {
-      setSendError(
-        error instanceof Error ? error.message : t("agents.creatorSendFailed"),
-      );
-    } finally {
-      setSending(false);
-    }
-  }
+  const chat = useChatController({
+    messages,
+    setMessages,
+    sessionId: creatorSessionId,
+    sessionTitle: draft.displayName,
+    conversationVersion,
+    profile: "default",
+    chatOptions,
+    onSessionResolved: setCreatorSessionId,
+  });
 
   return (
     <div className="agents-creator-screen">
@@ -120,48 +99,47 @@ export function AgentCreator({
           className="agents-creator-chat"
           aria-label={t("agents.creatorChatLabel")}
         >
-          <div className="agents-creator-chat-messages">
-            {messages.map((message, index) => (
-              <div
-                key={`${message.role}:${index}`}
-                className={`agents-creator-message agents-creator-message-${message.role}`}
-              >
-                <span className="agents-creator-message-role">
-                  {message.role === "assistant"
-                    ? "Mercury"
-                    : t("agents.creatorYou")}
-                </span>
-                <p>{message.content}</p>
-              </div>
-            ))}
+          <div
+            className="agents-creator-chat-messages"
+            ref={chat.messagesContainerRef}
+          >
+            {chat.visibleMessages.map((message) => {
+              const bubbleRole =
+                message.role === "agent" ? "assistant" : "user";
+              return (
+                <div
+                  key={message.id}
+                  className={`agents-creator-message agents-creator-message-${bubbleRole}`}
+                >
+                  <span className="agents-creator-message-role">
+                    {message.role === "agent"
+                      ? "Mercury"
+                      : t("agents.creatorYou")}
+                  </span>
+                  <p>{message.content}</p>
+                </div>
+              );
+            })}
+            <div ref={chat.messagesEndRef} />
           </div>
-          {sendError ? (
-            <div className="agents-create-error" role="alert">
-              {sendError}
-            </div>
-          ) : null}
           <div className="agents-creator-composer-wrap">
             <AgentDraftNotifications notifications={notifications} />
             <div className="agents-creator-composer">
               <textarea
+                ref={chat.inputRef}
                 className="input agents-creator-input"
-                value={input}
+                value={chat.input}
                 placeholder={t("agents.creatorInputPlaceholder")}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void handleSend();
-                  }
-                }}
+                onChange={chat.handleInputChange}
+                onKeyDown={chat.handleKeyDown}
               />
               <button
                 className="btn btn-primary"
-                onClick={() => void handleSend()}
-                disabled={sending || !input.trim()}
+                onClick={() => void chat.handleSend()}
+                disabled={chat.isLoading || !chat.input.trim()}
               >
                 <Send size={14} />
-                {sending ? t("common.loading") : t("chat.send")}
+                {chat.isLoading ? t("common.loading") : t("chat.send")}
               </button>
             </div>
           </div>

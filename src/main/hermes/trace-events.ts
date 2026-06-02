@@ -9,6 +9,109 @@ const IMAGE_URL_RE = /https?:\/\/\S+?(?:\.png|\.jpe?g|\.gif|\.webp|\.svg)(?:[?#]
 const IMAGE_PATH_RE =
   /(?:saved|wrote|written|created|exported|returned)\s*(?:to|at|:)?\s+((?:file:\/\/)?[~/\w.-][^\s`)]*\.(?:png|jpe?g|gif|webp|svg))/gi;
 const MARKDOWN_IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g;
+const DRAFT_MUTATION_OPEN_TAG = "<draft-mutation>";
+const DRAFT_MUTATION_CLOSE_TAG = "</draft-mutation>";
+
+export interface DraftMutationBlock {
+  payload: unknown;
+  raw: string;
+  parseError?: string;
+}
+
+export interface DraftMutationParseResult {
+  visibleText: string;
+  mutations: DraftMutationBlock[];
+}
+
+export interface DraftMutationTextParser {
+  push(chunk: string): DraftMutationParseResult;
+  flush(): DraftMutationParseResult;
+}
+
+export function createDraftMutationTextParser(): DraftMutationTextParser {
+  let buffer = "";
+
+  const parseAvailable = (final: boolean): DraftMutationParseResult => {
+    let visibleText = "";
+    const mutations: DraftMutationBlock[] = [];
+
+    while (buffer) {
+      const openIndex = buffer.indexOf(DRAFT_MUTATION_OPEN_TAG);
+      if (openIndex === -1) {
+        if (final) {
+          visibleText += buffer;
+          buffer = "";
+        } else {
+          const keepLength = longestSuffixThatPrefixes(
+            buffer,
+            DRAFT_MUTATION_OPEN_TAG,
+          );
+          visibleText += buffer.slice(0, buffer.length - keepLength);
+          buffer = buffer.slice(buffer.length - keepLength);
+        }
+        break;
+      }
+
+      visibleText += buffer.slice(0, openIndex);
+      const closeIndex = buffer.indexOf(
+        DRAFT_MUTATION_CLOSE_TAG,
+        openIndex + DRAFT_MUTATION_OPEN_TAG.length,
+      );
+      if (closeIndex === -1) {
+        if (final) {
+          const raw = buffer.slice(openIndex);
+          mutations.push({
+            payload: undefined,
+            raw,
+            parseError: "Unclosed <draft-mutation> block.",
+          });
+          buffer = "";
+        } else {
+          buffer = buffer.slice(openIndex);
+        }
+        break;
+      }
+
+      const raw = buffer.slice(
+        openIndex,
+        closeIndex + DRAFT_MUTATION_CLOSE_TAG.length,
+      );
+      const inner = buffer
+        .slice(openIndex + DRAFT_MUTATION_OPEN_TAG.length, closeIndex)
+        .trim();
+      try {
+        mutations.push({ payload: JSON.parse(inner) as unknown, raw });
+      } catch (error) {
+        mutations.push({
+          payload: undefined,
+          raw,
+          parseError: error instanceof Error ? error.message : String(error),
+        });
+      }
+      buffer = buffer.slice(closeIndex + DRAFT_MUTATION_CLOSE_TAG.length);
+    }
+
+    return { visibleText, mutations };
+  };
+
+  return {
+    push(chunk: string): DraftMutationParseResult {
+      buffer += chunk;
+      return parseAvailable(false);
+    },
+    flush(): DraftMutationParseResult {
+      return parseAvailable(true);
+    },
+  };
+}
+
+function longestSuffixThatPrefixes(text: string, prefix: string): number {
+  const max = Math.min(text.length, prefix.length - 1);
+  for (let length = max; length > 0; length -= 1) {
+    if (prefix.startsWith(text.slice(text.length - length))) return length;
+  }
+  return 0;
+}
 
 export function sanitizeTraceMetadata(
   value: unknown,

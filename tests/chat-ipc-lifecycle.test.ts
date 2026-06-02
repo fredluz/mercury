@@ -27,6 +27,50 @@ type FakeSender = {
 
 const mocks = vi.hoisted(() => {
   const handlers = new Map<string, (...args: unknown[]) => unknown>();
+  const createDraftMutationTextParser = () => {
+    let buffer = "";
+    const drain = () => {
+      let visibleText = "";
+      const mutations: Array<{ payload: unknown; raw: string; parseError?: string }> = [];
+      while (buffer) {
+        const open = buffer.indexOf("<draft-mutation>");
+        if (open === -1) {
+          visibleText += buffer;
+          buffer = "";
+          break;
+        }
+        visibleText += buffer.slice(0, open);
+        const close = buffer.indexOf("</draft-mutation>", open);
+        if (close === -1) break;
+        const raw = buffer.slice(open, close + "</draft-mutation>".length);
+        try {
+          mutations.push({
+            payload: JSON.parse(
+              buffer.slice(open + "<draft-mutation>".length, close).trim(),
+            ),
+            raw,
+          });
+        } catch (error) {
+          mutations.push({
+            payload: undefined,
+            raw,
+            parseError: error instanceof Error ? error.message : String(error),
+          });
+        }
+        buffer = buffer.slice(close + "</draft-mutation>".length);
+      }
+      return { visibleText, mutations };
+    };
+    return {
+      push(chunk: string) {
+        buffer += chunk;
+        return drain();
+      },
+      flush() {
+        return drain();
+      },
+    };
+  };
   return {
     handlers,
     capturedCallbacks: undefined as ChatCallbacks | undefined,
@@ -46,6 +90,7 @@ const mocks = vi.hoisted(() => {
     setSshRemoteApiKey: vi.fn(),
     isRemoteMode: vi.fn(),
     extractArtifactEventsFromText: vi.fn(),
+    createDraftMutationTextParser: vi.fn(createDraftMutationTextParser),
     getConnectionConfig: vi.fn(),
     createTraceRun: vi.fn(),
     finishTraceRun: vi.fn(),
@@ -67,6 +112,7 @@ const mocks = vi.hoisted(() => {
       normalizeProfile: vi.fn(),
       resolveRuntime: vi.fn(),
     },
+    getAgentDraft: vi.fn(),
     updateAgentDraft: vi.fn(),
   };
 });
@@ -90,6 +136,7 @@ vi.mock("../src/main/hermes", () => ({
 }));
 
 vi.mock("../src/main/hermes/trace-events", () => ({
+  createDraftMutationTextParser: mocks.createDraftMutationTextParser,
   extractArtifactEventsFromText: mocks.extractArtifactEventsFromText,
 }));
 
@@ -136,6 +183,7 @@ vi.mock("../src/main/hermes/runtime", () => ({
 }));
 
 vi.mock("../src/main/services/agents-service", () => ({
+  getAgentDraft: mocks.getAgentDraft,
   updateAgentDraft: mocks.updateAgentDraft,
 }));
 
@@ -162,6 +210,7 @@ function resetMockState(): void {
   mocks.setSshRemoteApiKey.mockReset();
   mocks.isRemoteMode.mockReset().mockReturnValue(false);
   mocks.extractArtifactEventsFromText.mockReset().mockReturnValue([]);
+  mocks.createDraftMutationTextParser.mockClear();
   mocks.getConnectionConfig.mockReset().mockReturnValue({ mode: "local" });
   mocks.createTraceRun.mockReset().mockReturnValue({ id: "trace-1" });
   mocks.finishTraceRun.mockReset();
@@ -228,6 +277,20 @@ function resetMockState(): void {
   mocks.profileRuntimeManager.normalizeProfile
     .mockReset()
     .mockImplementation((profile?: string) => profile?.trim() || "default");
+  mocks.getAgentDraft.mockReset().mockResolvedValue({
+    id: "draft-chat-options",
+    status: "draft",
+    revision: 0,
+    profile: "draft_profile",
+    displayName: "Draft Agent",
+    selectedPackIds: ["default"],
+    docsPointers: [{ id: "existing-doc", title: "Existing docs" }],
+    toolsetOverrides: { web: true, browser: false },
+    skillOverrides: { "skill:research/arxiv": false, "tool:web": true },
+    mutationIds: [],
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  });
   mocks.updateAgentDraft.mockReset().mockResolvedValue({
     success: true,
     changed: false,
@@ -478,6 +541,7 @@ describe("chat IPC lifecycle hardening", () => {
       "resume-session",
       undefined,
       runtime,
+      undefined,
     );
   });
 
@@ -745,6 +809,89 @@ describe("chat IPC lifecycle hardening", () => {
     expect(sentChannels(event.sender, "chat-done")).toEqual([
       ["chat-done", "session-options"],
     ]);
+    expect(mocks.sendMessage).toHaveBeenCalledWith(
+      "hello",
+      expect.any(Object),
+      "default",
+      "server-session-1",
+      undefined,
+      expect.any(Object),
+      expect.objectContaining({
+        mode: "agent-creation",
+        agentDraftId: "draft-chat-options",
+        instructions: expect.stringContaining("DELTA CONTRACT"),
+      }),
+    );
+  });
+
+  it("strips draft mutation blocks and applies merged full draft patches", async () => {
+    const handler = await setupHandler();
+    const event = createEvent();
+    mocks.getAgentDraft
+      .mockResolvedValueOnce({
+        id: "draft-chat",
+        status: "draft",
+        revision: 0,
+        profile: "draft_profile",
+        displayName: "Draft Agent",
+        selectedPackIds: ["default"],
+        docsPointers: [{ id: "existing-doc", title: "Existing docs" }],
+        toolsetOverrides: { web: true, browser: false },
+        skillOverrides: { "skill:research/arxiv": false, "tool:web": true },
+        mutationIds: [],
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      })
+      .mockResolvedValueOnce({
+        id: "draft-chat",
+        status: "draft",
+        revision: 0,
+        profile: "draft_profile",
+        displayName: "Draft Agent",
+        selectedPackIds: ["default"],
+        docsPointers: [{ id: "existing-doc", title: "Existing docs" }],
+        toolsetOverrides: { web: true, browser: false },
+        skillOverrides: { "skill:research/arxiv": false, "tool:web": true },
+        mutationIds: [],
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+
+    const invokePromise = handler(event, "create agent", "default", undefined, undefined, {
+      agentDraftId: "draft-chat",
+      mode: "agent-creation",
+    });
+    const callbacks = await waitForTransportCallbacks();
+    callbacks.onChunk(
+      'I updated the draft. <draft-mutation>{"patch":{"displayName":"Research Bot","addPackIds":["research"],"removePackIds":["default"],"addDocsPointers":[{"id":"new-doc","title":"New docs","path":"docs/new.md"}],"removeDocsPointerIds":["existing-doc"],"toolsetOverrides":{"browser":null,"terminal":true},"skillOverrides":{"skill:research/arxiv":null,"skill:media/youtube-content":false}}}</draft-mutation>',
+    );
+    callbacks.onDone("session-draft-block");
+
+    await expect(invokePromise).resolves.toEqual({
+      response: "I updated the draft. ",
+      sessionId: "session-draft-block",
+    });
+    expect(sentChannels(event.sender, "chat-chunk")).toEqual([
+      ["chat-chunk", "I updated the draft. "],
+    ]);
+    expect(mocks.updateAgentDraft).toHaveBeenCalledWith(
+      {
+        draftId: "draft-chat",
+        patch: {
+          displayName: "Research Bot",
+          selectedPackIds: ["research"],
+          docsPointers: [
+            { id: "new-doc", title: "New docs", path: "docs/new.md" },
+          ],
+          toolsetOverrides: { web: true, terminal: true },
+          skillOverrides: {
+            "tool:web": true,
+            "skill:media/youtube-content": false,
+          },
+        },
+      },
+      expect.objectContaining({ onChange: expect.any(Function) }),
+    );
   });
 
   it("forwards agent-draft change events produced by structured tool traces", async () => {

@@ -12,7 +12,12 @@ import {
 } from "./synthetic-chat";
 import type { RuntimeApplySource } from "../../shared/runtime";
 import type { RuntimeApplyState } from "./runtime/state";
-import type { ChatCallbacks, ChatHandle, ProfileRuntimeHandle } from "./types";
+import type {
+  ChatCallbacks,
+  ChatHandle,
+  ChatRunOptions,
+  ProfileRuntimeHandle,
+} from "./types";
 
 export async function sendMessage(
   message: string,
@@ -21,6 +26,7 @@ export async function sendMessage(
   resumeSessionId?: string,
   history?: Array<{ role: string; content: string }>,
   preparedRuntime?: ProfileRuntimeHandle,
+  options?: ChatRunOptions,
 ): Promise<ChatHandle> {
   if (isSyntheticChatStreamEnabled()) {
     return sendSyntheticChatStream(
@@ -51,6 +57,7 @@ export async function sendMessage(
     resumeSessionId,
     history,
     runtime,
+    options,
   );
 }
 
