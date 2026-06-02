@@ -189,6 +189,9 @@ describe("New IPC handlers from v0.8/v0.9 features", () => {
     "update-agent-draft",
     "abandon-agent-draft",
     "commit-agent-draft",
+    "get-agent-avatar-data-url",
+    "set-agent-avatar",
+    "clear-agent-avatar",
   ];
 
   for (const ch of newChannels) {

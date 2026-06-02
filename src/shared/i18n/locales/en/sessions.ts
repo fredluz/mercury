@@ -11,6 +11,7 @@ export default {
   viewTraces: "View traces",
   viewTracesAria: "View traces for {{title}}",
   backToSessions: "Back to Sessions",
+  backToChat: "Back to Chat",
   noSessionTraces: "No traces for this session yet",
   noSessionTracesHint: "Traces appear here after Hermes records activity for this session. Use Trace Activity for orphan or non-session traces.",
   today: "Today",

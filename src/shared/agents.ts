@@ -1,4 +1,4 @@
-import type { ProfileInfo } from "./profiles";
+import type { ProfileAvatarMetadata, ProfileInfo } from "./profiles";
 
 export interface AgentDocsPointerSelection {
   id: string;
@@ -122,6 +122,50 @@ export type AgentCommitResult =
         | "rollback-failed";
       error: string;
       draft?: AgentCreationDraft;
+    };
+
+export interface SetAgentAvatarRequest {
+  profile: string;
+  /** Transient PNG data URL from renderer; never persisted in profile metadata JSON. */
+  imageDataUrl: string;
+}
+
+export interface ClearAgentAvatarRequest {
+  profile: string;
+}
+
+export type AgentAvatarMutationResult =
+  | {
+      success: true;
+      agent: ProfileInfo;
+      avatar: ProfileAvatarMetadata | null;
+    }
+  | {
+      success: false;
+      code:
+        | "not-found"
+        | "immutable-agent"
+        | "unsupported-remote-mode"
+        | "validation-error"
+        | "write-failed";
+      error: string;
+      agent?: ProfileInfo;
+    };
+
+export type AgentAvatarDataUrlResult =
+  | {
+      success: true;
+      dataUrl: string | null;
+      avatar?: ProfileAvatarMetadata;
+    }
+  | {
+      success: false;
+      code:
+        | "not-found"
+        | "unsupported-remote-mode"
+        | "validation-error"
+        | "read-failed";
+      error: string;
     };
 
 export type AgentDraftMutationResult =

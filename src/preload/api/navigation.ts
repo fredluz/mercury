@@ -78,7 +78,7 @@ export const navigationApi = {
   ): Promise<
     Array<{
       id: number;
-      role: "user" | "assistant";
+      role: "user" | "assistant" | "tool";
       content: string;
       timestamp: number;
     }>

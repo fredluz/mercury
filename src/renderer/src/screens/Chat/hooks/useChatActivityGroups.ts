@@ -14,6 +14,7 @@ interface UseChatActivityGroupsResult {
   appendActivityEvent: (traceEvent: TraceEvent) => void;
   markActiveActivityGroup: (status: ChatActivityGroupStatus) => void;
   resetActivityGroups: () => void;
+  hydrateActivityGroups: (groups: ChatActivityGroup[]) => void;
   toggleActivityGroup: (groupId: string) => void;
 }
 
@@ -85,6 +86,11 @@ export function useChatActivityGroups(): UseChatActivityGroupsResult {
     activeActivityGroupIdRef.current = null;
   }, []);
 
+  const hydrateActivityGroups = useCallback((groups: ChatActivityGroup[]): void => {
+    setActivityGroups(groups);
+    activeActivityGroupIdRef.current = null;
+  }, []);
+
   const toggleActivityGroup = useCallback((groupId: string): void => {
     setActivityGroups((prev) =>
       prev.map((group) =>
@@ -100,6 +106,7 @@ export function useChatActivityGroups(): UseChatActivityGroupsResult {
     appendActivityEvent,
     markActiveActivityGroup,
     resetActivityGroups,
+    hydrateActivityGroups,
     toggleActivityGroup,
   };
 }

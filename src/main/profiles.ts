@@ -4,7 +4,13 @@ import { homedir } from "os";
 import { promises as fs } from "fs";
 import { copyFileSync, existsSync } from "fs";
 import { isValidProfileName } from "../shared/profile-identity";
-import type { ProfileAgentMetadata, ProfileInfo } from "../shared/profiles";
+import {
+  AGENT_AVATAR_CONTENT_TYPE,
+  AGENT_AVATAR_FILE_NAME,
+  AGENT_AVATAR_MAX_BYTES,
+  type ProfileAgentMetadata,
+  type ProfileInfo,
+} from "../shared/profiles";
 import {
   HERMES_HOME,
   HERMES_PYTHON,
@@ -164,7 +170,32 @@ function normalizeProfileAgentMetadata(value: unknown): ProfileAgentMetadata {
     ...optionalStringField("description", value.description),
     selectedPackIds: stringArray(value.selectedPackIds),
     docsPointers: docsPointers(value.docsPointers),
+    ...optionalAvatarMetadata(value.avatar),
   };
+}
+
+function optionalAvatarMetadata(
+  value: unknown,
+): Pick<ProfileAgentMetadata, "avatar"> | {} {
+  if (!isRecord(value)) return {};
+  if (value.path !== AGENT_AVATAR_FILE_NAME) return {};
+  if (value.contentType !== AGENT_AVATAR_CONTENT_TYPE) return {};
+  if (typeof value.updatedAt !== "string" || !value.updatedAt.trim()) return {};
+
+  const avatar: ProfileAgentMetadata["avatar"] = {
+    path: AGENT_AVATAR_FILE_NAME,
+    contentType: AGENT_AVATAR_CONTENT_TYPE,
+    updatedAt: value.updatedAt.trim(),
+  };
+  if (
+    typeof value.byteLength === "number" &&
+    Number.isInteger(value.byteLength) &&
+    value.byteLength > 0 &&
+    value.byteLength <= AGENT_AVATAR_MAX_BYTES
+  ) {
+    avatar.byteLength = value.byteLength;
+  }
+  return { avatar };
 }
 
 function optionalStringField<K extends "displayName" | "description">(
@@ -223,6 +254,7 @@ function profileDisplayFields(
   | "description"
   | "selectedPackIds"
   | "docsPointers"
+  | "avatar"
 > {
   if (isDefault) {
     return {
@@ -242,6 +274,7 @@ function profileDisplayFields(
     immutable: false,
     deletable: true,
     ...optionalProfileDescription(metadata.description),
+    ...optionalProfileAvatar(metadata.avatar),
     selectedPackIds: [...(metadata.selectedPackIds ?? [])],
     docsPointers: [...(metadata.docsPointers ?? [])],
   };
@@ -249,6 +282,12 @@ function profileDisplayFields(
 
 function optionalProfileDescription(description: string | undefined): Pick<ProfileInfo, "description"> | {} {
   return description ? { description } : {};
+}
+
+function optionalProfileAvatar(
+  avatar: ProfileAgentMetadata["avatar"],
+): Pick<ProfileInfo, "avatar"> | {} {
+  return avatar ? { avatar: { ...avatar } } : {};
 }
 
 export async function listProfiles(): Promise<ProfileInfo[]> {

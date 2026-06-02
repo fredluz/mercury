@@ -1,12 +1,16 @@
 import { ipcRenderer } from "electron";
 import type {
+  AgentAvatarDataUrlResult,
+  AgentAvatarMutationResult,
   AgentCommitRequest,
   AgentCommitResult,
   AgentCreationDraft,
   AgentDraftChangeEvent,
   AgentDraftMutationRequest,
   AgentDraftMutationResult,
+  ClearAgentAvatarRequest,
   CreateAgentDraftRequest,
+  SetAgentAvatarRequest,
 } from "../../shared/agents";
 
 export const agentsApi = {
@@ -30,6 +34,19 @@ export const agentsApi = {
 
   commitAgentDraft: (request: AgentCommitRequest): Promise<AgentCommitResult> =>
     ipcRenderer.invoke("commit-agent-draft", request),
+
+  getAgentAvatarDataUrl: (profile: string): Promise<AgentAvatarDataUrlResult> =>
+    ipcRenderer.invoke("get-agent-avatar-data-url", profile),
+
+  setAgentAvatar: (
+    request: SetAgentAvatarRequest,
+  ): Promise<AgentAvatarMutationResult> =>
+    ipcRenderer.invoke("set-agent-avatar", request),
+
+  clearAgentAvatar: (
+    request: ClearAgentAvatarRequest,
+  ): Promise<AgentAvatarMutationResult> =>
+    ipcRenderer.invoke("clear-agent-avatar", request),
 
   onAgentDraftChanged: (
     callback: (event: AgentDraftChangeEvent) => void,

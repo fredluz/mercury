@@ -3,7 +3,8 @@ import Chat, {
   ChatMessage,
   type ChatScheduleConversationDraft,
 } from "../Chat/Chat";
-import Sessions from "../Sessions/Sessions";
+import { isChatActivityEvent } from "../Chat/chatActivity";
+import type { ChatActivityGroup } from "../Chat/types";
 import ChatListSidebar from "./ChatListSidebar";
 import ChatAgentPicker from "./ChatAgentPicker";
 import TraceLab from "../TraceLab/TraceLab";
@@ -19,9 +20,9 @@ import Schedules, { type ScheduleInitialDraft } from "../Schedules/Schedules";
 import RemoteNotice from "../../components/RemoteNotice";
 import { RuntimeDiagnosticNotice } from "../../components/RuntimeDiagnosticNotice";
 import MercuryLockup from "../../components/common/MercuryLockup";
+import AgentAvatar from "../../components/common/AgentAvatar";
 import {
   ChatBubble,
-  Clock,
   Users,
   Settings as SettingsIcon,
   Puzzle,
@@ -31,10 +32,11 @@ import {
   Signal,
   KeyRound,
   Timer,
-  Activity,
 } from "../../assets/icons";
 import type { LucideIcon } from "lucide-react";
 import type { RuntimeDiagnostic } from "../../../../shared/runtime";
+import type { TraceRun } from "../../../../shared/traces";
+import type { ProfileInfo } from "../../../../shared/profiles";
 import { useI18n } from "../../components/useI18n";
 import { markRendererPerf } from "../../perf";
 
@@ -74,7 +76,6 @@ type TraceLaunchState =
 
 const NAV_ITEMS: { view: NavView; icon: LucideIcon; labelKey: string }[] = [
   { view: "chat", icon: ChatBubble, labelKey: "navigation.chat" },
-  { view: "sessions", icon: Clock, labelKey: "navigation.sessions" },
   { view: "agents", icon: Users, labelKey: "navigation.agents" },
   { view: "providers", icon: KeyRound, labelKey: "navigation.providers" },
   { view: "skills", icon: Puzzle, labelKey: "navigation.skills" },
@@ -85,6 +86,18 @@ const NAV_ITEMS: { view: NavView; icon: LucideIcon; labelKey: string }[] = [
   { view: "gateway", icon: Signal, labelKey: "navigation.gateway" },
   { view: "settings", icon: SettingsIcon, labelKey: "navigation.settings" },
 ];
+
+const AGENT_SCOPED_BRAND_VIEWS = new Set<View>([
+  "skills",
+  "soul",
+  "memory",
+  "tools",
+]);
+
+function displayNameForProfile(profile: ProfileInfo | null, fallback: string): string {
+  if (!profile) return fallback === "default" ? "Mercury" : fallback;
+  return profile.displayName.trim() || profile.name;
+}
 
 function isIdleLocalUnverifiedRuntime(
   diagnostic: RuntimeDiagnostic | null,
@@ -104,6 +117,9 @@ function Layout(): React.JSX.Element {
   const [view, setView] = useState<View>("chat");
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>("main");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [persistedActivityGroups, setPersistedActivityGroups] = useState<
+    ChatActivityGroup[]
+  >([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [currentSessionTitle, setCurrentSessionTitle] = useState<string | null>(
     null,
@@ -114,6 +130,8 @@ function Layout(): React.JSX.Element {
   const [sessionsRefreshToken, setSessionsRefreshToken] = useState(0);
   const [conversationVersion, setConversationVersion] = useState(0);
   const [activeProfile, setActiveProfile] = useState("default");
+  const [activeAgentProfile, setActiveAgentProfile] =
+    useState<ProfileInfo | null>(null);
   const [showChatAgentPicker, setShowChatAgentPicker] = useState(false);
   const [traceLaunch, setTraceLaunch] = useState<TraceLaunchState>({
     mode: "all",
@@ -183,6 +201,27 @@ function Layout(): React.JSX.Element {
 
   useEffect(() => {
     activeProfileRef.current = activeProfile;
+  }, [activeProfile]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const requestedProfile = activeProfile.trim() || "default";
+
+    window.hermesAPI
+      .listProfiles()
+      .then((profiles) => {
+        if (cancelled) return;
+        setActiveAgentProfile(
+          profiles.find((profile) => profile.name === requestedProfile) ?? null,
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setActiveAgentProfile(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [activeProfile]);
 
   const refreshRuntimeDiagnostic = useCallback(() => {
@@ -338,6 +377,7 @@ function Layout(): React.JSX.Element {
       activeProfileRef.current = cleanProfile;
       setActiveProfile(cleanProfile);
       setMessages([]);
+      setPersistedActivityGroups([]);
       setCurrentSessionId(null);
       setCurrentSessionTitle(null);
       setCurrentSessionProfile(null);
@@ -355,19 +395,20 @@ function Layout(): React.JSX.Element {
       handleNewChat();
     });
     const cleanupSearch = window.hermesAPI.onMenuSearchSessions(() => {
-      goTo("sessions");
+      openChatListSidebar();
     });
     return () => {
       cleanupNewChat();
       cleanupSearch();
     };
-  }, [handleNewChat, goTo]);
+  }, [handleNewChat, openChatListSidebar]);
 
   const handleSelectProfile = useCallback((name: string) => {
     resumeRequestIdRef.current += 1;
     activeProfileRef.current = name;
     setActiveProfile(name);
     setMessages([]);
+    setPersistedActivityGroups([]);
     setCurrentSessionId(null);
     setCurrentSessionTitle(null);
     setCurrentSessionProfile(null);
@@ -393,6 +434,24 @@ function Layout(): React.JSX.Element {
     setTraceLaunchVersion((value) => value + 1);
     goTo("traceDetail");
   }, [goTo]);
+
+  const handleOpenChatTrace = useCallback(() => {
+    if (currentSessionId) {
+      handleOpenSessionTrace(
+        currentSessionId,
+        currentSessionTitle,
+        currentSessionProfile,
+      );
+    } else {
+      handleOpenTraceActivity();
+    }
+  }, [
+    currentSessionId,
+    currentSessionTitle,
+    currentSessionProfile,
+    handleOpenSessionTrace,
+    handleOpenTraceActivity,
+  ]);
 
   const openTraceRun = useCallback(
     (runId: string) => {
@@ -443,8 +502,8 @@ function Layout(): React.JSX.Element {
     [activeProfile, goTo],
   );
 
-  const handleBackToSessions = useCallback(() => {
-    goTo("sessions");
+  const handleBackToChat = useCallback(() => {
+    goTo("chat");
   }, [goTo]);
 
   const handleAgentProfileAction = useCallback(
@@ -466,6 +525,17 @@ function Layout(): React.JSX.Element {
     !(view === "chat" && isIdleLocalUnverifiedRuntime(runtimeDiagnostic))
       ? runtimeDiagnostic
       : null;
+
+  const matchedActiveAgentProfile =
+    activeAgentProfile?.name === activeProfile ? activeAgentProfile : null;
+  const sidebarShowsAgentBrand =
+    AGENT_SCOPED_BRAND_VIEWS.has(view) &&
+    activeProfile !== "default" &&
+    matchedActiveAgentProfile?.kind !== "builtin";
+  const activeAgentDisplayName = displayNameForProfile(
+    matchedActiveAgentProfile,
+    activeProfile,
+  );
 
   const handleChatSessionResolved = useCallback(
     (sessionId: string): void => {
@@ -490,21 +560,48 @@ function Layout(): React.JSX.Element {
       const nextProfile = rowProfile || activeProfile;
       const requestId = resumeRequestIdRef.current + 1;
       resumeRequestIdRef.current = requestId;
-      const dbMessages = await window.hermesAPI.getSessionMessages(
-        sessionId,
-        rowProfile,
-      );
+      const [dbMessages, traceRuns] = await Promise.all([
+        window.hermesAPI.getSessionMessages(sessionId, rowProfile),
+        window.hermesAPI
+          .listTraceRuns()
+          .catch((): TraceRun[] => []),
+      ]);
       if (resumeRequestIdRef.current !== requestId) return;
-      const chatMessages: ChatMessage[] = dbMessages.map((m) => ({
-        id: `db-${m.id}`,
-        role: m.role === "user" ? "user" : "agent",
-        content: m.content,
-      }));
+      const userMessages = dbMessages.filter((m) => m.role === "user");
+      const resumedActivityGroups: ChatActivityGroup[] = traceRuns
+        .filter((run) => run.sessionId === sessionId)
+        .sort((a, b) => a.startedAt - b.startedAt)
+        .flatMap((run, index): ChatActivityGroup[] => {
+          const anchorMessage = userMessages[index];
+          if (!anchorMessage) return [];
+          const events = run.events.filter(isChatActivityEvent);
+          if (events.length === 0) return [];
+          return [
+            {
+              id: `activity-${run.id}`,
+              runId: run.id,
+              anchorMessageId: `db-${anchorMessage.id}`,
+              status: run.status,
+              startedAt: run.startedAt,
+              updatedAt: run.updatedAt,
+              expanded: false,
+              events,
+            },
+          ];
+        });
+      const chatMessages: ChatMessage[] = dbMessages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => ({
+          id: `db-${m.id}`,
+          role: m.role === "user" ? "user" : "agent",
+          content: m.content,
+        }));
       if (rowProfile) {
         activeProfileRef.current = rowProfile;
         setActiveProfile(rowProfile);
       }
       setMessages(chatMessages);
+      setPersistedActivityGroups(resumedActivityGroups);
       setCurrentSessionId(sessionId);
       setCurrentSessionTitle(title?.trim() || null);
       setCurrentSessionProfile(nextProfile);
@@ -531,7 +628,31 @@ function Layout(): React.JSX.Element {
       ) : (
         <aside className="sidebar">
           <div className="sidebar-brand">
-            <MercuryLockup className="sidebar-brand-lockup" />
+            {sidebarShowsAgentBrand ? (
+              <div className="sidebar-agent-brand" title={activeAgentDisplayName}>
+                {matchedActiveAgentProfile ? (
+                  <AgentAvatar
+                    profile={matchedActiveAgentProfile}
+                    className="sidebar-agent-brand-avatar"
+                    markClassName="sidebar-agent-brand-avatar-mark"
+                    markSize={34}
+                  />
+                ) : (
+                  <AgentAvatar
+                    profileName={activeProfile}
+                    displayName={activeAgentDisplayName}
+                    className="sidebar-agent-brand-avatar"
+                    markClassName="sidebar-agent-brand-avatar-mark"
+                    markSize={34}
+                  />
+                )}
+                <span className="sidebar-agent-brand-name">
+                  {activeAgentDisplayName}
+                </span>
+              </div>
+            ) : (
+              <MercuryLockup className="sidebar-brand-lockup" />
+            )}
           </div>
 
           {showUpdateButton ? (
@@ -550,7 +671,7 @@ function Layout(): React.JSX.Element {
             {NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => (
               <button
                 key={v}
-                className={`sidebar-nav-item ${view === v || (view === "traceDetail" && v === "sessions") ? "active" : ""}`}
+                className={`sidebar-nav-item ${view === v || (view === "traceDetail" && v === "chat") ? "active" : ""}`}
                 onClick={() => (v === "chat" ? openChatListSidebar() : goTo(v))}
               >
                 <Icon size={16} />
@@ -580,6 +701,8 @@ function Layout(): React.JSX.Element {
               sessionTitle={currentSessionTitle}
               conversationVersion={conversationVersion}
               profile={activeProfile}
+              persistedActivityGroups={persistedActivityGroups}
+              activeAgentProfile={matchedActiveAgentProfile}
               runtimeDiagnostic={runtimeDiagnostic}
               onRuntimeDiagnosticRefresh={refreshRuntimeDiagnostic}
               onSessionResolved={handleChatSessionResolved}
@@ -590,6 +713,7 @@ function Layout(): React.JSX.Element {
               onSessionReset={() => {
                 setCurrentSessionId(null);
                 setCurrentSessionTitle(null);
+                setPersistedActivityGroups([]);
                 setCurrentSessionProfile(null);
                 setConversationVersion((value) => value + 1);
               }}
@@ -597,45 +721,12 @@ function Layout(): React.JSX.Element {
                 handleCreateScheduleFromConversation
               }
               onOpenTraceRun={openTraceRun}
+              onOpenTrace={handleOpenChatTrace}
               onViewSchedules={() => goTo("schedules")}
               onNewChat={handleNewChat}
             />
           )}
         </div>
-
-        {visitedViews.has("sessions") && (
-          <div style={paneStyle("sessions")}>
-            {remoteMode ? (
-              <div className="sessions-container">
-                <div className="sessions-header">
-                  <div className="sessions-header-top">
-                    <h2 className="sessions-title">{t("sessions.title")}</h2>
-                    <div className="sessions-header-actions">
-                      <button
-                        className="btn btn-secondary"
-                        onClick={handleOpenTraceActivity}
-                      >
-                        <Activity size={14} />
-                        {t("sessions.traceActivity")}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <RemoteNotice feature="Sessions" />
-              </div>
-            ) : (
-              <Sessions
-                onResumeSession={handleResumeSession}
-                onOpenSessionTrace={handleOpenSessionTrace}
-                onOpenTraceActivity={handleOpenTraceActivity}
-                onNewChat={handleNewChat}
-                currentSessionId={currentSessionId}
-                currentSessionProfile={currentSessionProfile}
-                refreshToken={sessionsRefreshToken}
-              />
-            )}
-          </div>
-        )}
 
         {visitedViews.has("traceDetail") && (
           <div style={paneStyle("traceDetail")}>
@@ -648,7 +739,7 @@ function Layout(): React.JSX.Element {
                 traceLaunch.mode === "run" ? traceLaunch.target.runId : null
               }
               reloadToken={traceLaunchVersion}
-              onBackToSessions={handleBackToSessions}
+              onBackToSessions={handleBackToChat}
             />
           </div>
         )}

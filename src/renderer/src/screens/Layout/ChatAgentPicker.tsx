@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MessageSquarePlus, RefreshCw } from "lucide-react";
 import type { ProfileInfo } from "../../../../shared/profiles";
-import MercuryMark from "../../components/common/MercuryMark";
+import AgentAvatar from "../../components/common/AgentAvatar";
 import { useI18n } from "../../components/useI18n";
 
 interface ChatAgentPickerProps {
@@ -25,23 +25,6 @@ function sortProfiles(
 
 function displayNameFor(profile: ProfileInfo): string {
   return profile.displayName.trim() || profile.name;
-}
-
-function AgentAvatar({ profile }: { profile: ProfileInfo }): React.JSX.Element {
-  const name = displayNameFor(profile);
-  if (profile.name === "default") {
-    return (
-      <div className="chat-agent-picker-avatar chat-agent-picker-avatar-mark">
-        <MercuryMark size={32} decorative />
-      </div>
-    );
-  }
-
-  return (
-    <div className="chat-agent-picker-avatar">
-      {name.charAt(0).toUpperCase()}
-    </div>
-  );
 }
 
 function ChatAgentPicker({
@@ -135,7 +118,12 @@ function ChatAgentPicker({
                 disabled={startingProfile !== null}
               >
                 <div className="chat-agent-picker-card-top">
-                  <AgentAvatar profile={profile} />
+                  <AgentAvatar
+                    profile={profile}
+                    className="chat-agent-picker-avatar"
+                    markClassName="chat-agent-picker-avatar-mark"
+                    markSize={32}
+                  />
                   <div className="chat-agent-picker-card-main">
                     <span className="chat-agent-picker-name">{name}</span>
                     <span className="chat-agent-picker-provider">

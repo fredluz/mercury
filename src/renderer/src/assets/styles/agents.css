@@ -105,6 +105,10 @@
   color: var(--error);
 }
 
+.agents-avatar-file-input {
+  display: none;
+}
+
 .agents-create-actions {
   display: flex;
   gap: 8px;
@@ -169,6 +173,20 @@
 .agents-card.active .agents-card-avatar-icon {
   background: var(--brand-cream);
   color: var(--brand-ink);
+}
+
+.agents-card-avatar.agent-avatar-has-image {
+  overflow: hidden;
+  background: var(--bg-elevated);
+  color: transparent;
+}
+
+.agents-card-avatar .agent-avatar-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  border-radius: inherit;
 }
 
 .agents-card-info {

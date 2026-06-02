@@ -10,6 +10,7 @@ import {
 import { useI18n } from "../../../components/useI18n";
 import { executeLocalCommand, isLocalSlashCommand } from "../chatCommands";
 import type {
+  ChatActivityGroup,
   ChatController,
   ChatMessage,
   ChatUsage,
@@ -37,6 +38,7 @@ interface UseChatControllerArgs {
   conversationVersion: number;
   profile?: string;
   chatOptions?: AgentChatOptions;
+  persistedActivityGroups?: ChatActivityGroup[];
   onSessionStarted?: () => void;
   onSessionResolved?: (sessionId: string) => void;
   onSessionTitleChange?: (title: string) => void;
@@ -52,6 +54,7 @@ export function useChatController({
   conversationVersion,
   profile,
   chatOptions,
+  persistedActivityGroups,
   onSessionStarted,
   onSessionResolved,
   onSessionTitleChange,
@@ -117,6 +120,16 @@ export function useChatController({
     profile,
     runState.resetRunState,
     titleGeneration.resetTitleGeneration,
+  ]);
+
+  useEffect(() => {
+    if (persistedActivityGroups) {
+      activity.hydrateActivityGroups(persistedActivityGroups);
+    }
+  }, [
+    activity.hydrateActivityGroups,
+    conversationVersion,
+    persistedActivityGroups,
   ]);
 
   useEffect(() => {

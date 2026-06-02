@@ -11,6 +11,7 @@ import type {
   AgentDraftChangeEvent,
 } from "../../../../shared/agents";
 import type { ProfileInfo } from "../../../../shared/profiles";
+import { normalizeAvatarFileToPngDataUrl } from "../../utils/agent-avatar-image";
 import Agents from "./Agents";
 
 vi.mock("../../components/useI18n", () => ({
@@ -26,6 +27,12 @@ vi.mock("../../components/useI18n", () => ({
       return key;
     },
   }),
+}));
+
+vi.mock("../../utils/agent-avatar-image", () => ({
+  normalizeAvatarFileToPngDataUrl: vi
+    .fn()
+    .mockResolvedValue("data:image/png;base64,normalized"),
 }));
 
 const mercuryProfile: ProfileInfo = {
@@ -48,6 +55,29 @@ const mercuryProfile: ProfileInfo = {
   docsPointers: [],
   createdAt: "2026-06-01T00:00:00.000Z",
   updatedAt: "2026-06-01T00:00:00.000Z",
+};
+
+const customProfile: ProfileInfo = {
+  ...mercuryProfile,
+  name: "research-buddy",
+  path: "/profiles/research-buddy",
+  isDefault: false,
+  isActive: false,
+  displayName: "Research Buddy",
+  kind: "custom",
+  immutable: false,
+  deletable: true,
+  description: "Finds sources",
+};
+
+const customProfileWithAvatar: ProfileInfo = {
+  ...customProfile,
+  avatar: {
+    path: "avatar.png",
+    contentType: "image/png",
+    updatedAt: "2026-06-02T12:00:00.000Z",
+    byteLength: 1024,
+  },
 };
 
 const draft: AgentCreationDraft = {
@@ -91,12 +121,40 @@ function installHermesApiMock(
         draft,
       }),
       sendMessage: vi.fn().mockResolvedValue({ response: "Let's shape it." }),
+      onChatChunk: vi.fn(() => vi.fn()),
+      onChatDone: vi.fn(() => vi.fn()),
+      onChatToolProgress: vi.fn(() => vi.fn()),
+      onChatTraceEvent: vi.fn(() => vi.fn()),
+      onChatUsage: vi.fn(() => vi.fn()),
+      onChatError: vi.fn(() => vi.fn()),
       setActiveProfile: vi.fn().mockResolvedValue(true),
       deleteProfile: vi.fn().mockResolvedValue({ success: true }),
+      getAgentAvatarDataUrl: vi.fn().mockResolvedValue({
+        success: true,
+        dataUrl: "data:image/png;base64,cached",
+        avatar: customProfileWithAvatar.avatar,
+      }),
+      setAgentAvatar: vi.fn().mockResolvedValue({
+        success: true,
+        agent: customProfileWithAvatar,
+        avatar: customProfileWithAvatar.avatar,
+      }),
+      clearAgentAvatar: vi.fn().mockResolvedValue({
+        success: true,
+        agent: customProfile,
+        avatar: null,
+      }),
       listModels: vi.fn().mockResolvedValue([]),
       getEnv: vi.fn().mockResolvedValue({}),
+      getConfig: vi.fn().mockResolvedValue(null),
+      setConfig: vi.fn().mockResolvedValue(true),
       getCredentialPool: vi.fn().mockResolvedValue({}),
       getCodexAuthStatus: vi.fn().mockResolvedValue(null),
+      getModelConfig: vi.fn().mockResolvedValue({
+        provider: "openai",
+        model: "gpt-4o",
+        baseUrl: "",
+      }),
       setModelConfig: vi.fn().mockResolvedValue(true),
       ...overrides,
     };
@@ -105,20 +163,24 @@ function installHermesApiMock(
 function renderAgents() {
   const onSelectProfile = vi.fn();
   const onProfileAction = vi.fn();
-  render(
+  const view = render(
     <Agents
       activeProfile="default"
       onSelectProfile={onSelectProfile}
       onProfileAction={onProfileAction}
     />,
   );
-  return { onSelectProfile, onProfileAction };
+  return { onSelectProfile, onProfileAction, ...view };
 }
 
 describe("Agents conversational creator", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(normalizeAvatarFileToPngDataUrl).mockResolvedValue(
+      "data:image/png;base64,normalized",
+    );
     draftChangedCallback = null;
+    Element.prototype.scrollIntoView = vi.fn();
     installHermesApiMock();
   });
 
@@ -142,7 +204,95 @@ describe("Agents conversational creator", () => {
     expect(screen.queryByTitle("agents.actionTools")).not.toBeInTheDocument();
     expect(screen.queryByTitle("agents.actionPersona")).not.toBeInTheDocument();
     expect(screen.queryByTitle("agents.actionMemory")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("agents.setAvatarFor")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("agents.clearAvatarFor")).not.toBeInTheDocument();
     expect(screen.getByTitle("agents.actionChat")).toBeInTheDocument();
+  });
+
+  it("uploads a normalized avatar for a custom agent and reloads profiles", async () => {
+    const listProfiles = vi
+      .fn()
+      .mockResolvedValue([mercuryProfile, customProfileWithAvatar])
+      .mockResolvedValueOnce([mercuryProfile, customProfile]);
+    installHermesApiMock({ listProfiles });
+    const { container } = renderAgents();
+
+    expect(await screen.findByText("Research Buddy")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("agents.setAvatarFor"));
+
+    const input = container.querySelector<HTMLInputElement>("input[type='file']");
+    expect(input).toBeTruthy();
+    const file = new File(["avatar"], "avatar.png", { type: "image/png" });
+    fireEvent.change(input as HTMLInputElement, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(normalizeAvatarFileToPngDataUrl).toHaveBeenCalledWith(file);
+      expect(window.hermesAPI.setAgentAvatar).toHaveBeenCalledWith({
+        profile: "research-buddy",
+        imageDataUrl: "data:image/png;base64,normalized",
+      });
+      expect(listProfiles).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("clears an existing custom avatar and reloads profiles", async () => {
+    const listProfiles = vi
+      .fn()
+      .mockResolvedValue([mercuryProfile, customProfile])
+      .mockResolvedValueOnce([mercuryProfile, customProfileWithAvatar]);
+    installHermesApiMock({ listProfiles });
+    renderAgents();
+
+    expect(await screen.findByText("Research Buddy")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("agents.clearAvatarFor"));
+
+    await waitFor(() => {
+      expect(window.hermesAPI.clearAgentAvatar).toHaveBeenCalledWith({
+        profile: "research-buddy",
+      });
+      expect(listProfiles).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("shows a localized upload failure message", async () => {
+    installHermesApiMock({
+      listProfiles: vi.fn().mockResolvedValue([mercuryProfile, customProfile]),
+      setAgentAvatar: vi.fn().mockResolvedValue({
+        success: false,
+        code: "write-failed",
+        error: "disk full",
+      }),
+    });
+    const { container } = renderAgents();
+
+    expect(await screen.findByText("Research Buddy")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("agents.setAvatarFor"));
+    const input = container.querySelector<HTMLInputElement>("input[type='file']");
+    const file = new File(["avatar"], "avatar.png", { type: "image/png" });
+    fireEvent.change(input as HTMLInputElement, { target: { files: [file] } });
+
+    expect(
+      await screen.findByText("agents.avatarUploadFailed: disk full"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a localized clear failure message", async () => {
+    installHermesApiMock({
+      listProfiles: vi.fn().mockResolvedValue([mercuryProfile, customProfileWithAvatar]),
+      clearAgentAvatar: vi.fn().mockResolvedValue({
+        success: false,
+        code: "write-failed",
+        error: "locked",
+      }),
+    });
+    renderAgents();
+
+    expect(await screen.findByText("Research Buddy")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("agents.clearAvatarFor"));
+
+    expect(
+      await screen.findByText("agents.avatarClearFailed: locked"),
+    ).toBeInTheDocument();
   });
 
   it("New Agent creates an authoritative draft and opens the stepped flow", async () => {

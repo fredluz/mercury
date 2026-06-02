@@ -44,6 +44,9 @@ export {
   sshCreateProfile,
   sshDeleteProfile,
   sshWriteProfileAgentMetadata,
+  sshSetAgentAvatar,
+  sshClearAgentAvatar,
+  sshGetAgentAvatarDataUrl,
   type SshProfileInfo,
 } from "./ssh/sessions-profiles";
 export {

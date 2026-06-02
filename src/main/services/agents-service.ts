@@ -1,3 +1,6 @@
+import { randomUUID } from "crypto";
+import { dirname, join } from "path";
+import { promises as fs } from "fs";
 import {
   RESERVED_AGENT_PROFILE_IDS,
   createAgentDraft as createAgentDraftInStore,
@@ -14,8 +17,17 @@ import {
   setActiveProfileForConnection,
 } from "./sessions-service";
 import { getConnection, setModelConfigForProfile } from "./config-service";
-import { writeProfileAgentMetadata } from "../profiles";
-import { sshWriteProfileAgentMetadata } from "../ssh-remote";
+import {
+  profileAgentMetadataPath,
+  readProfileAgentMetadata,
+  writeProfileAgentMetadata,
+} from "../profiles";
+import {
+  sshClearAgentAvatar,
+  sshGetAgentAvatarDataUrl,
+  sshSetAgentAvatar,
+  sshWriteProfileAgentMetadata,
+} from "../ssh-remote";
 import { profileHome } from "../utils";
 import {
   addMemoryEntryForProfile,
@@ -26,6 +38,8 @@ import {
   writeUserProfileForProfile,
 } from "./knowledge-service";
 import type {
+  AgentAvatarDataUrlResult,
+  AgentAvatarMutationResult,
   AgentCommitRequest,
   AgentCommitResult,
   AgentCreationDraft,
@@ -36,7 +50,15 @@ import type {
   AgentDraftMutationResult,
   CreateAgentDraftRequest,
 } from "../../shared/agents";
-import type { ProfileAgentMetadata, ProfileInfo } from "../../shared/profiles";
+import {
+  AGENT_AVATAR_CONTENT_TYPE,
+  AGENT_AVATAR_FILE_NAME,
+  AGENT_AVATAR_MAX_BYTES,
+  type ProfileAgentMetadata,
+  type ProfileAvatarMetadata,
+  type ProfileInfo,
+} from "../../shared/profiles";
+import { isValidProfileName } from "../../shared/profile-identity";
 import {
   expandAgentPackSelection,
   validateAgentPackIds,
@@ -61,12 +83,452 @@ type PendingNotification = {
 
 const draftChangeListeners = new Set<AgentDraftChangeListener>();
 const pendingTextNotifications = new Map<string, PendingNotification>();
+const avatarMutationQueues = new Map<string, Promise<void>>();
+
+export type {
+  AgentAvatarDataUrlResult,
+  AgentAvatarMutationResult,
+} from "../../shared/agents";
+
+export async function setAgentAvatar(
+  request: unknown,
+): Promise<AgentAvatarMutationResult> {
+  const parsed = parseSetAvatarRequest(request);
+  if (!parsed.success) return parsed.result;
+  const connection = getConnection();
+  if (connection.mode === "ssh") {
+    if (!connection.ssh) {
+      return avatarMutationFailure(
+        "unsupported-remote-mode",
+        "Agent avatar mutations require SSH configuration in SSH mode.",
+      );
+    }
+    return serializeAvatarMutation(parsed.profile, () =>
+      sshSetAgentAvatar(connection.ssh!, parsed.profile, parsed.imageDataUrl),
+    );
+  }
+  if (connection.mode === "remote") {
+    return avatarMutationFailure(
+      "unsupported-remote-mode",
+      "Agent avatar mutations are only available in local and SSH modes because they write profile files.",
+    );
+  }
+  return serializeAvatarMutation(parsed.profile, () =>
+    setLocalAgentAvatar(parsed.profile, parsed.imageDataUrl),
+  );
+}
+
+export async function clearAgentAvatar(
+  request: unknown,
+): Promise<AgentAvatarMutationResult> {
+  const parsed = parseClearAvatarRequest(request);
+  if (!parsed.success) return parsed.result;
+  const connection = getConnection();
+  if (connection.mode === "ssh") {
+    if (!connection.ssh) {
+      return avatarMutationFailure(
+        "unsupported-remote-mode",
+        "Agent avatar mutations require SSH configuration in SSH mode.",
+      );
+    }
+    return serializeAvatarMutation(parsed.profile, () =>
+      sshClearAgentAvatar(connection.ssh!, parsed.profile),
+    );
+  }
+  if (connection.mode === "remote") {
+    return avatarMutationFailure(
+      "unsupported-remote-mode",
+      "Agent avatar mutations are only available in local and SSH modes because they write profile files.",
+    );
+  }
+  return serializeAvatarMutation(parsed.profile, () => clearLocalAgentAvatar(parsed.profile));
+}
+
+export async function getAgentAvatarDataUrl(
+  profile: unknown,
+): Promise<AgentAvatarDataUrlResult> {
+  if (typeof profile !== "string" || !profile.trim()) {
+    return avatarReadFailure("validation-error", "profile is required.");
+  }
+  const profileName = profile.trim();
+  if (!isValidProfileName(profileName)) {
+    return avatarReadFailure("validation-error", "Invalid agent profile name.");
+  }
+
+  const connection = getConnection();
+  if (connection.mode === "ssh") {
+    if (!connection.ssh) {
+      return avatarReadFailure(
+        "unsupported-remote-mode",
+        "Agent avatar reads require SSH configuration in SSH mode.",
+      );
+    }
+    return sshGetAgentAvatarDataUrl(connection.ssh, profileName);
+  }
+  if (connection.mode === "remote") {
+    return avatarReadFailure(
+      "unsupported-remote-mode",
+      "Agent avatar reads are only available in local and SSH modes because they read profile files.",
+    );
+  }
+
+  const agent = await findProfileInfo(profileName);
+  if (!agent) return avatarReadFailure("not-found", `Agent profile '${profileName}' was not found.`);
+  if (agent.isDefault || agent.kind === "builtin" || agent.immutable) {
+    return { success: true, dataUrl: null };
+  }
+
+  const metadata = await readProfileAgentMetadata(profileHome(profileName));
+  if (!metadata.avatar) return { success: true, dataUrl: null };
+
+  try {
+    const buffer = await fs.readFile(agentAvatarPath(profileName));
+    if (!isValidPngBuffer(buffer) || buffer.length > AGENT_AVATAR_MAX_BYTES) {
+      return { success: true, dataUrl: null, avatar: metadata.avatar };
+    }
+    return {
+      success: true,
+      dataUrl: `data:${AGENT_AVATAR_CONTENT_TYPE};base64,${buffer.toString("base64")}`,
+      avatar: metadata.avatar,
+    };
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") {
+      return { success: true, dataUrl: null, avatar: metadata.avatar };
+    }
+    return avatarReadFailure(
+      "read-failed",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
 
 export function onAgentDraftChanged(listener: AgentDraftChangeListener): () => void {
   draftChangeListeners.add(listener);
   return () => draftChangeListeners.delete(listener);
 }
 
+type ParsedAvatarRequest<T> =
+  | { success: true; profile: string } & T
+  | { success: false; result: AgentAvatarMutationResult };
+
+function parseSetAvatarRequest(
+  request: unknown,
+): ParsedAvatarRequest<{ imageDataUrl: string }> {
+  const profileResult = parseAvatarMutationProfile(request);
+  if (!profileResult.success) return profileResult;
+  if (!isRecord(request) || typeof request.imageDataUrl !== "string") {
+    return {
+      success: false,
+      result: avatarMutationFailure(
+        "validation-error",
+        "imageDataUrl is required.",
+      ),
+    };
+  }
+  return {
+    success: true,
+    profile: profileResult.profile,
+    imageDataUrl: request.imageDataUrl,
+  };
+}
+
+function parseClearAvatarRequest(request: unknown): ParsedAvatarRequest<{}> {
+  return parseAvatarMutationProfile(request);
+}
+
+function parseAvatarMutationProfile(request: unknown): ParsedAvatarRequest<{}> {
+  if (!isRecord(request) || typeof request.profile !== "string" || !request.profile.trim()) {
+    return {
+      success: false,
+      result: avatarMutationFailure("validation-error", "profile is required."),
+    };
+  }
+  const profile = request.profile.trim();
+  if (!isValidProfileName(profile)) {
+    return {
+      success: false,
+      result: avatarMutationFailure(
+        "validation-error",
+        "Invalid agent profile name.",
+      ),
+    };
+  }
+  if (RESERVED_AGENT_PROFILE_IDS.has(profile)) {
+    return {
+      success: false,
+      result: avatarMutationFailure(
+        "immutable-agent",
+        "Mercury/default is immutable and cannot have a custom avatar.",
+      ),
+    };
+  }
+  return { success: true, profile };
+}
+
+function serializeAvatarMutation<T>(
+  profile: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previous = avatarMutationQueues.get(profile) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(operation);
+  const queued = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  avatarMutationQueues.set(profile, queued);
+  queued.finally(() => {
+    if (avatarMutationQueues.get(profile) === queued) {
+      avatarMutationQueues.delete(profile);
+    }
+  });
+  return next;
+}
+
+async function setLocalAgentAvatar(
+  profile: string,
+  imageDataUrl: string,
+): Promise<AgentAvatarMutationResult> {
+  const connectionResult = localAvatarMutationConnectionGuard();
+  if (!connectionResult.success) return connectionResult.result;
+
+  const agent = await mutableCustomAgent(profile);
+  if (!agent.success) return agent.result;
+
+  const image = decodePngDataUrl(imageDataUrl);
+  if (!image.success) return image.result;
+
+  const profilePath = profileHome(profile);
+  const desktopDir = dirname(profileAgentMetadataPath(profilePath));
+  const avatarPath = join(desktopDir, AGENT_AVATAR_FILE_NAME);
+  const nonce = `${process.pid}.${Date.now()}.${randomUUID()}`;
+  const tempPath = join(desktopDir, `.avatar.${nonce}.tmp`);
+  const backupPath = join(desktopDir, `.avatar.${nonce}.bak`);
+  let tempWritten = false;
+  let backupCreated = false;
+  let avatarReplaced = false;
+
+  try {
+    const metadata = await readProfileAgentMetadata(profilePath);
+    await fs.mkdir(desktopDir, { recursive: true });
+    await fs.writeFile(tempPath, image.buffer);
+    tempWritten = true;
+
+    try {
+      await fs.rename(avatarPath, backupPath);
+      backupCreated = true;
+    } catch (error) {
+      if (!isNodeError(error) || error.code !== "ENOENT") throw error;
+    }
+
+    await fs.rename(tempPath, avatarPath);
+    tempWritten = false;
+    avatarReplaced = true;
+
+    const avatar: ProfileAvatarMetadata = {
+      path: AGENT_AVATAR_FILE_NAME,
+      contentType: AGENT_AVATAR_CONTENT_TYPE,
+      updatedAt: new Date().toISOString(),
+      byteLength: image.buffer.length,
+    };
+    await writeProfileAgentMetadata(profilePath, { ...metadata, avatar });
+
+    if (backupCreated) await bestEffortRemove(backupPath);
+    const updated = await findProfileInfo(profile);
+    return {
+      success: true,
+      agent: updated ?? { ...agent.agent, avatar },
+      avatar,
+    };
+  } catch (error) {
+    if (tempWritten) await bestEffortRemove(tempPath);
+    if (avatarReplaced) await bestEffortRemove(avatarPath);
+    if (backupCreated) {
+      try {
+        await fs.rename(backupPath, avatarPath);
+      } catch {
+        // Backup restoration is best-effort; report the original write failure.
+      }
+    }
+    return avatarMutationFailure(
+      "write-failed",
+      error instanceof Error ? error.message : String(error),
+      agent.agent,
+    );
+  }
+}
+
+async function clearLocalAgentAvatar(
+  profile: string,
+): Promise<AgentAvatarMutationResult> {
+  const connectionResult = localAvatarMutationConnectionGuard();
+  if (!connectionResult.success) return connectionResult.result;
+
+  const agent = await mutableCustomAgent(profile);
+  if (!agent.success) return agent.result;
+
+  const profilePath = profileHome(profile);
+  const metadata = await readProfileAgentMetadata(profilePath);
+  if (!metadata.avatar) {
+    return { success: true, agent: agent.agent, avatar: null };
+  }
+
+  try {
+    const { avatar: _avatar, ...metadataWithoutAvatar } = metadata;
+    await writeProfileAgentMetadata(profilePath, metadataWithoutAvatar);
+    await bestEffortRemove(agentAvatarPath(profile));
+    const updated = await findProfileInfo(profile);
+    const { avatar: _agentAvatar, ...agentWithoutAvatar } = agent.agent;
+    return { success: true, agent: updated ?? agentWithoutAvatar, avatar: null };
+  } catch (error) {
+    return avatarMutationFailure(
+      "write-failed",
+      error instanceof Error ? error.message : String(error),
+      agent.agent,
+    );
+  }
+}
+
+function localAvatarMutationConnectionGuard():
+  | { success: true }
+  | { success: false; result: AgentAvatarMutationResult } {
+  const connection = getConnection();
+  if (connection.mode === "local") return { success: true };
+  // Item 2 seam: replace this local-only guard with SSH helper routing and pure-remote fail-closed handling.
+  return {
+    success: false,
+    result: avatarMutationFailure(
+      "unsupported-remote-mode",
+      "Agent avatar mutations are only available locally in this backend slice.",
+    ),
+  };
+}
+
+async function mutableCustomAgent(
+  profile: string,
+): Promise<
+  | { success: true; agent: ProfileInfo }
+  | { success: false; result: AgentAvatarMutationResult }
+> {
+  const agent = await findProfileInfo(profile);
+  if (!agent) {
+    return {
+      success: false,
+      result: avatarMutationFailure("not-found", `Agent profile '${profile}' was not found.`),
+    };
+  }
+  if (agent.isDefault || agent.kind === "builtin" || agent.immutable) {
+    return {
+      success: false,
+      result: avatarMutationFailure(
+        "immutable-agent",
+        "Mercury/default is immutable and cannot have a custom avatar.",
+        agent,
+      ),
+    };
+  }
+  return { success: true, agent };
+}
+
+async function findProfileInfo(profile: string): Promise<ProfileInfo | undefined> {
+  const profiles = await listProfilesForConnection();
+  return profiles.find((entry) => entry.name === profile);
+}
+
+function decodePngDataUrl(
+  imageDataUrl: string,
+):
+  | { success: true; buffer: Buffer }
+  | { success: false; result: AgentAvatarMutationResult } {
+  const prefix = `data:${AGENT_AVATAR_CONTENT_TYPE};base64,`;
+  if (!imageDataUrl.startsWith(prefix)) {
+    return {
+      success: false,
+      result: avatarMutationFailure(
+        "validation-error",
+        "Agent avatar must be a PNG data URL.",
+      ),
+    };
+  }
+  const encoded = imageDataUrl.slice(prefix.length);
+  if (!encoded.trim()) {
+    return {
+      success: false,
+      result: avatarMutationFailure("validation-error", "Agent avatar PNG is empty."),
+    };
+  }
+
+  const buffer = Buffer.from(encoded, "base64");
+  if (buffer.length === 0) {
+    return {
+      success: false,
+      result: avatarMutationFailure("validation-error", "Agent avatar PNG is empty."),
+    };
+  }
+  if (buffer.length > AGENT_AVATAR_MAX_BYTES) {
+    return {
+      success: false,
+      result: avatarMutationFailure(
+        "validation-error",
+        `Agent avatar PNG must be ${AGENT_AVATAR_MAX_BYTES} bytes or smaller.`,
+      ),
+    };
+  }
+  if (!isValidPngBuffer(buffer)) {
+    return {
+      success: false,
+      result: avatarMutationFailure(
+        "validation-error",
+        "Agent avatar data is not a valid PNG file.",
+      ),
+    };
+  }
+  return { success: true, buffer };
+}
+
+function isValidPngBuffer(buffer: Buffer): boolean {
+  return (
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  );
+}
+
+function agentAvatarPath(profile: string): string {
+  return join(dirname(profileAgentMetadataPath(profileHome(profile))), AGENT_AVATAR_FILE_NAME);
+}
+
+function avatarMutationFailure(
+  code: Exclude<AgentAvatarMutationResult, { success: true }>["code"],
+  error: string,
+  agent?: ProfileInfo,
+): AgentAvatarMutationResult {
+  return { success: false, code, error, ...(agent ? { agent } : {}) };
+}
+
+function avatarReadFailure(
+  code: Exclude<AgentAvatarDataUrlResult, { success: true }>["code"],
+  error: string,
+): AgentAvatarDataUrlResult {
+  return { success: false, code, error };
+}
+
+async function bestEffortRemove(path: string): Promise<void> {
+  try {
+    await fs.rm(path, { force: true });
+  } catch {
+    // Best effort cleanup must not mask the primary operation result.
+  }
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
+}
 
 export async function createAgentDraft(
   request: CreateAgentDraftRequest = {},

@@ -133,6 +133,26 @@
   overflow: hidden;
 }
 
+.chat-agent-picker-avatar.agent-avatar-has-image {
+  overflow: hidden;
+  background: var(--bg-elevated);
+  color: transparent;
+}
+
+.chat-agent-picker-avatar .agent-avatar-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.chat-agent-picker-avatar-mark img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
 .chat-agent-picker-card-main {
   min-width: 0;
   flex: 1;

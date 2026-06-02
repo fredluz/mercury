@@ -723,6 +723,10 @@
   display: block;
 }
 
+.chat-avatar-agent.agent-avatar-has-image .agent-avatar-image {
+  object-fit: cover;
+}
+
 .chat-bubble {
   padding: 12px 17px;
   border-radius: 20px;

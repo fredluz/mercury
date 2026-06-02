@@ -312,7 +312,7 @@ function TraceLab({
           {onBackToSessions ? (
             <button className="btn btn-secondary" onClick={onBackToSessions}>
               <ArrowLeft size={15} />
-              {t("sessions.backToSessions")}
+              {t("sessions.backToChat")}
             </button>
           ) : null}
           <span className="trace-mode-badge">

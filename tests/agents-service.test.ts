@@ -58,6 +58,9 @@ const { TEST_HOME, execFileSyncMock, serviceMocks, sshMocks, KNOWN_TOOLSETS } =
         sshCreateProfile: vi.fn(),
         sshDeleteProfile: vi.fn(),
         sshWriteProfileAgentMetadata: vi.fn(),
+        sshSetAgentAvatar: vi.fn(),
+        sshClearAgentAvatar: vi.fn(),
+        sshGetAgentAvatarDataUrl: vi.fn(),
         sshListCachedSessions: vi.fn(),
       },
     };
@@ -97,6 +100,9 @@ vi.mock("../src/main/ssh-remote", () => ({
   sshCreateProfile: sshMocks.sshCreateProfile,
   sshDeleteProfile: sshMocks.sshDeleteProfile,
   sshWriteProfileAgentMetadata: sshMocks.sshWriteProfileAgentMetadata,
+  sshSetAgentAvatar: sshMocks.sshSetAgentAvatar,
+  sshClearAgentAvatar: sshMocks.sshClearAgentAvatar,
+  sshGetAgentAvatarDataUrl: sshMocks.sshGetAgentAvatarDataUrl,
   sshListCachedSessions: sshMocks.sshListCachedSessions,
 }));
 
@@ -111,10 +117,18 @@ import {
   cancelAgentDraftNotifications,
   commitAgentDraft,
   createAgentDraft,
+  clearAgentAvatar,
+  getAgentAvatarDataUrl,
   getAgentDraft,
   onAgentDraftChanged,
+  setAgentAvatar,
   updateAgentDraft,
 } from "../src/main/services/agents-service";
+import {
+  AGENT_AVATAR_CONTENT_TYPE,
+  AGENT_AVATAR_FILE_NAME,
+  AGENT_AVATAR_MAX_BYTES,
+} from "../src/shared/profiles";
 
 const PROFILES_DIR = join(TEST_HOME, "profiles");
 
@@ -137,6 +151,32 @@ function profileInfo(name: string, isDefault = false) {
     selectedPackIds: [],
     docsPointers: [],
   };
+}
+
+function pngBytes(extraBytes = 0): Buffer {
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(extraBytes, 0),
+  ]);
+}
+
+function pngDataUrl(buffer = pngBytes()): string {
+  return `data:${AGENT_AVATAR_CONTENT_TYPE};base64,${buffer.toString("base64")}`;
+}
+
+function createCustomProfile(name: string): string {
+  const dir = join(PROFILES_DIR, name);
+  mkdirSync(join(dir, "desktop"), { recursive: true });
+  return dir;
+}
+
+function readAgentMetadata(profile: string): Record<string, unknown> {
+  return JSON.parse(
+    readFileSync(
+      join(PROFILES_DIR, profile, "desktop", "profile-agent.json"),
+      "utf-8",
+    ),
+  ) as Record<string, unknown>;
 }
 
 function toolToggleMap(): Record<string, boolean> {
@@ -210,6 +250,31 @@ beforeEach(() => {
   sshMocks.sshCreateProfile.mockResolvedValue({ success: true });
   sshMocks.sshDeleteProfile.mockResolvedValue(true);
   sshMocks.sshWriteProfileAgentMetadata.mockResolvedValue(undefined);
+  sshMocks.sshSetAgentAvatar.mockResolvedValue({
+    success: true,
+    agent: profileInfo("avatar_bot"),
+    avatar: {
+      path: AGENT_AVATAR_FILE_NAME,
+      contentType: AGENT_AVATAR_CONTENT_TYPE,
+      updatedAt: "2026-06-02T00:00:00.000Z",
+      byteLength: pngBytes().length,
+    },
+  });
+  sshMocks.sshClearAgentAvatar.mockResolvedValue({
+    success: true,
+    agent: profileInfo("avatar_bot"),
+    avatar: null,
+  });
+  sshMocks.sshGetAgentAvatarDataUrl.mockResolvedValue({
+    success: true,
+    dataUrl: pngDataUrl(),
+    avatar: {
+      path: AGENT_AVATAR_FILE_NAME,
+      contentType: AGENT_AVATAR_CONTENT_TYPE,
+      updatedAt: "2026-06-02T00:00:00.000Z",
+      byteLength: pngBytes().length,
+    },
+  });
   mkdirSync(TEST_HOME, { recursive: true });
   mkdirSync(PROFILES_DIR, { recursive: true });
 });
@@ -221,6 +286,189 @@ afterEach(() => {
   if (existsSync(TEST_HOME)) {
     rmSync(TEST_HOME, { recursive: true, force: true });
   }
+});
+
+describe("agent avatar local persistence", () => {
+  it("setAgentAvatar writes desktop/avatar.png and avatar metadata", async () => {
+    createCustomProfile("avatar_bot");
+    const bytes = pngBytes(4);
+
+    const result = await setAgentAvatar({
+      profile: "avatar_bot",
+      imageDataUrl: pngDataUrl(bytes),
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      agent: { name: "avatar_bot", avatar: expect.any(Object) },
+      avatar: {
+        path: AGENT_AVATAR_FILE_NAME,
+        contentType: AGENT_AVATAR_CONTENT_TYPE,
+        byteLength: bytes.length,
+      },
+    });
+    expect(readFileSync(join(PROFILES_DIR, "avatar_bot", "desktop", "avatar.png"))).toEqual(
+      bytes,
+    );
+    expect(readAgentMetadata("avatar_bot")).toMatchObject({
+      avatar: {
+        path: AGENT_AVATAR_FILE_NAME,
+        contentType: AGENT_AVATAR_CONTENT_TYPE,
+        updatedAt: expect.any(String),
+        byteLength: bytes.length,
+      },
+    });
+  });
+
+  it("getAgentAvatarDataUrl returns transient data URLs without storing base64 in JSON", async () => {
+    createCustomProfile("reader_bot");
+    const bytes = pngBytes(2);
+    await expect(
+      setAgentAvatar({ profile: "reader_bot", imageDataUrl: pngDataUrl(bytes) }),
+    ).resolves.toMatchObject({ success: true });
+
+    const result = await getAgentAvatarDataUrl("reader_bot");
+
+    expect(result).toMatchObject({
+      success: true,
+      dataUrl: pngDataUrl(bytes),
+      avatar: { path: AGENT_AVATAR_FILE_NAME },
+    });
+    expect(JSON.stringify(readAgentMetadata("reader_bot"))).not.toContain("data:image/png");
+  });
+
+  it("clearAgentAvatar removes avatar metadata and best-effort deletes the file", async () => {
+    createCustomProfile("clear_bot");
+    await expect(
+      setAgentAvatar({ profile: "clear_bot", imageDataUrl: pngDataUrl() }),
+    ).resolves.toMatchObject({ success: true });
+
+    const result = await clearAgentAvatar({ profile: "clear_bot" });
+
+    expect(result).toMatchObject({
+      success: true,
+      agent: { name: "clear_bot" },
+      avatar: null,
+    });
+    expect(existsSync(join(PROFILES_DIR, "clear_bot", "desktop", "avatar.png"))).toBe(
+      false,
+    );
+    expect(readAgentMetadata("clear_bot")).not.toHaveProperty("avatar");
+  });
+
+  it("rejects default profile avatar mutation", async () => {
+    const result = await setAgentAvatar({
+      profile: "default",
+      imageDataUrl: pngDataUrl(),
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      code: "immutable-agent",
+    });
+    expect(existsSync(join(TEST_HOME, "desktop", "avatar.png"))).toBe(false);
+  });
+
+  it("rejects non-PNG and oversized avatar uploads before writing files", async () => {
+    createCustomProfile("invalid_avatar_bot");
+
+    await expect(
+      setAgentAvatar({
+        profile: "invalid_avatar_bot",
+        imageDataUrl: `data:text/plain;base64,${Buffer.from("hello").toString("base64")}`,
+      }),
+    ).resolves.toMatchObject({ success: false, code: "validation-error" });
+
+    await expect(
+      setAgentAvatar({
+        profile: "invalid_avatar_bot",
+        imageDataUrl: pngDataUrl(Buffer.from("not a png")),
+      }),
+    ).resolves.toMatchObject({ success: false, code: "validation-error" });
+
+    await expect(
+      setAgentAvatar({
+        profile: "invalid_avatar_bot",
+        imageDataUrl: pngDataUrl(pngBytes(AGENT_AVATAR_MAX_BYTES)),
+      }),
+    ).resolves.toMatchObject({ success: false, code: "validation-error" });
+
+    expect(existsSync(join(PROFILES_DIR, "invalid_avatar_bot", "desktop", "avatar.png"))).toBe(
+      false,
+    );
+    expect(existsSync(join(PROFILES_DIR, "invalid_avatar_bot", "desktop", "profile-agent.json"))).toBe(
+      false,
+    );
+  });
+});
+
+describe("agent avatar SSH and remote routing", () => {
+  const ssh = {
+    host: "example.test",
+    port: 22,
+    username: "fred",
+    keyPath: "/tmp/key",
+    remotePort: 8642,
+    localPort: 18642,
+  };
+
+  it("routes SSH avatar set, clear, and read through ssh-remote helpers", async () => {
+    serviceMocks.getConnection.mockReturnValue({ mode: "ssh", ssh });
+    sshMocks.sshListProfiles.mockResolvedValue([
+      profileInfo("default", true),
+      profileInfo("avatar_bot"),
+    ]);
+    const imageDataUrl = pngDataUrl(pngBytes(3));
+
+    await expect(
+      setAgentAvatar({ profile: "avatar_bot", imageDataUrl }),
+    ).resolves.toMatchObject({ success: true, agent: { name: "avatar_bot" } });
+    await expect(clearAgentAvatar({ profile: "avatar_bot" })).resolves.toMatchObject({
+      success: true,
+      avatar: null,
+    });
+    await expect(getAgentAvatarDataUrl("avatar_bot")).resolves.toMatchObject({
+      success: true,
+      dataUrl: pngDataUrl(),
+    });
+
+    expect(sshMocks.sshSetAgentAvatar).toHaveBeenCalledWith(
+      ssh,
+      "avatar_bot",
+      imageDataUrl,
+    );
+    expect(sshMocks.sshClearAgentAvatar).toHaveBeenCalledWith(ssh, "avatar_bot");
+    expect(sshMocks.sshGetAgentAvatarDataUrl).toHaveBeenCalledWith(
+      ssh,
+      "avatar_bot",
+    );
+    expect(execFileSyncMock).not.toHaveBeenCalled();
+  });
+
+  it("fails pure remote avatar operations before local or SSH writes", async () => {
+    serviceMocks.getConnection.mockReturnValue({ mode: "remote" });
+
+    await expect(
+      setAgentAvatar({ profile: "remote_bot", imageDataUrl: pngDataUrl() }),
+    ).resolves.toMatchObject({
+      success: false,
+      code: "unsupported-remote-mode",
+    });
+    await expect(clearAgentAvatar({ profile: "remote_bot" })).resolves.toMatchObject({
+      success: false,
+      code: "unsupported-remote-mode",
+    });
+    await expect(getAgentAvatarDataUrl("remote_bot")).resolves.toMatchObject({
+      success: false,
+      code: "unsupported-remote-mode",
+    });
+
+    expect(execFileSyncMock).not.toHaveBeenCalled();
+    expect(sshMocks.sshSetAgentAvatar).not.toHaveBeenCalled();
+    expect(sshMocks.sshClearAgentAvatar).not.toHaveBeenCalled();
+    expect(sshMocks.sshGetAgentAvatarDataUrl).not.toHaveBeenCalled();
+    expect(existsSync(join(PROFILES_DIR, "remote_bot", "desktop", "avatar.png"))).toBe(false);
+  });
 });
 
 describe("agents service draft lifecycle", () => {

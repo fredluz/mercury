@@ -20,8 +20,12 @@ import {
 } from "./scheduleDraft";
 import { useChatController } from "./hooks/useChatController";
 import type { AgentChatOptions } from "../../../../shared/agents";
-import type { ChatMessage } from "./types";
+import type {
+  ChatActivityGroup as ChatActivityGroupModel,
+  ChatMessage,
+} from "./types";
 import type { RuntimeDiagnostic } from "../../../../shared/runtime";
+import type { ProfileInfo } from "../../../../shared/profiles";
 
 export { AgentMarkdown };
 export type { ChatMessage, ChatScheduleConversationDraft };
@@ -33,7 +37,9 @@ export interface ChatProps {
   sessionTitle?: string | null;
   conversationVersion: number;
   profile?: string;
+  activeAgentProfile?: ProfileInfo | null;
   chatOptions?: AgentChatOptions;
+  persistedActivityGroups?: ChatActivityGroupModel[];
   runtimeDiagnostic?: RuntimeDiagnostic | null;
   onRuntimeDiagnosticRefresh?: () => void;
   onSessionStarted?: () => void;
@@ -44,6 +50,7 @@ export interface ChatProps {
     draft: ChatScheduleConversationDraft,
   ) => void;
   onOpenTraceRun?: (runId: string) => void;
+  onOpenTrace?: () => void;
   onViewSchedules?: () => void;
   onNewChat?: () => void;
 }
@@ -55,7 +62,9 @@ function Chat({
   sessionTitle,
   conversationVersion,
   profile,
+  activeAgentProfile,
   chatOptions,
+  persistedActivityGroups,
   runtimeDiagnostic,
   onRuntimeDiagnosticRefresh,
   onSessionStarted,
@@ -64,6 +73,7 @@ function Chat({
   onSessionReset,
   onCreateScheduleFromConversation,
   onOpenTraceRun,
+  onOpenTrace,
   onViewSchedules,
   onNewChat,
 }: ChatProps): React.JSX.Element {
@@ -77,6 +87,7 @@ function Chat({
     conversationVersion,
     profile,
     chatOptions,
+    persistedActivityGroups,
     onSessionStarted,
     onSessionResolved,
     onSessionTitleChange,
@@ -126,6 +137,7 @@ function Chat({
             ? handleCreateScheduleFromConversation
             : undefined
         }
+        onOpenTrace={onOpenTrace}
         onNewChat={onNewChat}
         onClear={chat.handleClear}
         t={t}
@@ -170,6 +182,8 @@ function Chat({
                     isLoading={chat.isLoading}
                     onApprove={chat.handleApprove}
                     onDeny={chat.handleDeny}
+                    agentProfile={activeAgentProfile}
+                    agentProfileName={profile}
                   />
                 </div>
                 {activityGroups.length > 0 ? (

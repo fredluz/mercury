@@ -3,9 +3,12 @@ import type { AgentCommitRequest } from "../../shared/agents";
 import type { IpcRegistrationContext } from "./types";
 import {
   abandonAgentDraft,
+  clearAgentAvatar,
   commitAgentDraft,
   createAgentDraft,
+  getAgentAvatarDataUrl,
   getAgentDraft,
+  setAgentAvatar,
   updateAgentDraft,
 } from "../services/agents-service";
 
@@ -47,5 +50,14 @@ export function registerAgentsIpc({ getMainWindow: _getMainWindow }: IpcRegistra
   );
   ipcMain.handle("commit-agent-draft", (_event, request: AgentCommitRequest) =>
     commitAgentDraft(request),
+  );
+  ipcMain.handle("get-agent-avatar-data-url", (_event, profile: string) =>
+    getAgentAvatarDataUrl(profile),
+  );
+  ipcMain.handle("set-agent-avatar", (_event, request: unknown) =>
+    setAgentAvatar(request),
+  );
+  ipcMain.handle("clear-agent-avatar", (_event, request: unknown) =>
+    clearAgentAvatar(request),
   );
 }

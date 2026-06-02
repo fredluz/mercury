@@ -15,7 +15,9 @@ vi.mock("../../components/useI18n", () => ({
 }));
 
 vi.mock("../../components/common/MercuryLockup", () => ({
-  default: () => <div>Mercury</div>,
+  default: ({ className }: { className?: string }) => (
+    <div className={className}>Mercury</div>
+  ),
 }));
 
 vi.mock("../../components/RemoteNotice", () => ({
@@ -27,14 +29,17 @@ vi.mock("../Chat/Chat", () => ({
     messages = [],
     sessionId,
     profile,
+    activeAgentProfile,
     onCreateScheduleFromConversation,
     onOpenTraceRun,
+    onOpenTrace,
     onViewSchedules,
     onSessionResolved,
   }: {
     messages?: Array<{ id: string; role: string; content: string }>;
     sessionId?: string | null;
     profile?: string;
+    activeAgentProfile?: { name: string; displayName: string } | null;
     onCreateScheduleFromConversation?: (draft: {
       name?: string;
       prompt?: string;
@@ -43,12 +48,13 @@ vi.mock("../Chat/Chat", () => ({
       metadata?: Record<string, unknown>;
     }) => void;
     onOpenTraceRun?: (runId: string) => void;
+    onOpenTrace?: () => void;
     onViewSchedules?: () => void;
     onSessionResolved?: (sessionId: string) => void;
   }) => (
     <div>
-      Chat mock profile:{profile} session:{sessionId ?? "none"} messages:
-      {messages.length}
+      Chat mock profile:{profile} activeAgent:{activeAgentProfile?.displayName ?? "none"} session:
+      {sessionId ?? "none"} messages:{messages.length}
       <button
         onClick={() =>
           onCreateScheduleFromConversation?.({
@@ -63,12 +69,20 @@ vi.mock("../Chat/Chat", () => ({
       <button onClick={() => onOpenTraceRun?.("run-from-chat")}>
         Open chat trace
       </button>
+      <button onClick={() => onOpenTrace?.()}>Open conversation trace</button>
       <button onClick={onViewSchedules}>View schedules from chat</button>
       <button onClick={() => onSessionResolved?.("session-resolved")}>Resolve chat session</button>
     </div>
   ),
 }));
-vi.mock("../Agents/Agents", () => ({ default: () => <div>Agents mock</div> }));
+vi.mock("../Agents/Agents", () => ({
+  default: ({ onSelectProfile }: { onSelectProfile?: (name: string) => void }) => (
+    <div>
+      Agents mock
+      <button onClick={() => onSelectProfile?.("work")}>Select work agent</button>
+    </div>
+  ),
+}));
 vi.mock("../Settings/Settings", () => ({
   default: () => <div>Settings mock</div>,
 }));
@@ -95,29 +109,6 @@ vi.mock("../Schedules/Schedules", () => ({
       <button onClick={() => onOpenTraceRun?.("run-from-schedules")}>
         Open schedule trace
       </button>
-    </div>
-  ),
-}));
-
-vi.mock("../Sessions/Sessions", () => ({
-  default: ({
-    onOpenSessionTrace,
-    onOpenTraceActivity,
-  }: {
-    onOpenSessionTrace: (
-      sessionId: string,
-      title?: string | null,
-      profile?: string,
-    ) => void;
-    onOpenTraceActivity?: () => void;
-  }) => (
-    <div>
-      <button
-        onClick={() => onOpenSessionTrace("session-a", "Session A", "work")}
-      >
-        Open session trace
-      </button>
-      <button onClick={onOpenTraceActivity}>Open all traces</button>
     </div>
   ),
 }));
@@ -244,6 +235,7 @@ function installHermesApiMock(
         Promise.resolve(currentLayoutCachedRows),
       ),
       listProfiles: vi.fn().mockResolvedValue(layoutProfiles),
+      listTraceRuns: vi.fn().mockResolvedValue([]),
       setActiveProfile: vi.fn().mockResolvedValue(true),
       getSessionMessages: vi.fn().mockResolvedValue([
         { id: 1, role: "user", content: "hello", timestamp: 1 },
@@ -276,38 +268,47 @@ describe("Layout trace routing", () => {
     ).toBeInTheDocument();
   });
 
-  it("removes Trace Lab from sidebar and opens session trace detail with Sessions nav active", async () => {
+  it("removes Sessions from the primary sidebar", async () => {
     render(<Layout />);
     await waitFor(() =>
       expect(window.hermesAPI.getRuntimeDiagnostic).toHaveBeenCalled(),
     );
 
     expect(
-      screen.queryByRole("button", { name: /Trace Lab/i }),
+      screen.queryByRole("button", { name: "navigation.sessions" }),
     ).not.toBeInTheDocument();
-
-    const sessionsNav = screen.getByRole("button", {
-      name: "navigation.sessions",
-    });
-    fireEvent.click(sessionsNav);
-    fireEvent.click(screen.getByRole("button", { name: "Open session trace" }));
-
     expect(
-      screen.getByText(/TraceLab mock session session-a work/),
+      screen.getByRole("button", { name: "navigation.agents" }),
     ).toBeInTheDocument();
-    expect(sessionsNav).toHaveClass("active");
   });
 
-  it("opens the all-trace activity fallback from Sessions", async () => {
+  it("opens session-scoped Trace Lab from the chat header", async () => {
     render(<Layout />);
     await waitFor(() =>
       expect(window.hermesAPI.getRuntimeDiagnostic).toHaveBeenCalled(),
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "navigation.sessions" }),
+      screen.getByRole("button", { name: "Resolve chat session" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Open all traces" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open conversation trace" }),
+    );
+
+    expect(
+      screen.getByText(/TraceLab mock session session-resolved default/),
+    ).toBeInTheDocument();
+  });
+
+  it("opens all-trace Trace Lab from the chat header when no session is active", async () => {
+    render(<Layout />);
+    await waitFor(() =>
+      expect(window.hermesAPI.getRuntimeDiagnostic).toHaveBeenCalled(),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open conversation trace" }),
+    );
 
     expect(screen.getByText(/TraceLab mock all/)).toBeInTheDocument();
   });
@@ -360,6 +361,42 @@ describe("Layout trace routing", () => {
     expect(await screen.findByText("Remote Agents")).toBeInTheDocument();
   });
 
+  it("keeps the Mercury brand for the default agent on agent-scoped views", async () => {
+    render(<Layout />);
+    await waitFor(() =>
+      expect(window.hermesAPI.getRuntimeDiagnostic).toHaveBeenCalled(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "navigation.skills" }));
+
+    expect(document.querySelector(".sidebar-brand-lockup")).toBeInTheDocument();
+    expect(document.querySelector(".sidebar-agent-brand")).not.toBeInTheDocument();
+  });
+
+  it("shows the active custom agent brand on agent-scoped views only", async () => {
+    render(<Layout />);
+    await waitFor(() =>
+      expect(window.hermesAPI.getRuntimeDiagnostic).toHaveBeenCalled(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "navigation.agents" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select work agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "navigation.skills" }));
+
+    await waitFor(() =>
+      expect(document.querySelector(".sidebar-agent-brand")).toBeInTheDocument(),
+    );
+    expect(document.querySelector(".sidebar-agent-brand-name")).toHaveTextContent(
+      "work",
+    );
+    expect(document.querySelector(".sidebar-brand-lockup")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "navigation.providers" }));
+
+    expect(document.querySelector(".sidebar-brand-lockup")).toBeInTheDocument();
+    expect(document.querySelector(".sidebar-agent-brand")).not.toBeInTheDocument();
+  });
+
   it("opens the compact chat-list sidebar from Chat nav and Back restores main sidebar", async () => {
     render(<Layout />);
     await waitFor(() =>
@@ -370,13 +407,13 @@ describe("Layout trace routing", () => {
 
     expect(await screen.findByText("chat.sidebarTitle")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "navigation.sessions" }),
+      screen.queryByRole("button", { name: "navigation.agents" }),
     ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "chat.sidebarBack" }));
 
     expect(
-      screen.getByRole("button", { name: "navigation.sessions" }),
+      screen.getByRole("button", { name: "navigation.agents" }),
     ).toBeInTheDocument();
   });
 
@@ -425,7 +462,7 @@ describe("Layout trace routing", () => {
 
     expect(screen.queryByText("chat.sidebarTitle")).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "navigation.sessions" }),
+      screen.getByRole("button", { name: "navigation.agents" }),
     ).toBeInTheDocument();
     expect(window.hermesAPI.listCachedSessions).not.toHaveBeenCalled();
   });
@@ -478,9 +515,13 @@ describe("Layout trace routing", () => {
       expect(window.hermesAPI.setActiveProfile).toHaveBeenCalledWith("work"),
     );
     expect(window.hermesAPI.abortChat).toHaveBeenCalled();
-    expect(
-      screen.getByText(/Chat mock profile:work session:none messages:\s*0/),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          /Chat mock profile:work activeAgent:work session:\s*none messages:\s*0/,
+        ),
+      ).toBeInTheDocument(),
+    );
   });
 
   it("resumes profile-aware sessions from the compact sidebar", async () => {
@@ -501,11 +542,13 @@ describe("Layout trace routing", () => {
         "work",
       ),
     );
-    expect(
-      screen.getByText(
-        /Chat mock profile:work session:session-work messages:\s*2/,
-      ),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          /Chat mock profile:work activeAgent:work session:\s*session-work messages:\s*2/,
+        ),
+      ).toBeInTheDocument(),
+    );
   });
 
   it("keeps idle unverified runtime diagnostics out of the global Chat banner", async () => {

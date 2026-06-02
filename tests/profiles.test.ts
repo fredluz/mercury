@@ -31,7 +31,17 @@ vi.mock("child_process", () => ({
 }));
 
 // Import AFTER the mock so PROFILES_DIR is resolved against TEST_HOME.
-import { createProfile, deleteProfile, listProfiles } from "../src/main/profiles";
+import {
+  createProfile,
+  deleteProfile,
+  listProfiles,
+  readProfileAgentMetadata,
+  writeProfileAgentMetadata,
+} from "../src/main/profiles";
+import {
+  AGENT_AVATAR_CONTENT_TYPE,
+  AGENT_AVATAR_FILE_NAME,
+} from "../src/shared/profiles";
 
 const PROFILES_DIR = join(TEST_HOME, "profiles");
 
@@ -219,6 +229,12 @@ describe("listProfiles", () => {
         description: "Default description",
         selectedPackIds: ["research"],
         docsPointers: [{ id: "docs", title: "Docs", path: "docs/index.md" }],
+        avatar: {
+          path: AGENT_AVATAR_FILE_NAME,
+          contentType: AGENT_AVATAR_CONTENT_TYPE,
+          updatedAt: "2026-06-02T12:00:00.000Z",
+          byteLength: 67,
+        },
       }),
     );
 
@@ -234,6 +250,7 @@ describe("listProfiles", () => {
       selectedPackIds: ["research"],
       docsPointers: [{ id: "docs", title: "Docs", path: "docs/index.md" }],
     });
+    expect(def?.avatar).toBeUndefined();
   });
 
   it("uses named profile display metadata from desktop/profile-agent.json", async () => {
@@ -262,6 +279,96 @@ describe("listProfiles", () => {
       selectedPackIds: ["research"],
       docsPointers: [{ id: "guide", title: "Guide", url: "https://example.test" }],
     });
+  });
+
+  it("projects valid avatar metadata for named custom profiles only", async () => {
+    const dir = join(PROFILES_DIR, "avatar-bot");
+    mkdirSync(join(dir, "desktop"), { recursive: true });
+    writeFileSync(
+      join(dir, "desktop", "profile-agent.json"),
+      JSON.stringify({
+        version: 1,
+        displayName: "Avatar Bot",
+        avatar: {
+          path: AGENT_AVATAR_FILE_NAME,
+          contentType: AGENT_AVATAR_CONTENT_TYPE,
+          updatedAt: "2026-06-02T12:00:00.000Z",
+          byteLength: 67,
+        },
+      }),
+    );
+
+    const profiles = await listProfiles();
+    const found = profiles.find((p) => p.name === "avatar-bot");
+
+    expect(found?.avatar).toEqual({
+      path: AGENT_AVATAR_FILE_NAME,
+      contentType: AGENT_AVATAR_CONTENT_TYPE,
+      updatedAt: "2026-06-02T12:00:00.000Z",
+      byteLength: 67,
+    });
+  });
+
+  it("drops invalid avatar metadata during normalization", async () => {
+    const dir = join(PROFILES_DIR, "invalid-avatar");
+    mkdirSync(join(dir, "desktop"), { recursive: true });
+    writeFileSync(
+      join(dir, "desktop", "profile-agent.json"),
+      JSON.stringify({
+        version: 1,
+        displayName: "Invalid Avatar",
+        avatar: {
+          path: "../avatar.png",
+          contentType: AGENT_AVATAR_CONTENT_TYPE,
+          updatedAt: "2026-06-02T12:00:00.000Z",
+          byteLength: 67,
+        },
+      }),
+    );
+
+    const profiles = await listProfiles();
+    const found = profiles.find((p) => p.name === "invalid-avatar");
+
+    expect(found?.displayName).toBe("Invalid Avatar");
+    expect(found?.avatar).toBeUndefined();
+  });
+
+  it("writeProfileAgentMetadata preserves valid avatar metadata and rejects invalid fields", async () => {
+    const dir = join(PROFILES_DIR, "write-avatar");
+    mkdirSync(dir, { recursive: true });
+
+    await writeProfileAgentMetadata(dir, {
+      version: 1,
+      displayName: "Write Avatar",
+      avatar: {
+        path: AGENT_AVATAR_FILE_NAME,
+        contentType: AGENT_AVATAR_CONTENT_TYPE,
+        updatedAt: "2026-06-02T12:30:00.000Z",
+        byteLength: 128,
+      },
+    });
+
+    await expect(readProfileAgentMetadata(dir)).resolves.toMatchObject({
+      displayName: "Write Avatar",
+      avatar: {
+        path: AGENT_AVATAR_FILE_NAME,
+        contentType: AGENT_AVATAR_CONTENT_TYPE,
+        updatedAt: "2026-06-02T12:30:00.000Z",
+        byteLength: 128,
+      },
+    });
+
+    await writeProfileAgentMetadata(dir, {
+      version: 1,
+      avatar: {
+        path: "foo/avatar.png",
+        contentType: "image/jpeg",
+        updatedAt: "2026-06-02T12:30:00.000Z",
+        byteLength: 128,
+      },
+    } as never);
+
+    await expect(readProfileAgentMetadata(dir)).resolves.not.toHaveProperty("avatar");
   });
 
   it("falls back to the backend name when named profile metadata is missing", async () => {

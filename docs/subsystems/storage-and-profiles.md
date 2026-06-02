@@ -66,7 +66,8 @@ Current local persistent files used by the documented subsystems include:
 | `<HERMES_HOME>/models.json` | `src/main/models.ts` | Legacy/manual saved model library. It is not seeded when missing and is not the canonical provider-served model catalog. |
 | `<profileHome>/state.db` | `src/main/sessions.ts`, `src/main/session-cache.ts`, `src/main/memory.ts` | Hermes SQLite session/message database read by desktop. |
 | `<HERMES_HOME>/desktop/sessions.json` | `src/main/session-cache.ts` | Desktop session cache with generated titles, row `profile` metadata, global `lastSync`, and per-profile `profileSync`. |
-| `<profileHome>/desktop/profile-agent.json` | `src/main/profiles.ts`, `src/main/services/agents-service.ts`, SSH profile helpers | Profile-scoped Agent display/recipe metadata: display name, description, selected pack ids, and docs-pointer selections. Default profile resolves to `<HERMES_HOME>/desktop/profile-agent.json`, sharing the desktop directory with `sessions.json`. This is not a skill/tool enabled-state store. |
+| `<profileHome>/desktop/profile-agent.json` | `src/main/profiles.ts`, `src/main/services/agents-service.ts`, SSH profile helpers | Profile-scoped Agent display/recipe metadata: display name, description, selected pack ids, docs-pointer selections, and optional avatar metadata. Default profile resolves to `<HERMES_HOME>/desktop/profile-agent.json`, sharing the desktop directory with `sessions.json`. This is not a skill/tool enabled-state store. |
+| `<profileHome>/desktop/avatar.png` | `src/main/services/agents-service.ts`, SSH profile helpers | Optional custom Agent avatar image for named/custom profiles. The metadata JSON references it by safe relative path (`"avatar.png"`) and never stores image bytes or data URLs. The default/Mercury profile must not use this customization file. |
 | `<HERMES_HOME>/desktop/agent-drafts.json` | `src/main/agent-store.ts`, `src/main/services/agents-service.ts` | In-progress Agent creation drafts only: draft revisions/status, proposed profile id/display fields, selected pack ids, docs pointers, tool overrides, and idempotency keys. It is not committed identity. |
 | `<profileHome>/memories/MEMORY.md` | `src/main/memory.ts`, `src/main/ssh/memory-soul.ts` | Memory entries separated by `\n§\n`. |
 | `<profileHome>/memories/USER.md` | `src/main/memory.ts`, `src/main/ssh/memory-soul.ts` | User profile text. |
@@ -144,6 +145,12 @@ Mercury has one committed Agent identity source: Hermes profiles returned by `li
   deletable: boolean;
   selectedPackIds: string[];
   docsPointers: AgentDocsPointerSelection[];
+  avatar?: {
+    path: "avatar.png";
+    contentType: "image/png";
+    updatedAt: string;
+    byteLength?: number;
+  };
   description?: string;
 }
 ```
@@ -158,11 +165,21 @@ Per-Agent display and recipe metadata lives in `<profileHome>/desktop/profile-ag
   displayName?: string,
   description?: string,
   selectedPackIds?: string[],
-  docsPointers?: AgentDocsPointerSelection[]
+  docsPointers?: AgentDocsPointerSelection[],
+  avatar?: {
+    path: "avatar.png",
+    contentType: "image/png",
+    updatedAt: string,
+    byteLength?: number
+  }
 }
 ```
 
 For the default profile, `<profileHome>` is `<HERMES_HOME>`, so the file is `<HERMES_HOME>/desktop/profile-agent.json` and shares the `desktop/` directory with `sessions.json`. There is no `<HERMES_HOME>/desktop/agents.json` identity source.
+
+Custom Agent avatars are stored separately from JSON as `<profileHome>/desktop/avatar.png`. The `avatar` metadata field accepts only the v1 safe relative file reference `"avatar.png"` with `contentType: "image/png"`, an `updatedAt` cache-busting timestamp, and optional `byteLength`; absolute paths, parent traversal, nested relative paths, non-PNG content types, and oversized metadata are dropped or rejected by the normalizers/services. Renderer surfaces load avatar images through IPC-transient data URLs (`getAgentAvatarDataUrl`) for local and SSH profiles, so `profile-agent.json` never contains base64 or `data:` URL payloads.
+
+The default/Mercury Agent is never customizable. Even if `<HERMES_HOME>/desktop/profile-agent.json` is hand-edited to include avatar metadata, default profile projection omits it and renderer surfaces continue to render the Mercury mark.
 
 `src/main/agent-store.ts` is draft-only and persists in-progress creation state to `<HERMES_HOME>/desktop/agent-drafts.json`:
 

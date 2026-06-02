@@ -41,6 +41,8 @@ import type {
 } from "../shared/traces";
 import type { ModelCapability } from "../shared/models";
 import type {
+  AgentAvatarDataUrlResult,
+  AgentAvatarMutationResult,
   AgentChatOptions,
   AgentCommitRequest,
   AgentCommitResult,
@@ -48,7 +50,9 @@ import type {
   AgentDraftChangeEvent,
   AgentDraftMutationRequest,
   AgentDraftMutationResult,
+  ClearAgentAvatarRequest,
   CreateAgentDraftRequest,
+  SetAgentAvatarRequest,
 } from "../shared/agents";
 
 interface InstallStatus {
@@ -228,6 +232,13 @@ interface HermesAPI {
     draftId: string,
   ) => Promise<{ success: boolean; error?: string }>;
   commitAgentDraft: (request: AgentCommitRequest) => Promise<AgentCommitResult>;
+  getAgentAvatarDataUrl: (profile: string) => Promise<AgentAvatarDataUrlResult>;
+  setAgentAvatar: (
+    request: SetAgentAvatarRequest,
+  ) => Promise<AgentAvatarMutationResult>;
+  clearAgentAvatar: (
+    request: ClearAgentAvatarRequest,
+  ) => Promise<AgentAvatarMutationResult>;
   onAgentDraftChanged: (
     callback: (event: AgentDraftChangeEvent) => void,
   ) => () => void;
@@ -281,7 +292,7 @@ interface HermesAPI {
   getSessionMessages: (sessionId: string, profile?: string) => Promise<
     Array<{
       id: number;
-      role: "user" | "assistant";
+      role: "user" | "assistant" | "tool";
       content: string;
       timestamp: number;
     }>

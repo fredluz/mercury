@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import { useChatController } from "./useChatController";
 import type { ChatErrorInfo } from "../../../../../shared/codex-auth-recovery";
-import type { ChatMessage } from "../types";
+import type { ChatActivityGroup, ChatMessage } from "../types";
 
 const perfMocks = vi.hoisted(() => ({
   markRendererPerf: vi.fn(),
@@ -88,18 +88,23 @@ function useControllerProbe({
   conversationVersion = 0,
   sessionId,
   onSessionResolved,
+  persistedActivityGroups,
+  initialMessages = [],
 }: {
   conversationVersion?: number;
   sessionId?: string | null;
   onSessionResolved?: (sessionId: string) => void;
+  persistedActivityGroups?: ChatActivityGroup[];
+  initialMessages?: ChatMessage[];
 } = {}) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const controller = useChatController({
     messages,
     setMessages,
     sessionId,
     conversationVersion,
     profile: "default",
+    persistedActivityGroups,
     onSessionResolved,
   });
   return { controller, messages };
@@ -116,6 +121,40 @@ describe("useChatController send lifecycle", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("hydrates persisted activity groups after the conversation reset", async () => {
+    const persistedGroup: ChatActivityGroup = {
+      id: "activity-run-1",
+      runId: "run-1",
+      anchorMessageId: "db-1",
+      status: "completed",
+      startedAt: 100,
+      updatedAt: 200,
+      expanded: false,
+      events: [
+        {
+          id: "event-1",
+          runId: "run-1",
+          type: "tool.started",
+          timestamp: 150,
+          title: "Tool started: read_file",
+          metadata: { toolName: "read_file" },
+        },
+      ],
+    };
+
+    const { result } = renderHook(() =>
+      useControllerProbe({
+        conversationVersion: 1,
+        initialMessages: [{ id: "db-1", role: "user", content: "hello" }],
+        persistedActivityGroups: [persistedGroup],
+      }),
+    );
+
+    await waitFor(() =>
+      expect(result.current.controller.activityGroups).toEqual([persistedGroup]),
+    );
   });
 
   it.each([

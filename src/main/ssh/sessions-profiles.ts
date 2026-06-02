@@ -1,7 +1,18 @@
 import type { SshConfig } from "../ssh-tunnel";
 import type { SessionSummary, SessionMessage, SearchResult } from "../sessions";
 import { isValidProfileName } from "../../shared/profile-identity";
-import type { ProfileAgentMetadata, ProfileInfo } from "../../shared/profiles";
+import type {
+  AgentAvatarDataUrlResult,
+  AgentAvatarMutationResult,
+} from "../../shared/agents";
+import {
+  AGENT_AVATAR_CONTENT_TYPE,
+  AGENT_AVATAR_FILE_NAME,
+  AGENT_AVATAR_MAX_BYTES,
+  type ProfileAgentMetadata,
+  type ProfileAvatarMetadata,
+  type ProfileInfo,
+} from "../../shared/profiles";
 import { pythonJsonInput, shellQuote, sshExec, sshPython } from "./transport";
 
 // ── Sessions ─────────────────────────────────────────────────────────────────
@@ -225,6 +236,18 @@ def gw_running(path):
     except Exception:
         return False
 
+def clean_avatar(value):
+    if not isinstance(value, dict): return None
+    if value.get("path") != ${JSON.stringify(AGENT_AVATAR_FILE_NAME)}: return None
+    if value.get("contentType") != ${JSON.stringify(AGENT_AVATAR_CONTENT_TYPE)}: return None
+    updated_at = value.get("updatedAt")
+    if not isinstance(updated_at, str) or not updated_at.strip(): return None
+    avatar = {"path": ${JSON.stringify(AGENT_AVATAR_FILE_NAME)}, "contentType": ${JSON.stringify(AGENT_AVATAR_CONTENT_TYPE)}, "updatedAt": updated_at.strip()}
+    byte_length = value.get("byteLength")
+    if isinstance(byte_length, int) and byte_length > 0 and byte_length <= ${AGENT_AVATAR_MAX_BYTES}:
+        avatar["byteLength"] = byte_length
+    return avatar
+
 def read_metadata(path):
     metadata_file = os.path.join(path, "desktop", "profile-agent.json")
     try:
@@ -237,12 +260,15 @@ def read_metadata(path):
                 if isinstance(entry.get("path"), str) and entry.get("path").strip(): pointer["path"] = entry.get("path").strip()
                 if isinstance(entry.get("url"), str) and entry.get("url").strip(): pointer["url"] = entry.get("url").strip()
                 pointers.append(pointer)
-        return {
+        metadata = {
             "displayName": data.get("displayName") if isinstance(data.get("displayName"), str) and data.get("displayName").strip() else None,
             "description": data.get("description") if isinstance(data.get("description"), str) and data.get("description").strip() else None,
             "selectedPackIds": [x for x in (data.get("selectedPackIds") or []) if isinstance(x, str)],
             "docsPointers": pointers,
         }
+        avatar = clean_avatar(data.get("avatar"))
+        if avatar: metadata["avatar"] = avatar
+        return metadata
     except Exception:
         return {"selectedPackIds": [], "docsPointers": []}
 
@@ -271,6 +297,7 @@ def append_profile(name, path, is_default, active):
         "docsPointers": metadata.get("docsPointers") or [],
     }
     if metadata.get("description"): profile["description"] = metadata.get("description")
+    if not is_default and metadata.get("avatar"): profile["avatar"] = metadata.get("avatar")
     profiles.append(profile)
 
 active = active_profile()
@@ -344,6 +371,18 @@ def clean_pointer(entry):
     if url: pointer["url"] = url
     return pointer
 
+def clean_avatar(value):
+    if not isinstance(value, dict): return None
+    if value.get("path") != ${JSON.stringify(AGENT_AVATAR_FILE_NAME)}: return None
+    if value.get("contentType") != ${JSON.stringify(AGENT_AVATAR_CONTENT_TYPE)}: return None
+    updated_at = clean_string(value.get("updatedAt"))
+    if not updated_at: return None
+    avatar = {"path": ${JSON.stringify(AGENT_AVATAR_FILE_NAME)}, "contentType": ${JSON.stringify(AGENT_AVATAR_CONTENT_TYPE)}, "updatedAt": updated_at}
+    byte_length = value.get("byteLength")
+    if isinstance(byte_length, int) and byte_length > 0 and byte_length <= ${AGENT_AVATAR_MAX_BYTES}:
+        avatar["byteLength"] = byte_length
+    return avatar
+
 try:
     normalized = {"version": 1}
     display_name = clean_string(metadata.get("displayName"))
@@ -352,6 +391,8 @@ try:
     if description: normalized["description"] = description
     normalized["selectedPackIds"] = [x for x in (metadata.get("selectedPackIds") or []) if isinstance(x, str)]
     normalized["docsPointers"] = [p for p in [clean_pointer(x) for x in (metadata.get("docsPointers") or [])] if p]
+    avatar = clean_avatar(metadata.get("avatar"))
+    if avatar and profile != "default": normalized["avatar"] = avatar
     os.makedirs(os.path.dirname(metadata_path), exist_ok=True)
     with open(metadata_path, "w") as f:
         json.dump(normalized, f, indent=2)
@@ -371,6 +412,546 @@ except Exception as exc:
     out.trim() || '{"success":false,"error":"Profile metadata write returned no result"}',
   ) as { success?: boolean; error?: string };
   if (!result.success) throw new Error(result.error || "Profile metadata write failed");
+}
+
+type SshAvatarScriptMutationResult =
+  | { success: true; avatar: unknown }
+  | Exclude<AgentAvatarMutationResult, { success: true }>;
+
+type RawSshAvatarScriptResult = {
+  success?: boolean;
+  code?: unknown;
+  error?: unknown;
+  avatar?: unknown;
+  dataUrl?: unknown;
+};
+
+export async function sshSetAgentAvatar(
+  config: SshConfig,
+  profile: string,
+  imageDataUrl: string,
+): Promise<AgentAvatarMutationResult> {
+  if (!isValidProfileName(profile)) {
+    return sshAvatarMutationFailure("validation-error", "Invalid agent profile name.");
+  }
+  if (profile === "default") {
+    return sshAvatarMutationFailure(
+      "immutable-agent",
+      "Mercury/default is immutable and cannot have a custom avatar.",
+    );
+  }
+
+  const preflightError = sshAvatarDataUrlSizePreflight(imageDataUrl);
+  if (preflightError) {
+    return sshAvatarMutationFailure("validation-error", preflightError);
+  }
+
+  const script = `
+import base64, datetime, json, os, sys, traceback, uuid
+payload = json.load(sys.stdin)
+profile = payload.get("profile") or ""
+image_data_url = payload.get("imageDataUrl") or ""
+PREFIX = ${JSON.stringify(`data:${AGENT_AVATAR_CONTENT_TYPE};base64,`)}
+AVATAR_FILE = ${JSON.stringify(AGENT_AVATAR_FILE_NAME)}
+CONTENT_TYPE = ${JSON.stringify(AGENT_AVATAR_CONTENT_TYPE)}
+MAX_BYTES = ${AGENT_AVATAR_MAX_BYTES}
+PNG_MAGIC = b"\\x89PNG\\r\\n\\x1a\\n"
+hermes_home = os.path.expanduser("~/.hermes")
+profile_home = os.path.join(hermes_home, "profiles", profile)
+desktop_dir = os.path.join(profile_home, "desktop")
+metadata_path = os.path.join(desktop_dir, "profile-agent.json")
+avatar_path = os.path.join(desktop_dir, AVATAR_FILE)
+
+def finish(result):
+    print(json.dumps(result))
+    sys.exit(0)
+
+def clean_string(value):
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+def clean_pointer(entry):
+    if not isinstance(entry, dict): return None
+    pointer_id = clean_string(entry.get("id"))
+    title = clean_string(entry.get("title"))
+    if not pointer_id or not title: return None
+    pointer = {"id": pointer_id, "title": title}
+    path = clean_string(entry.get("path"))
+    url = clean_string(entry.get("url"))
+    if path: pointer["path"] = path
+    if url: pointer["url"] = url
+    return pointer
+
+def clean_avatar(value):
+    if not isinstance(value, dict): return None
+    if value.get("path") != AVATAR_FILE: return None
+    if value.get("contentType") != CONTENT_TYPE: return None
+    updated_at = clean_string(value.get("updatedAt"))
+    if not updated_at: return None
+    avatar = {"path": AVATAR_FILE, "contentType": CONTENT_TYPE, "updatedAt": updated_at}
+    byte_length = value.get("byteLength")
+    if isinstance(byte_length, int) and byte_length > 0 and byte_length <= MAX_BYTES:
+        avatar["byteLength"] = byte_length
+    return avatar
+
+def normalize_metadata(data):
+    if not isinstance(data, dict): data = {}
+    normalized = {"version": 1}
+    display_name = clean_string(data.get("displayName"))
+    description = clean_string(data.get("description"))
+    if display_name: normalized["displayName"] = display_name
+    if description: normalized["description"] = description
+    normalized["selectedPackIds"] = [x for x in (data.get("selectedPackIds") or []) if isinstance(x, str)]
+    normalized["docsPointers"] = [p for p in [clean_pointer(x) for x in (data.get("docsPointers") or [])] if p]
+    avatar = clean_avatar(data.get("avatar"))
+    if avatar: normalized["avatar"] = avatar
+    return normalized
+
+def read_metadata():
+    try:
+        with open(metadata_path) as f:
+            return normalize_metadata(json.load(f))
+    except Exception:
+        return normalize_metadata({})
+
+def write_metadata(metadata):
+    os.makedirs(desktop_dir, exist_ok=True)
+    tmp = os.path.join(desktop_dir, ".profile-agent.%s.tmp" % uuid.uuid4().hex)
+    with open(tmp, "w") as f:
+        json.dump(normalize_metadata(metadata), f, indent=2)
+        f.write("\\n")
+    os.replace(tmp, metadata_path)
+
+try:
+    if profile == "default":
+        finish({"success": False, "code": "immutable-agent", "error": "Mercury/default is immutable and cannot have a custom avatar."})
+    if not os.path.isdir(profile_home):
+        finish({"success": False, "code": "not-found", "error": "Agent profile '%s' was not found." % profile})
+    if not image_data_url.startswith(PREFIX):
+        finish({"success": False, "code": "validation-error", "error": "Agent avatar must be a PNG data URL."})
+    encoded = image_data_url[len(PREFIX):]
+    if not encoded.strip():
+        finish({"success": False, "code": "validation-error", "error": "Agent avatar PNG is empty."})
+    try:
+        png = base64.b64decode(encoded, validate=True)
+    except Exception:
+        finish({"success": False, "code": "validation-error", "error": "Agent avatar data is not valid base64."})
+    if len(png) == 0:
+        finish({"success": False, "code": "validation-error", "error": "Agent avatar PNG is empty."})
+    if len(png) > MAX_BYTES:
+        finish({"success": False, "code": "validation-error", "error": "Agent avatar PNG must be %d bytes or smaller." % MAX_BYTES})
+    if len(png) < len(PNG_MAGIC) or png[:len(PNG_MAGIC)] != PNG_MAGIC:
+        finish({"success": False, "code": "validation-error", "error": "Agent avatar data is not a valid PNG file."})
+
+    os.makedirs(desktop_dir, exist_ok=True)
+    nonce = "%s.%s" % (os.getpid(), uuid.uuid4().hex)
+    tmp_avatar = os.path.join(desktop_dir, ".avatar.%s.tmp" % nonce)
+    backup_avatar = os.path.join(desktop_dir, ".avatar.%s.bak" % nonce)
+    backup_created = False
+    avatar_replaced = False
+    committed = False
+    with open(tmp_avatar, "wb") as f:
+        f.write(png)
+    try:
+        try:
+            os.replace(avatar_path, backup_avatar)
+            backup_created = True
+        except FileNotFoundError:
+            pass
+        os.replace(tmp_avatar, avatar_path)
+        avatar_replaced = True
+        avatar = {"path": AVATAR_FILE, "contentType": CONTENT_TYPE, "updatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(), "byteLength": len(png)}
+        metadata = read_metadata()
+        metadata["avatar"] = avatar
+        write_metadata(metadata)
+        committed = True
+    finally:
+        if committed:
+            if backup_created:
+                try: os.remove(backup_avatar)
+                except Exception: pass
+        else:
+            try: os.remove(tmp_avatar)
+            except Exception: pass
+            if avatar_replaced:
+                try: os.remove(avatar_path)
+                except Exception: pass
+            if backup_created:
+                try: os.replace(backup_avatar, avatar_path)
+                except Exception: pass
+    finish({"success": True, "avatar": avatar})
+except Exception as exc:
+    finish({"success": False, "code": "write-failed", "error": str(exc) or traceback.format_exc()})
+`;
+
+  const result = await runSshAvatarMutationScript(config, script, {
+    profile,
+    imageDataUrl,
+  });
+  if (!result.success) return result;
+  const avatar = normalizeSshAvatarMetadata(result.avatar);
+  if (!avatar) {
+    return sshAvatarMutationFailure("write-failed", "SSH avatar write returned invalid metadata.");
+  }
+  return {
+    success: true,
+    agent: await sshAvatarAgent(config, profile, avatar),
+    avatar,
+  };
+}
+
+export async function sshClearAgentAvatar(
+  config: SshConfig,
+  profile: string,
+): Promise<AgentAvatarMutationResult> {
+  if (!isValidProfileName(profile)) {
+    return sshAvatarMutationFailure("validation-error", "Invalid agent profile name.");
+  }
+  if (profile === "default") {
+    return sshAvatarMutationFailure(
+      "immutable-agent",
+      "Mercury/default is immutable and cannot have a custom avatar.",
+    );
+  }
+
+  const script = `
+import json, os, sys, traceback, uuid
+payload = json.load(sys.stdin)
+profile = payload.get("profile") or ""
+AVATAR_FILE = ${JSON.stringify(AGENT_AVATAR_FILE_NAME)}
+CONTENT_TYPE = ${JSON.stringify(AGENT_AVATAR_CONTENT_TYPE)}
+MAX_BYTES = ${AGENT_AVATAR_MAX_BYTES}
+hermes_home = os.path.expanduser("~/.hermes")
+profile_home = os.path.join(hermes_home, "profiles", profile)
+desktop_dir = os.path.join(profile_home, "desktop")
+metadata_path = os.path.join(desktop_dir, "profile-agent.json")
+avatar_path = os.path.join(desktop_dir, AVATAR_FILE)
+
+def finish(result):
+    print(json.dumps(result))
+    sys.exit(0)
+
+def clean_string(value):
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+def clean_pointer(entry):
+    if not isinstance(entry, dict): return None
+    pointer_id = clean_string(entry.get("id"))
+    title = clean_string(entry.get("title"))
+    if not pointer_id or not title: return None
+    pointer = {"id": pointer_id, "title": title}
+    path = clean_string(entry.get("path"))
+    url = clean_string(entry.get("url"))
+    if path: pointer["path"] = path
+    if url: pointer["url"] = url
+    return pointer
+
+def clean_avatar(value):
+    if not isinstance(value, dict): return None
+    if value.get("path") != AVATAR_FILE: return None
+    if value.get("contentType") != CONTENT_TYPE: return None
+    updated_at = clean_string(value.get("updatedAt"))
+    if not updated_at: return None
+    avatar = {"path": AVATAR_FILE, "contentType": CONTENT_TYPE, "updatedAt": updated_at}
+    byte_length = value.get("byteLength")
+    if isinstance(byte_length, int) and byte_length > 0 and byte_length <= MAX_BYTES:
+        avatar["byteLength"] = byte_length
+    return avatar
+
+def normalize_metadata(data):
+    if not isinstance(data, dict): data = {}
+    normalized = {"version": 1}
+    display_name = clean_string(data.get("displayName"))
+    description = clean_string(data.get("description"))
+    if display_name: normalized["displayName"] = display_name
+    if description: normalized["description"] = description
+    normalized["selectedPackIds"] = [x for x in (data.get("selectedPackIds") or []) if isinstance(x, str)]
+    normalized["docsPointers"] = [p for p in [clean_pointer(x) for x in (data.get("docsPointers") or [])] if p]
+    avatar = clean_avatar(data.get("avatar"))
+    if avatar: normalized["avatar"] = avatar
+    return normalized
+
+def read_metadata():
+    try:
+        with open(metadata_path) as f:
+            return normalize_metadata(json.load(f))
+    except Exception:
+        return normalize_metadata({})
+
+def write_metadata(metadata):
+    os.makedirs(desktop_dir, exist_ok=True)
+    tmp = os.path.join(desktop_dir, ".profile-agent.%s.tmp" % uuid.uuid4().hex)
+    with open(tmp, "w") as f:
+        json.dump(normalize_metadata(metadata), f, indent=2)
+        f.write("\\n")
+    os.replace(tmp, metadata_path)
+
+try:
+    if profile == "default":
+        finish({"success": False, "code": "immutable-agent", "error": "Mercury/default is immutable and cannot have a custom avatar."})
+    if not os.path.isdir(profile_home):
+        finish({"success": False, "code": "not-found", "error": "Agent profile '%s' was not found." % profile})
+    metadata = read_metadata()
+    if "avatar" not in metadata:
+        finish({"success": True, "avatar": None})
+    metadata.pop("avatar", None)
+    write_metadata(metadata)
+    try:
+        os.remove(avatar_path)
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+    finish({"success": True, "avatar": None})
+except Exception as exc:
+    finish({"success": False, "code": "write-failed", "error": str(exc) or traceback.format_exc()})
+`;
+
+  const result = await runSshAvatarMutationScript(config, script, { profile });
+  if (!result.success) return result;
+  return {
+    success: true,
+    agent: await sshAvatarAgent(config, profile, null),
+    avatar: null,
+  };
+}
+
+export async function sshGetAgentAvatarDataUrl(
+  config: SshConfig,
+  profile: string,
+): Promise<AgentAvatarDataUrlResult> {
+  if (!isValidProfileName(profile)) {
+    return sshAvatarReadFailure("validation-error", "Invalid agent profile name.");
+  }
+  if (profile === "default") {
+    return { success: true, dataUrl: null };
+  }
+
+  const script = `
+import base64, json, os, sys, traceback
+payload = json.load(sys.stdin)
+profile = payload.get("profile") or ""
+AVATAR_FILE = ${JSON.stringify(AGENT_AVATAR_FILE_NAME)}
+CONTENT_TYPE = ${JSON.stringify(AGENT_AVATAR_CONTENT_TYPE)}
+MAX_BYTES = ${AGENT_AVATAR_MAX_BYTES}
+PNG_MAGIC = b"\\x89PNG\\r\\n\\x1a\\n"
+hermes_home = os.path.expanduser("~/.hermes")
+profile_home = os.path.join(hermes_home, "profiles", profile)
+metadata_path = os.path.join(profile_home, "desktop", "profile-agent.json")
+avatar_path = os.path.join(profile_home, "desktop", AVATAR_FILE)
+
+def finish(result):
+    print(json.dumps(result))
+    sys.exit(0)
+
+def clean_string(value):
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+def clean_avatar(value):
+    if not isinstance(value, dict): return None
+    if value.get("path") != AVATAR_FILE: return None
+    if value.get("contentType") != CONTENT_TYPE: return None
+    updated_at = clean_string(value.get("updatedAt"))
+    if not updated_at: return None
+    avatar = {"path": AVATAR_FILE, "contentType": CONTENT_TYPE, "updatedAt": updated_at}
+    byte_length = value.get("byteLength")
+    if isinstance(byte_length, int) and byte_length > 0 and byte_length <= MAX_BYTES:
+        avatar["byteLength"] = byte_length
+    return avatar
+
+try:
+    if profile == "default":
+        finish({"success": True, "dataUrl": None})
+    if not os.path.isdir(profile_home):
+        finish({"success": False, "code": "not-found", "error": "Agent profile '%s' was not found." % profile})
+    try:
+        with open(metadata_path) as f:
+            metadata = json.load(f)
+    except Exception:
+        finish({"success": True, "dataUrl": None})
+    avatar = clean_avatar(metadata.get("avatar") if isinstance(metadata, dict) else None)
+    if not avatar:
+        finish({"success": True, "dataUrl": None})
+    try:
+        with open(avatar_path, "rb") as f:
+            png = f.read(MAX_BYTES + 1)
+    except FileNotFoundError:
+        finish({"success": True, "dataUrl": None, "avatar": avatar})
+    if len(png) == 0 or len(png) > MAX_BYTES or len(png) < len(PNG_MAGIC) or png[:len(PNG_MAGIC)] != PNG_MAGIC:
+        finish({"success": True, "dataUrl": None, "avatar": avatar})
+    finish({"success": True, "dataUrl": "data:%s;base64,%s" % (CONTENT_TYPE, base64.b64encode(png).decode("ascii")), "avatar": avatar})
+except Exception as exc:
+    finish({"success": False, "code": "read-failed", "error": str(exc) or traceback.format_exc()})
+`;
+
+  try {
+    const out = await sshPython(
+      config,
+      script,
+      pythonJsonInput({ profile }),
+      30000,
+    );
+    const raw = JSON.parse(
+      out.trim() || '{"success":false,"code":"read-failed","error":"SSH avatar read returned no result"}',
+    ) as RawSshAvatarScriptResult;
+    if (!raw.success) {
+      return sshAvatarReadFailure(
+        readFailureCode(raw.code),
+        typeof raw.error === "string" && raw.error.trim()
+          ? raw.error
+          : "SSH avatar read failed",
+      );
+    }
+    const avatar = normalizeSshAvatarMetadata(raw.avatar);
+    return {
+      success: true,
+      dataUrl: typeof raw.dataUrl === "string" ? raw.dataUrl : null,
+      ...(avatar ? { avatar } : {}),
+    };
+  } catch (error) {
+    return sshAvatarReadFailure(
+      "read-failed",
+      error instanceof Error ? error.message : "SSH avatar read failed",
+    );
+  }
+}
+
+async function runSshAvatarMutationScript(
+  config: SshConfig,
+  script: string,
+  payload: unknown,
+): Promise<SshAvatarScriptMutationResult> {
+  try {
+    const out = await sshPython(config, script, pythonJsonInput(payload), 30000);
+    const raw = JSON.parse(
+      out.trim() || '{"success":false,"code":"write-failed","error":"SSH avatar mutation returned no result"}',
+    ) as RawSshAvatarScriptResult;
+    if (!raw.success) {
+      return sshAvatarMutationFailure(
+        mutationFailureCode(raw.code),
+        typeof raw.error === "string" && raw.error.trim()
+          ? raw.error
+          : "SSH avatar mutation failed",
+      );
+    }
+    return { success: true, avatar: raw.avatar };
+  } catch (error) {
+    return sshAvatarMutationFailure(
+      "write-failed",
+      error instanceof Error ? error.message : "SSH avatar mutation failed",
+    );
+  }
+}
+
+async function sshAvatarAgent(
+  config: SshConfig,
+  profile: string,
+  avatar: ProfileAvatarMetadata | null,
+): Promise<ProfileInfo> {
+  try {
+    const profiles = await sshListProfiles(config);
+    const found = profiles.find((entry) => entry.name === profile);
+    if (found) {
+      if (avatar) return { ...found, avatar };
+      const { avatar: _avatar, ...withoutAvatar } = found;
+      return withoutAvatar;
+    }
+  } catch {
+    // Fall back to a minimal custom-agent projection below.
+  }
+  return fallbackSshAvatarAgent(profile, avatar);
+}
+
+function fallbackSshAvatarAgent(
+  profile: string,
+  avatar: ProfileAvatarMetadata | null,
+): ProfileInfo {
+  return {
+    name: profile,
+    path: `~/.hermes/profiles/${profile}`,
+    isDefault: false,
+    isActive: false,
+    model: "",
+    provider: "auto",
+    hasEnv: false,
+    hasSoul: false,
+    skillCount: 0,
+    gatewayRunning: false,
+    displayName: profile,
+    kind: "custom",
+    immutable: false,
+    deletable: true,
+    selectedPackIds: [],
+    docsPointers: [],
+    ...(avatar ? { avatar } : {}),
+  };
+}
+
+function sshAvatarDataUrlSizePreflight(imageDataUrl: string): string | null {
+  const prefix = `data:${AGENT_AVATAR_CONTENT_TYPE};base64,`;
+  if (!imageDataUrl.startsWith(prefix)) return null;
+  const encodedLength = imageDataUrl.length - prefix.length;
+  if (encodedLength <= 0) return "Agent avatar PNG is empty.";
+  const maxBase64Length = Math.ceil(AGENT_AVATAR_MAX_BYTES / 3) * 4;
+  if (encodedLength > maxBase64Length) {
+    return `Agent avatar PNG must be ${AGENT_AVATAR_MAX_BYTES} bytes or smaller.`;
+  }
+  return null;
+}
+
+function normalizeSshAvatarMetadata(value: unknown): ProfileAvatarMetadata | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const avatar = value as Record<string, unknown>;
+  if (avatar.path !== AGENT_AVATAR_FILE_NAME) return null;
+  if (avatar.contentType !== AGENT_AVATAR_CONTENT_TYPE) return null;
+  if (typeof avatar.updatedAt !== "string" || !avatar.updatedAt.trim()) return null;
+  return {
+    path: AGENT_AVATAR_FILE_NAME,
+    contentType: AGENT_AVATAR_CONTENT_TYPE,
+    updatedAt: avatar.updatedAt.trim(),
+    ...(typeof avatar.byteLength === "number" &&
+    Number.isInteger(avatar.byteLength) &&
+    avatar.byteLength > 0 &&
+    avatar.byteLength <= AGENT_AVATAR_MAX_BYTES
+      ? { byteLength: avatar.byteLength }
+      : {}),
+  };
+}
+
+function mutationFailureCode(
+  code: unknown,
+): Exclude<AgentAvatarMutationResult, { success: true }>["code"] {
+  return code === "not-found" ||
+    code === "immutable-agent" ||
+    code === "unsupported-remote-mode" ||
+    code === "validation-error" ||
+    code === "write-failed"
+    ? code
+    : "write-failed";
+}
+
+function readFailureCode(
+  code: unknown,
+): Exclude<AgentAvatarDataUrlResult, { success: true }>["code"] {
+  return code === "not-found" ||
+    code === "unsupported-remote-mode" ||
+    code === "validation-error" ||
+    code === "read-failed"
+    ? code
+    : "read-failed";
+}
+
+function sshAvatarMutationFailure(
+  code: Exclude<AgentAvatarMutationResult, { success: true }>["code"],
+  error: string,
+): AgentAvatarMutationResult {
+  return { success: false, code, error };
+}
+
+function sshAvatarReadFailure(
+  code: Exclude<AgentAvatarDataUrlResult, { success: true }>["code"],
+  error: string,
+): AgentAvatarDataUrlResult {
+  return { success: false, code, error };
 }
 
 export interface SshProfileMutationResult {

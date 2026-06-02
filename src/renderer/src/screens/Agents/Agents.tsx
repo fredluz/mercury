@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Brain,
   ChatBubble,
@@ -8,6 +8,7 @@ import {
   Trash,
   Wrench,
 } from "../../assets/icons";
+import { ImagePlus, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type {
   AgentCommitResult,
@@ -16,9 +17,10 @@ import type {
   AgentDraftPatch,
 } from "../../../../shared/agents";
 import type { ProfileInfo } from "../../../../shared/profiles";
-import MercuryMark from "../../components/common/MercuryMark";
+import AgentAvatar from "../../components/common/AgentAvatar";
 import { AgentModelConfigModal } from "../../components/AgentModelConfigModal";
 import { useI18n } from "../../components/useI18n";
+import { normalizeAvatarFileToPngDataUrl } from "../../utils/agent-avatar-image";
 import { AgentCreator } from "./AgentCreator";
 
 type ProfileActionView = "chat" | "skills" | "tools" | "soul" | "memory";
@@ -47,18 +49,6 @@ function displayNameFor(profile: ProfileInfo): string {
   return profile.displayName.trim() || profile.name;
 }
 
-function AgentAvatar({ profile }: { profile: ProfileInfo }): React.JSX.Element {
-  const label = displayNameFor(profile);
-  if (profile.name === "default") {
-    return (
-      <div className="agents-card-avatar agents-card-avatar-icon">
-        <MercuryMark size={30} decorative />
-      </div>
-    );
-  }
-  return <div className="agents-card-avatar">{label.charAt(0).toUpperCase()}</div>;
-}
-
 function commitFailureMessage(result: Extract<AgentCommitResult, { success: false }>): string {
   return `${result.code}: ${result.error}`;
 }
@@ -79,6 +69,10 @@ function Agents({
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [modelAgent, setModelAgent] = useState<ProfileInfo | null>(null);
+  const [avatarTarget, setAvatarTarget] = useState<ProfileInfo | null>(null);
+  const [avatarMutatingProfile, setAvatarMutatingProfile] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadAgents = useCallback(async (): Promise<void> => {
     const list = await window.hermesAPI.listProfiles();
@@ -146,6 +140,72 @@ function Agents({
       setError(result.error || t("agents.deleteFailed"));
     }
     setConfirmDelete(null);
+  }
+
+  function canCustomizeAvatar(profile: ProfileInfo): boolean {
+    return profile.name !== "default" && profile.kind === "custom" && !profile.immutable;
+  }
+
+  function handleChooseAvatar(profile: ProfileInfo): void {
+    if (!canCustomizeAvatar(profile) || avatarMutatingProfile) return;
+    setAvatarError(null);
+    setAvatarTarget(profile);
+    avatarFileInputRef.current?.click();
+  }
+
+  async function handleAvatarFileChange(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ): Promise<void> {
+    const file = event.currentTarget.files?.[0];
+    const target = avatarTarget;
+    event.currentTarget.value = "";
+    if (!file || !target || !canCustomizeAvatar(target)) return;
+
+    setAvatarMutatingProfile(target.name);
+    setAvatarError(null);
+    try {
+      const imageDataUrl = await normalizeAvatarFileToPngDataUrl(file);
+      const result = await window.hermesAPI.setAgentAvatar({
+        profile: target.name,
+        imageDataUrl,
+      });
+      if (result.success) {
+        await loadAgents();
+      } else {
+        setAvatarError(`${t("agents.avatarUploadFailed")}: ${result.error}`);
+      }
+    } catch (err) {
+      setAvatarError(
+        err instanceof Error && err.message !== "avatarInvalidFile"
+          ? `${t("agents.avatarUploadFailed")}: ${err.message}`
+          : t("agents.avatarInvalidFile"),
+      );
+    } finally {
+      setAvatarMutatingProfile(null);
+      setAvatarTarget(null);
+    }
+  }
+
+  async function handleClearAvatar(profile: ProfileInfo): Promise<void> {
+    if (!canCustomizeAvatar(profile) || avatarMutatingProfile) return;
+    setAvatarMutatingProfile(profile.name);
+    setAvatarError(null);
+    try {
+      const result = await window.hermesAPI.clearAgentAvatar({ profile: profile.name });
+      if (result.success) {
+        await loadAgents();
+      } else {
+        setAvatarError(`${t("agents.avatarClearFailed")}: ${result.error}`);
+      }
+    } catch (err) {
+      setAvatarError(
+        err instanceof Error
+          ? `${t("agents.avatarClearFailed")}: ${err.message}`
+          : t("agents.avatarClearFailed"),
+      );
+    } finally {
+      setAvatarMutatingProfile(null);
+    }
   }
 
   async function handleSelect(profile: ProfileInfo): Promise<void> {
@@ -265,12 +325,25 @@ function Agents({
         </button>
       </div>
 
+      <input
+        ref={avatarFileInputRef}
+        className="agents-avatar-file-input"
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        onChange={(event) => void handleAvatarFileChange(event)}
+      />
+
       {error ? <div className="agents-create-error">{error}</div> : null}
+      {avatarError ? (
+        <div className="agents-create-error">{avatarError}</div>
+      ) : null}
 
       <div className="agents-grid">
         {agents.map((agent) => {
           const name = displayNameFor(agent);
           const isActive = activeProfile === agent.name;
+          const canEditAvatar = canCustomizeAvatar(agent);
+          const isAvatarMutating = avatarMutatingProfile === agent.name;
           return (
             <div
               key={agent.name}
@@ -283,7 +356,12 @@ function Agents({
               }}
             >
               <div className="agents-card-header">
-                <AgentAvatar profile={agent} />
+                <AgentAvatar
+                  profile={agent}
+                  className="agents-card-avatar"
+                  markClassName="agents-card-avatar-icon"
+                  markSize={30}
+                />
                 <div className="agents-card-info">
                   <div className="agents-card-name">{name}</div>
                   <div className="agents-card-provider">{providerLabel(agent)}</div>
@@ -323,6 +401,38 @@ function Agents({
                       aria-label={t("agents.configureModelFor", { name })}
                     >
                       <Wrench size={15} />
+                    </button>
+                  ) : null}
+                  {canEditAvatar ? (
+                    <button
+                      className="agents-card-action-btn agents-card-avatar-action"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleChooseAvatar(agent);
+                      }}
+                      disabled={avatarMutatingProfile !== null}
+                      title={
+                        isAvatarMutating
+                          ? t("agents.avatarUploading")
+                          : t("agents.setAvatar")
+                      }
+                      aria-label={t("agents.setAvatarFor", { name })}
+                    >
+                      <ImagePlus size={15} />
+                    </button>
+                  ) : null}
+                  {canEditAvatar && agent.avatar ? (
+                    <button
+                      className="agents-card-action-btn agents-card-avatar-action"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleClearAvatar(agent);
+                      }}
+                      disabled={avatarMutatingProfile !== null}
+                      title={t("agents.clearAvatar")}
+                      aria-label={t("agents.clearAvatarFor", { name })}
+                    >
+                      <X size={15} />
                     </button>
                   ) : null}
                   {PROFILE_ACTIONS.filter(({ view }) =>

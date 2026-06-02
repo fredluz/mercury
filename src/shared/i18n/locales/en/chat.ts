@@ -153,6 +153,7 @@ export default {
   deny: "Deny",
   newChat: "New chat (Cmd+N)",
   clearChat: "Clear chat",
+  openTraceLab: "Trace Lab",
   fastMode: "Fast Mode",
   fastModeOn: "Fast Mode ON",
   fastModeActive:
