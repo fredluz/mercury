@@ -20,6 +20,45 @@ describe("skill source parser", () => {
     });
   });
 
+  it("parses owner/repo/skill shorthand and maps the trailing segment to the skill selector", () => {
+    const result = parseSkillSource("mattpocock/skills/tdd");
+
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(result.error);
+    expect(result.source).toMatchObject({
+      owner: "mattpocock",
+      repo: "skills",
+      pathKind: "repo",
+      originalSource: "mattpocock/skills/tdd",
+      skillSelector: "tdd",
+    });
+  });
+
+  it("uses the final segment of a multi-level owner/repo subpath as the selector", () => {
+    const result = parseSkillSource("owner/repo/skills/pdf");
+
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(result.error);
+    expect(result.source).toMatchObject({
+      owner: "owner",
+      repo: "repo",
+      skillSelector: "pdf",
+    });
+  });
+
+  it("parses npx skills add owner/repo/skill shorthand", () => {
+    const result = parseSkillSource("npx skills add mattpocock/skills/tdd");
+
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(result.error);
+    expect(result.source).toMatchObject({
+      owner: "mattpocock",
+      repo: "skills",
+      pathKind: "repo",
+      skillSelector: "tdd",
+    });
+  });
+
   it("parses full GitHub repository URLs", () => {
     const result = parseSkillSource("https://github.com/owner/repo.git");
 

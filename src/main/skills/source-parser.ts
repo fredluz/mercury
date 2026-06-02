@@ -261,14 +261,27 @@ function parseGitHubSource(
     );
   }
 
-  const shorthand = source.match(/^([^/\s:]+)\/([^/\s]+)$/);
-  if (shorthand && !source.includes("://")) {
-    return buildRepoSource(
+  // owner/repo, optionally followed by a skill subpath (e.g. owner/repo/tdd or
+  // owner/repo/skills/tdd). The final path segment is treated as the skill
+  // selector, matching the `skills` CLI's `npx skills add owner/repo/skill` form.
+  const shorthand = source.match(/^([^/\s:]+)\/([^/\s]+)(?:\/([^\s]+))?$/);
+  if (shorthand && !source.includes("://") && GITHUB_OWNER_RE.test(shorthand[1])) {
+    const built = buildRepoSource(
       shorthand[1],
       stripGitSuffix(shorthand[2]),
       originalSource,
       "repo",
     );
+    if (!built.success) return built;
+
+    const subpath = shorthand[3]?.split("/").filter(Boolean) ?? [];
+    const selector = subpath.at(-1);
+    if (!selector) return built;
+
+    return {
+      success: true,
+      source: { ...built.source, skillSelector: selector },
+    };
   }
 
   let url: URL;
