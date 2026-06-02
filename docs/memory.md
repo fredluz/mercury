@@ -94,7 +94,7 @@ Memory.tsx
   -> <profileHome>/memories/MEMORY.md
 ```
 
-Successful memory, user profile, SOUL, tool, or skill mutations call `markRuntimeStale(profile, ...)`. This prevents Mercury from silently trusting an already-verified API runtime after profile context changed.
+Memory, user profile, and SOUL mutations do **not** call `markRuntimeStale(profile, ...)`. Hermes loads these files as a session-start system-prompt snapshot and restores the stored prompt for continued sessions (to preserve prefix caching), so edits take effect in new chats — not the current session, and not via a gateway restart. Like toolset toggles, they are treated as next-chat config writes and never block chat or cron. (Skill mutations still schedule a runtime apply, and profile-switch/connection/model/config changes still mark the runtime stale, because those genuinely change runtime identity or live behavior.)
 
 ## How agents add memories themselves
 

@@ -26,7 +26,6 @@ import type {
   SkillSourceImportRequest,
   SkillSourcePreviewRequest,
 } from "../../shared/skills";
-import { markRuntimeStale } from "../hermes";
 import { requestSkillRuntimeApply } from "./runtime-apply-service";
 import {
   sshReadMemory,
@@ -51,10 +50,6 @@ import {
   fetchSkillSourceDirectory,
   previewSkillSource,
 } from "../skills/source-service";
-
-function markProfileMutation(profile: string | undefined, area: string): void {
-  markRuntimeStale(profile, `${area} changed for profile runtime.`);
-}
 
 const skillMutationQueues = new Map<
   string,
@@ -145,6 +140,13 @@ function remoteSkillMutationBatch(
   };
 }
 
+// Memory, user profile, and SOUL are loaded by Hermes as a session-start system-prompt
+// snapshot (built once per session and restored from state.db for continued sessions to
+// preserve prefix caching). A running runtime therefore cannot pick up these edits mid-
+// session, and a gateway restart does not refresh a continued session either — only a new
+// chat rereads them. So, like toolset toggles, these writes are NOT runtime-stale events:
+// we persist the profile files and let new chats use them. Marking the runtime stale here
+// would only block chat/cron with no correctness benefit.
 export function readMemoryForProfile(profile?: string) {
   const conn = getConnectionConfig();
   if (conn.mode === "ssh" && conn.ssh) return sshReadMemory(conn.ssh, profile);
@@ -160,7 +162,6 @@ export async function addMemoryEntryForProfile(
     conn.mode === "ssh" && conn.ssh
       ? await sshAddMemoryEntry(conn.ssh, content, profile)
       : addMemoryEntry(content, profile);
-  if (result.success) markProfileMutation(profile, "Memory");
   return result;
 }
 
@@ -174,7 +175,6 @@ export async function updateMemoryEntryForProfile(
     conn.mode === "ssh" && conn.ssh
       ? await sshUpdateMemoryEntry(conn.ssh, index, content, profile)
       : updateMemoryEntry(index, content, profile);
-  if (result.success) markProfileMutation(profile, "Memory");
   return result;
 }
 
@@ -187,7 +187,6 @@ export async function removeMemoryEntryForProfile(
     conn.mode === "ssh" && conn.ssh
       ? await sshRemoveMemoryEntry(conn.ssh, index, profile)
       : removeMemoryEntry(index, profile);
-  if (result) markProfileMutation(profile, "Memory");
   return result;
 }
 
@@ -200,7 +199,6 @@ export async function writeUserProfileForProfile(
     conn.mode === "ssh" && conn.ssh
       ? await sshWriteUserProfile(conn.ssh, content, profile)
       : writeUserProfile(content, profile);
-  if (result.success) markProfileMutation(profile, "User profile memory");
   return result;
 }
 
@@ -216,7 +214,6 @@ export async function writeSoulForProfile(content: string, profile?: string) {
     conn.mode === "ssh" && conn.ssh
       ? await sshWriteSoul(conn.ssh, content, profile)
       : writeSoul(content, profile);
-  if (result) markProfileMutation(profile, "SOUL");
   return result;
 }
 
@@ -226,7 +223,6 @@ export async function resetSoulForProfile(profile?: string) {
     conn.mode === "ssh" && conn.ssh
       ? await sshResetSoul(conn.ssh, profile)
       : resetSoul(profile);
-  markProfileMutation(profile, "SOUL");
   return result;
 }
 

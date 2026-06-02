@@ -169,19 +169,29 @@ describe("knowledge service runtime mutation policy", () => {
     expect(mocks.sshGatewayStatus).not.toHaveBeenCalled();
   });
 
-  it("keeps profile memory mutations on the runtime-stale path", async () => {
-    const { addMemoryEntryForProfile } =
-      await import("../src/main/services/knowledge-service");
+it("treats profile memory/SOUL writes as session-snapshot config, not runtime-stale mutations", async () => {
+    const {
+      addMemoryEntryForProfile,
+      writeUserProfileForProfile,
+      writeSoulForProfile,
+      resetSoulForProfile,
+    } = await import("../src/main/services/knowledge-service");
     mocks.addMemoryEntry.mockReturnValue({ success: true });
+    mocks.writeUserProfile.mockReturnValue({ success: true });
+    mocks.writeSoul.mockReturnValue(true);
+    mocks.resetSoul.mockReturnValue("default soul");
 
     await expect(addMemoryEntryForProfile("fact", "alpha")).resolves.toEqual({
       success: true,
     });
+    await writeUserProfileForProfile("prefers concise replies", "alpha");
+    await writeSoulForProfile("persona text", "alpha");
+    await resetSoulForProfile("alpha");
 
-    expect(mocks.markRuntimeStale).toHaveBeenCalledWith(
-      "alpha",
-      "Memory changed for profile runtime.",
-    );
+    // Hermes loads memory/USER/SOUL as a session-start snapshot, so these are
+    // next-chat config writes (like toolset toggles), not runtime-stale events.
+    expect(mocks.markRuntimeStale).not.toHaveBeenCalled();
+    expect(mocks.requestSkillRuntimeApply).not.toHaveBeenCalled();
   });
 
   it("runs local skill batches through the service queue and requests runtime apply once", async () => {

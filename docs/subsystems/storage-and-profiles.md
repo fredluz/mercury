@@ -380,7 +380,7 @@ Current behavior:
 - `addMemoryEntry(...)` and `updateMemoryEntry(...)` trim entry content and reject writes that would exceed the memory limit.
 - `removeMemoryEntry(index)` removes an entry by parsed index.
 - `writeUserProfile(content)` rejects content over the user limit.
-- `src/main/services/knowledge-service.ts` routes memory reads/writes through SSH helpers when connection mode is SSH and otherwise through local files. Successful memory entry and user profile writes call `markRuntimeStale(profile, "... changed for profile runtime.")` because the running agent may have cached this profile context.
+- `src/main/services/knowledge-service.ts` routes memory reads/writes through SSH helpers when connection mode is SSH and otherwise through local files. Successful memory entry and user profile writes do **not** mark the runtime stale. Hermes loads memory/`USER.md` as a session-start system-prompt snapshot (built once per session and restored from `state.db` for continued sessions to preserve prefix caching), so a running runtime cannot pick up these edits mid-session and a gateway restart does not refresh a continued session either — only a new chat rereads them. Like toolset toggles, these are treated as next-chat config writes: the profile files are persisted and new chats use them, without blocking chat or cron via a stale runtime.
 
 SSH memory behavior in `src/main/ssh/memory-soul.ts` mirrors delimiter and character limits, but returns `lastModified: null` for remote memory/user files.
 
@@ -397,7 +397,7 @@ Current behavior:
 - `readSoul(profile)` returns an empty string if the file is missing or unreadable.
 - `writeSoul(content, profile)` writes the file with `safeWriteFile(...)` and returns success/failure.
 - `resetSoul(profile)` writes and returns the built-in `DEFAULT_SOUL` text.
-- `src/main/services/knowledge-service.ts` routes SOUL reads/writes through SSH helpers when connection mode is SSH and otherwise through local files. Successful SOUL writes and resets mark the profile runtime stale.
+- `src/main/services/knowledge-service.ts` routes SOUL reads/writes through SSH helpers when connection mode is SSH and otherwise through local files. Successful SOUL writes and resets do **not** mark the profile runtime stale: SOUL is part of the session-start system-prompt snapshot (same continuation/prefix-cache semantics as memory), so edits take effect in new chats rather than the current session, and are treated as next-chat config writes.
 
 SSH soul behavior in `src/main/ssh/memory-soul.ts` uses remote `~/.hermes/SOUL.md` or profile `SOUL.md` and the same default soul text.
 
