@@ -95,6 +95,7 @@ export default {
   bulkActionSucceeded: "已更新 {{count}} 个技能。",
   detailUnavailableForBundled: "安装此技能后可查看本地详情。",
   uncategorized: "未分类",
+  otherSkills: "其他技能",
   loadingDetails: "正在加载技能详情...",
   loadingMetadata: "正在加载元数据...",
   loadingAgents: "正在加载代理...",

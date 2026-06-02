@@ -726,6 +726,15 @@
   padding: 2px 8px;
 }
 
+.skills-category-description {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
 .skills-category-actions {
   display: flex;
   align-items: center;

@@ -403,6 +403,41 @@ export function agentPackMemberDescription(member: AgentPackMember): string {
 
 const PACKS_BY_ID = new Map(AGENT_PACK_CATALOG.map((pack) => [pack.id, pack]));
 
+/**
+ * Index from a normalized `category/directoryName` key to the packs that contain
+ * that skill, in catalog order. A skill can belong to more than one pack (e.g.
+ * `comfyui`, `p5js`), so values are arrays. Built once from the static catalog.
+ */
+const PACKS_BY_SKILL_KEY = (() => {
+  const map = new Map<string, AgentPackDefinition[]>();
+  for (const pack of AGENT_PACK_CATALOG) {
+    for (const member of pack.members) {
+      if (member.kind !== "skill") continue;
+      const key = `${member.category}/${member.directoryName}`.toLowerCase();
+      const packs = map.get(key) ?? [];
+      if (!packs.includes(pack)) packs.push(pack);
+      map.set(key, packs);
+    }
+  }
+  return map;
+})();
+
+/**
+ * Return the packs (in catalog order) whose skill members include the given
+ * installed/bundled skill, matched on `category/directoryName` (falling back to
+ * `name` when no directory is available). Returns an empty array for skills that
+ * belong to no pack — e.g. currently-unassigned Hermes skills or user imports.
+ */
+export function agentPacksForSkill(skill: {
+  category?: string;
+  directoryName?: string;
+  name?: string;
+}): AgentPackDefinition[] {
+  const directory = skill.directoryName || skill.name || "";
+  const key = `${skill.category ?? ""}/${directory}`.toLowerCase();
+  return PACKS_BY_SKILL_KEY.get(key) ?? [];
+}
+
 export function listAgentPackSummaries(): AgentPackSummary[] {
   return AGENT_PACK_CATALOG.map((pack) => ({
     id: pack.id,

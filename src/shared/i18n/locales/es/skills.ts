@@ -98,6 +98,7 @@ export default {
   bulkActionSucceeded: "Se actualizaron {{count}} habilidades.",
   detailUnavailableForBundled: "Instala esta habilidad para ver sus detalles locales.",
   uncategorized: "Sin categoría",
+  otherSkills: "Otras habilidades",
   loadingDetails: "Cargando detalles de la habilidad...",
   loadingMetadata: "Cargando metadatos...",
   loadingAgents: "Cargando Agentes...",

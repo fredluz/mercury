@@ -110,6 +110,7 @@ export default {
   bulkActionSucceeded: "Updated {{count}} skills.",
   detailUnavailableForBundled: "Install this skill to view its local details.",
   uncategorized: "Uncategorized",
+  otherSkills: "Other skills",
   loadingDetails: "Loading skill details...",
   loadingMetadata: "Loading metadata...",
   loadingAgents: "Loading Agents...",

@@ -33,39 +33,42 @@ vi.mock("../../components/useI18n", () => {
   return { useI18n: () => ({ t }) };
 });
 
+// Fixtures use real catalog skills so the screen groups them under packs:
+// `arxiv`/`blogwatcher` (research category) belong to the Research pack, and
+// `github-auth` (github category) belongs to the Coding pack.
 const installed = [
   {
-    name: "ts-pro",
-    category: "typescript",
-    description: "TypeScript helper",
-    path: "/skills/typescript/ts-pro",
-    directoryName: "ts-pro",
+    name: "arxiv",
+    category: "research",
+    description: "Arxiv research helper",
+    path: "/skills/research/arxiv",
+    directoryName: "arxiv",
   },
   {
-    name: "electron-pro",
-    category: "electron",
-    description: "Electron helper",
-    path: "/skills/electron/electron-pro",
-    directoryName: "electron-pro",
+    name: "github-auth",
+    category: "github",
+    description: "GitHub auth helper",
+    path: "/skills/github/github-auth",
+    directoryName: "github-auth",
   },
 ];
 
 const bundled = [
   {
-    name: "ts-pro",
-    category: "typescript",
-    description: "TypeScript helper",
+    name: "arxiv",
+    category: "research",
+    description: "Arxiv research helper",
     source: "bundled",
     installed: false,
-    directoryName: "ts-pro",
+    directoryName: "arxiv",
   },
   {
-    name: "ts-test",
-    category: "typescript",
-    description: "TypeScript test helper",
+    name: "blogwatcher",
+    category: "research",
+    description: "Blog watcher helper",
     source: "bundled",
     installed: false,
-    directoryName: "ts-test",
+    directoryName: "blogwatcher",
   },
 ];
 
@@ -99,7 +102,7 @@ function sourceCandidate(overrides: Partial<SkillSourceCandidate> = {}): SkillSo
 function installHermesApiMock(): void {
   const installedByProfile: Record<string, typeof installed> = {
     default: [...installed],
-    research: [installed[0]],
+    scout: [installed[0]],
   };
 
   (window as unknown as { hermesAPI: Partial<Window["hermesAPI"]> }).hermesAPI = {
@@ -108,9 +111,9 @@ function installHermesApiMock(): void {
       return installedByProfile[key] ?? installedByProfile.default;
     }),
     listBundledSkills: vi.fn().mockResolvedValue(bundled),
-    getSkillContent: vi.fn().mockResolvedValue("# ts-pro\n\nSkill body."),
+    getSkillContent: vi.fn().mockResolvedValue("# arxiv\n\nSkill body."),
     getSkillMetadata: vi.fn().mockResolvedValue({
-      path: "/skills/typescript/ts-pro",
+      path: "/skills/research/arxiv",
       metadataAvailable: true,
       scripts: [{ name: "check.py", relativePath: "scripts/check.py", kind: "file" }],
       references: [{ name: "guide.md", relativePath: "references/guide.md", kind: "file" }],
@@ -225,8 +228,8 @@ function installHermesApiMock(): void {
         gatewayRunning: false,
       },
       {
-        name: "research",
-        path: "/profiles/research",
+        name: "scout",
+        path: "/profiles/scout",
         isDefault: false,
         isActive: false,
         model: "gpt",
@@ -264,25 +267,25 @@ describe("Skills redesign", () => {
     vi.clearAllMocks();
   });
 
-  it("groups installed skills by category and collapses sections", async () => {
+  it("groups installed skills by pack and collapses sections", async () => {
     render(<Skills profile="default" />);
 
-    await screen.findByText("typescript");
-    expect(screen.getByText("electron-pro")).toBeInTheDocument();
-    expect(screen.getByText("ts-pro")).toBeInTheDocument();
+    await screen.findByText("Research");
+    expect(screen.getByText("github-auth")).toBeInTheDocument();
+    expect(screen.getByText("arxiv")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("typescript").closest("button")!);
+    fireEvent.click(screen.getByText("Research").closest("button")!);
 
-    expect(screen.queryByText("ts-pro")).not.toBeInTheDocument();
-    expect(screen.getByText("electron-pro")).toBeInTheDocument();
+    expect(screen.queryByText("arxiv")).not.toBeInTheDocument();
+    expect(screen.getByText("github-auth")).toBeInTheDocument();
   });
 
   it("stages bulk enables and saves one flat batch", async () => {
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
     fireEvent.click(screen.getByRole("button", { name: /skills.browseTab/i }));
-    const section = categorySection("typescript");
+    const section = categorySection("Research");
     const listCallsBeforeAction = vi.mocked(window.hermesAPI.listInstalledSkills).mock.calls.length;
     fireEvent.click(within(section).getByRole("button", { name: "skills.enableAll" }));
 
@@ -294,7 +297,7 @@ describe("Skills redesign", () => {
 
     await waitFor(() =>
       expect(window.hermesAPI.mutateSkills).toHaveBeenCalledWith(
-        [{ action: "install", name: "ts-test", category: "typescript", directoryName: "ts-test" }],
+        [{ action: "install", name: "blogwatcher", category: "research", directoryName: "blogwatcher" }],
         "default",
       ),
     );
@@ -304,9 +307,9 @@ describe("Skills redesign", () => {
 
   it("stages bulk disables and saves one flat batch within a category", async () => {
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
-    const section = categorySection("typescript");
+    const section = categorySection("Research");
     fireEvent.click(within(section).getByRole("button", { name: "skills.disableAll" }));
 
     expect(window.hermesAPI.mutateSkills).not.toHaveBeenCalled();
@@ -319,10 +322,10 @@ describe("Skills redesign", () => {
         [
           {
             action: "uninstall",
-            name: "ts-pro",
-            category: "typescript",
-            directoryName: "ts-pro",
-            path: "/skills/typescript/ts-pro",
+            name: "arxiv",
+            category: "research",
+            directoryName: "arxiv",
+            path: "/skills/research/arxiv",
           },
         ],
         "default",
@@ -333,25 +336,25 @@ describe("Skills redesign", () => {
 
   it("stages individual enable and disable actions until Save", async () => {
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
     fireEvent.click(screen.getByRole("button", { name: /skills.browseTab/i }));
-    const browseSection = categorySection("typescript");
-    const tsTestRow = within(browseSection).getByText("ts-test").closest(".skills-row");
-    if (!tsTestRow) throw new Error("Missing ts-test row");
+    const browseSection = categorySection("Research");
+    const tsTestRow = within(browseSection).getByText("blogwatcher").closest(".skills-row");
+    if (!tsTestRow) throw new Error("Missing blogwatcher row");
     fireEvent.click(within(tsTestRow as HTMLElement).getByRole("button", { name: "skills.enable" }));
 
     expect(window.hermesAPI.mutateSkills).not.toHaveBeenCalled();
     await savePendingChanges();
     await waitFor(() =>
       expect(window.hermesAPI.mutateSkills).toHaveBeenCalledWith(
-        [{ action: "install", name: "ts-test", category: "typescript", directoryName: "ts-test" }],
+        [{ action: "install", name: "blogwatcher", category: "research", directoryName: "blogwatcher" }],
         "default",
       ),
     );
 
     fireEvent.click(screen.getByRole("button", { name: /skills.installedTab/i }));
-    const installedSection = categorySection("electron");
+    const installedSection = categorySection("Coding");
     fireEvent.click(within(installedSection).getByRole("button", { name: "skills.disable" }));
     expect(window.hermesAPI.mutateSkills).toHaveBeenCalledTimes(1);
 
@@ -361,10 +364,10 @@ describe("Skills redesign", () => {
         [
           {
             action: "uninstall",
-            name: "electron-pro",
-            category: "electron",
-            directoryName: "electron-pro",
-            path: "/skills/electron/electron-pro",
+            name: "github-auth",
+            category: "github",
+            directoryName: "github-auth",
+            path: "/skills/github/github-auth",
           },
         ],
         "default",
@@ -374,12 +377,12 @@ describe("Skills redesign", () => {
 
   it("discard clears pending changes without mutating", async () => {
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
     fireEvent.click(screen.getByRole("button", { name: /skills.browseTab/i }));
-    const section = categorySection("typescript");
-    const tsTestRow = within(section).getByText("ts-test").closest(".skills-row");
-    if (!tsTestRow) throw new Error("Missing ts-test row");
+    const section = categorySection("Research");
+    const tsTestRow = within(section).getByText("blogwatcher").closest(".skills-row");
+    if (!tsTestRow) throw new Error("Missing blogwatcher row");
     fireEvent.click(within(tsTestRow as HTMLElement).getByRole("button", { name: "skills.enable" }));
 
     expect(await screen.findByText("Pending skill changes")).toBeInTheDocument();
@@ -405,17 +408,17 @@ describe("Skills redesign", () => {
         {
           success: true,
           action: "install",
-          target: { action: "install", name: "ts-pro", category: "typescript", directoryName: "ts-pro" },
-          name: "ts-pro",
-          category: "typescript",
+          target: { action: "install", name: "arxiv", category: "research", directoryName: "arxiv" },
+          name: "arxiv",
+          category: "research",
           changed: true,
         },
         {
           success: false,
           action: "install",
-          target: { action: "install", name: "ts-test", category: "typescript", directoryName: "ts-test" },
-          name: "ts-test",
-          category: "typescript",
+          target: { action: "install", name: "blogwatcher", category: "research", directoryName: "blogwatcher" },
+          name: "blogwatcher",
+          category: "research",
           code: "timeout",
           error: "Timed out while installing",
         },
@@ -425,14 +428,14 @@ describe("Skills redesign", () => {
     render(<Skills profile="default" />);
 
     fireEvent.click(await screen.findByRole("button", { name: /skills.browseTab/i }));
-    const section = categorySection("typescript");
+    const section = categorySection("Research");
     fireEvent.click(within(section).getByRole("button", { name: "skills.enableAll" }));
     expect(await screen.findByText("2 to enable · 0 to disable")).toBeInTheDocument();
 
     await savePendingChanges();
 
     expect(await screen.findByText("Saved 1 skill changes.")).toBeInTheDocument();
-    expect(await screen.findByText(/ts-test \(typescript\/ts-test\): Timed out while installing/)).toBeInTheDocument();
+    expect(await screen.findByText(/blogwatcher \(research\/blogwatcher\): Timed out while installing/)).toBeInTheDocument();
     expect(screen.getByText("1 to enable · 0 to disable")).toBeInTheDocument();
   });
 
@@ -440,12 +443,12 @@ describe("Skills redesign", () => {
     vi.mocked(window.hermesAPI.mutateSkills).mockRejectedValueOnce(new Error("IPC unavailable"));
 
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
     fireEvent.click(screen.getByRole("button", { name: /skills.browseTab/i }));
-    const section = categorySection("typescript");
-    const tsTestRow = within(section).getByText("ts-test").closest(".skills-row");
-    if (!tsTestRow) throw new Error("Missing ts-test row");
+    const section = categorySection("Research");
+    const tsTestRow = within(section).getByText("blogwatcher").closest(".skills-row");
+    if (!tsTestRow) throw new Error("Missing blogwatcher row");
     fireEvent.click(within(tsTestRow as HTMLElement).getByRole("button", { name: "skills.enable" }));
 
     expect(window.hermesAPI.mutateSkills).not.toHaveBeenCalled();
@@ -476,9 +479,9 @@ describe("Skills redesign", () => {
     vi.mocked(window.hermesAPI.listBundledSkills).mockResolvedValue([]);
 
     render(<Skills profile="default" />);
-    await screen.findByText("tools");
+    await screen.findByText("skills.otherSkills");
 
-    const section = categorySection("tools");
+    const section = categorySection("skills.otherSkills");
     const rows = within(section).getAllByText("shared-name").map((node) => node.closest(".skills-row"));
     const secondRow = rows[1];
     if (!secondRow) throw new Error("Missing duplicate skill row");
@@ -505,29 +508,29 @@ describe("Skills redesign", () => {
 
   it("opens installed skill details with metadata and Agents using it", async () => {
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
-    const section = categorySection("typescript");
+    const section = categorySection("Research");
     fireEvent.click(within(section).getByRole("button", { name: "skills.details" }));
 
     expect(await screen.findByText("Skill body.")).toBeInTheDocument();
     expect(screen.getByText("scripts/check.py")).toBeInTheDocument();
     expect(screen.getByText("references/guide.md")).toBeInTheDocument();
     expect(screen.getByText("default")).toBeInTheDocument();
-    expect(screen.getByText("research")).toBeInTheDocument();
+    expect(screen.getByText("scout")).toBeInTheDocument();
     expect(window.hermesAPI.listProfiles).toHaveBeenCalled();
-    expect(window.hermesAPI.getSkillMetadata).toHaveBeenCalledWith("/skills/typescript/ts-pro");
+    expect(window.hermesAPI.getSkillMetadata).toHaveBeenCalledWith("/skills/research/arxiv");
   });
 
   it("restores the skill list scroll position after returning from details", async () => {
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
     const container = document.querySelector(".skills-container") as HTMLDivElement | null;
     if (!container) throw new Error("Missing skills scroll container");
     container.scrollTop = 420;
 
-    const section = categorySection("typescript");
+    const section = categorySection("Research");
     fireEvent.click(within(section).getByRole("button", { name: "skills.details" }));
     expect(await screen.findByText("Skill body.")).toBeInTheDocument();
 
@@ -540,9 +543,9 @@ describe("Skills redesign", () => {
 
   it("detail disable stages pending uninstall and closes details", async () => {
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
-    const section = categorySection("typescript");
+    const section = categorySection("Research");
     fireEvent.click(within(section).getByRole("button", { name: "skills.details" }));
     expect(await screen.findByText("Skill body.")).toBeInTheDocument();
 
@@ -555,12 +558,12 @@ describe("Skills redesign", () => {
 
   it("undo removes a pending row change without mutating", async () => {
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
     fireEvent.click(screen.getByRole("button", { name: /skills.browseTab/i }));
-    const section = categorySection("typescript");
-    const tsTestRow = within(section).getByText("ts-test").closest(".skills-row");
-    if (!tsTestRow) throw new Error("Missing ts-test row");
+    const section = categorySection("Research");
+    const tsTestRow = within(section).getByText("blogwatcher").closest(".skills-row");
+    if (!tsTestRow) throw new Error("Missing blogwatcher row");
     fireEvent.click(within(tsTestRow as HTMLElement).getByRole("button", { name: "skills.enable" }));
 
     expect(await screen.findByText("Pending skill changes")).toBeInTheDocument();
@@ -572,23 +575,23 @@ describe("Skills redesign", () => {
 
   it("refresh rebases pending changes already satisfied by installed truth", async () => {
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
     fireEvent.click(screen.getByRole("button", { name: /skills.browseTab/i }));
-    const section = categorySection("typescript");
-    const tsTestRow = within(section).getByText("ts-test").closest(".skills-row");
-    if (!tsTestRow) throw new Error("Missing ts-test row");
+    const section = categorySection("Research");
+    const tsTestRow = within(section).getByText("blogwatcher").closest(".skills-row");
+    if (!tsTestRow) throw new Error("Missing blogwatcher row");
     fireEvent.click(within(tsTestRow as HTMLElement).getByRole("button", { name: "skills.enable" }));
     expect(await screen.findByText("Pending skill changes")).toBeInTheDocument();
 
     vi.mocked(window.hermesAPI.listInstalledSkills).mockResolvedValue([
       ...installed,
       {
-        name: "ts-test",
-        category: "typescript",
+        name: "blogwatcher",
+        category: "research",
         description: "TypeScript test helper",
-        path: "/skills/typescript/ts-test",
-        directoryName: "ts-test",
+        path: "/skills/research/blogwatcher",
+        directoryName: "blogwatcher",
       },
     ]);
     fireEvent.click(screen.getByRole("button", { name: /skills.refresh/i }));
@@ -606,9 +609,9 @@ describe("Skills redesign", () => {
         {
           success: false,
           action: "install",
-          target: { action: "install", name: "ts-test", category: "typescript", directoryName: "ts-test" },
-          name: "ts-test",
-          category: "typescript",
+          target: { action: "install", name: "blogwatcher", category: "research", directoryName: "blogwatcher" },
+          name: "blogwatcher",
+          category: "research",
           code: "timeout",
           error: "Timed out while installing",
         },
@@ -616,12 +619,12 @@ describe("Skills redesign", () => {
     });
 
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
     fireEvent.click(screen.getByRole("button", { name: /skills.browseTab/i }));
-    const section = categorySection("typescript");
-    const tsTestRow = within(section).getByText("ts-test").closest(".skills-row");
-    if (!tsTestRow) throw new Error("Missing ts-test row");
+    const section = categorySection("Research");
+    const tsTestRow = within(section).getByText("blogwatcher").closest(".skills-row");
+    if (!tsTestRow) throw new Error("Missing blogwatcher row");
     fireEvent.click(within(tsTestRow as HTMLElement).getByRole("button", { name: "skills.enable" }));
 
     fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
@@ -633,13 +636,13 @@ describe("Skills redesign", () => {
     await waitFor(() => expect(window.hermesAPI.mutateSkills).toHaveBeenCalledTimes(1));
     expect(window.hermesAPI.importSkillMarkdown).not.toHaveBeenCalled();
     expect(await screen.findByText(/Save pending skill changes before importing/)).toBeInTheDocument();
-    expect(await screen.findByText(/ts-test \(typescript\/ts-test\): Timed out while installing/)).toBeInTheDocument();
+    expect(await screen.findByText(/blogwatcher \(research\/blogwatcher\): Timed out while installing/)).toBeInTheDocument();
     expect(screen.getByText("1 to enable · 0 to disable")).toBeInTheDocument();
   });
 
   it("keeps manual Markdown import working", async () => {
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
     fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
     fireEvent.change(screen.getByPlaceholderText("skills.importMarkdownPlaceholder"), {
@@ -657,12 +660,12 @@ describe("Skills redesign", () => {
 
   it("saves pending changes before submitting Markdown import", async () => {
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
     fireEvent.click(screen.getByRole("button", { name: /skills.browseTab/i }));
-    const section = categorySection("typescript");
-    const tsTestRow = within(section).getByText("ts-test").closest(".skills-row");
-    if (!tsTestRow) throw new Error("Missing ts-test row");
+    const section = categorySection("Research");
+    const tsTestRow = within(section).getByText("blogwatcher").closest(".skills-row");
+    if (!tsTestRow) throw new Error("Missing blogwatcher row");
     fireEvent.click(within(tsTestRow as HTMLElement).getByRole("button", { name: "skills.enable" }));
 
     fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
@@ -674,7 +677,7 @@ describe("Skills redesign", () => {
     await waitFor(() => expect(window.hermesAPI.mutateSkills).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(window.hermesAPI.importSkillMarkdown).toHaveBeenCalledTimes(1));
     expect(window.hermesAPI.mutateSkills).toHaveBeenCalledWith(
-      [{ action: "install", name: "ts-test", category: "typescript", directoryName: "ts-test" }],
+      [{ action: "install", name: "blogwatcher", category: "research", directoryName: "blogwatcher" }],
       "default",
     );
   });
@@ -700,7 +703,7 @@ describe("Skills redesign", () => {
     });
 
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
     fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
     fireEvent.click(await screen.findByRole("tab", { name: "skills.githubLinkTab" }));
@@ -732,9 +735,9 @@ describe("Skills redesign", () => {
         {
           success: false,
           action: "install",
-          target: { action: "install", name: "ts-test", category: "typescript", directoryName: "ts-test" },
-          name: "ts-test",
-          category: "typescript",
+          target: { action: "install", name: "blogwatcher", category: "research", directoryName: "blogwatcher" },
+          name: "blogwatcher",
+          category: "research",
           code: "timeout",
           error: "Timed out while installing",
         },
@@ -742,12 +745,12 @@ describe("Skills redesign", () => {
     });
 
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
     fireEvent.click(screen.getByRole("button", { name: /skills.browseTab/i }));
-    const section = categorySection("typescript");
-    const tsTestRow = within(section).getByText("ts-test").closest(".skills-row");
-    if (!tsTestRow) throw new Error("Missing ts-test row");
+    const section = categorySection("Research");
+    const tsTestRow = within(section).getByText("blogwatcher").closest(".skills-row");
+    if (!tsTestRow) throw new Error("Missing blogwatcher row");
     fireEvent.click(within(tsTestRow as HTMLElement).getByRole("button", { name: "skills.enable" }));
 
     fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
@@ -798,7 +801,7 @@ describe("Skills redesign", () => {
     });
 
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
     fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
     fireEvent.click(await screen.findByRole("tab", { name: "skills.githubLinkTab" }));
@@ -850,7 +853,7 @@ describe("Skills redesign", () => {
     });
 
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
     fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
     fireEvent.click(await screen.findByRole("tab", { name: "skills.githubLinkTab" }));
@@ -877,7 +880,7 @@ describe("Skills redesign", () => {
     });
 
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
     fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
     fireEvent.click(await screen.findByRole("tab", { name: "skills.githubLinkTab" }));
@@ -894,7 +897,7 @@ describe("Skills redesign", () => {
     vi.mocked(window.hermesAPI.isRemoteOnlyMode).mockResolvedValueOnce(true);
 
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
 
     fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));
 
@@ -926,7 +929,7 @@ describe("Skills redesign", () => {
     });
 
     render(<Skills profile="default" />);
-    await screen.findByText("typescript");
+    await screen.findByText("Research");
     const listCallsBeforeImport = vi.mocked(window.hermesAPI.listInstalledSkills).mock.calls.length;
 
     fireEvent.click(screen.getByRole("button", { name: /skills.addSkillAction/i }));

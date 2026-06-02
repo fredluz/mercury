@@ -37,6 +37,8 @@ export type SkillListItem =
 
 interface SkillCategorySectionProps {
   category: string;
+  title: string;
+  description?: string;
   skills: SkillListItem[];
   collapsed: boolean;
   enabledCount: number;
@@ -57,6 +59,8 @@ interface SkillCategorySectionProps {
 
 export function SkillCategorySection({
   category,
+  title,
+  description,
   skills,
   collapsed,
   enabledCount,
@@ -91,7 +95,7 @@ export function SkillCategorySection({
             size={16}
             className={collapsed ? "skills-category-chevron collapsed" : "skills-category-chevron"}
           />
-          <span className="skills-category-title">{category || t("skills.uncategorized")}</span>
+          <span className="skills-category-title">{title || t("skills.uncategorized")}</span>
           <span className="skills-category-count">
             {t("skills.categoryEnabledCount", { enabled: enabledCount, total: totalCount })}
           </span>
@@ -124,6 +128,7 @@ export function SkillCategorySection({
           )}
         </div>
       </div>
+      {description && <p className="skills-category-description">{description}</p>}
 
       {!collapsed && (
         <div className="skills-category-body">

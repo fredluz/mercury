@@ -135,7 +135,7 @@ Local, SSH, and pure remote HTTP behavior matches the IPC mode rules below. Manu
 
 ## Renderer UI semantics
 
-The Skills screen groups installed and browse results by `category` into collapsible sections. Each section shows an enabled count, total count, pending count, category-level bulk actions, and row actions.
+The Skills screen groups installed and browse results by **agent pack** into collapsible sections, using the curated catalog in `src/shared/agent-packs.ts`. Each section is a pack: it renders the pack `displayName`, its `description`, an enabled count, total count, pending count, pack-level bulk actions (Enable all / Disable all over that pack's members), and row actions. Membership is derived from installed/bundled skill identity via `agentPacksForSkill(skill)` (matched on `category/directoryName`); a skill that belongs to several packs (e.g. `comfyui`, `p5js`) appears under each. Skills that belong to no pack — currently-unassigned Hermes skills and user imports — collect into a trailing **Other skills** section so nothing is hidden. On the Browse tab the filter pills select a pack (plus Other) instead of a raw category. This is a display/grouping concern only: install/uninstall still operate per-skill through the same pending-draft `mutateSkills` save path, and packs are not persisted as per-profile enabled state here.
 
 The header Add Skill action opens one modal with three source tabs:
 
