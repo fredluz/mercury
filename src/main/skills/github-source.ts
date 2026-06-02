@@ -570,6 +570,7 @@ function buildCandidate(
     commitSha: source.commitSha,
     treeSha: source.treeSha,
     valid,
+    markdown: prepared.success ? prepared.prepared.markdown : markdown,
     ...(error ? { error } : {}),
   };
 }

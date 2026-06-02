@@ -1,5 +1,5 @@
 import { useState, type JSX } from "react";
-import { X } from "../../../assets/icons";
+import { ArrowLeft, ArrowRight, X } from "../../../assets/icons";
 import type { SkillMarkdownImportRequest, SkillSourceCandidate } from "../../../../../shared/skills";
 
 type AddSkillMode = "markdown" | "github" | "command";
@@ -100,6 +100,16 @@ export function SkillModals({ values }: SkillModalsProps): JSX.Element | null {
     sourceCandidates.length === 1
       ? sourceCandidates[0]
       : sourceCandidates.find((candidate) => candidate.candidateId === selectedSourceCandidateId);
+  const selectedIndex = selectedCandidate
+    ? sourceCandidates.findIndex((candidate) => candidate.candidateId === selectedCandidate.candidateId)
+    : -1;
+
+  function stepCandidate(offset: number): void {
+    if (sourceCandidates.length === 0) return;
+    const base = selectedIndex < 0 ? 0 : selectedIndex;
+    const next = (base + offset + sourceCandidates.length) % sourceCandidates.length;
+    handleSourceCandidateSelection(sourceCandidates[next].candidateId);
+  }
   const sourceImportDisabled =
     importing ||
     previewingSource ||
@@ -190,12 +200,21 @@ export function SkillModals({ values }: SkillModalsProps): JSX.Element | null {
                 <span>
                   {importMode === "command" ? t("skills.sourceCommand") : t("skills.sourceUrl")}
                 </span>
-                <textarea
-                  className="skills-import-textarea skills-source-input"
-                  value={importSource}
-                  onChange={(e) => setImportSource(e.target.value)}
-                  placeholder={sourcePlaceholder(importMode, t)}
-                />
+                {importMode === "command" ? (
+                  <textarea
+                    className="skills-import-textarea skills-source-input"
+                    value={importSource}
+                    onChange={(e) => setImportSource(e.target.value)}
+                    placeholder={sourcePlaceholder(importMode, t)}
+                  />
+                ) : (
+                  <input
+                    className="skills-search-input"
+                    value={importSource}
+                    onChange={(e) => setImportSource(e.target.value)}
+                    placeholder={sourcePlaceholder(importMode, t)}
+                  />
+                )}
               </label>
               <div className="skills-preview-row skills-import-field-wide">
                 <button
@@ -204,7 +223,13 @@ export function SkillModals({ values }: SkillModalsProps): JSX.Element | null {
                   onClick={handlePreviewSkillSource}
                   disabled={previewingSource || importing || !importSource.trim()}
                 >
-                  {previewingSource ? t("skills.previewingSource") : t("skills.previewSource")}
+                  {importMode === "command"
+                    ? previewingSource
+                      ? t("skills.previewingSource")
+                      : t("skills.previewSource")
+                    : previewingSource
+                      ? t("skills.gettingSkills")
+                      : t("skills.getSkills")}
                 </button>
                 <span className="skills-validation-text">
                   {sourcePreviewed
@@ -217,40 +242,64 @@ export function SkillModals({ values }: SkillModalsProps): JSX.Element | null {
                               : "",
                           })
                         : t("skills.candidateCount", { count: sourceCandidates.length })
-                    : t("skills.previewSourceHint")}
+                    : importMode === "command"
+                      ? t("skills.previewSourceHint")
+                      : t("skills.getSkillsHint")}
                 </span>
               </div>
-              {sourcePreviewed && sourceCandidates.length > 1 && (
-                <div className="skills-candidate-picker skills-import-field-wide">
-                  <div className="skills-candidate-title">{t("skills.chooseCandidate")}</div>
-                  <div className="skills-candidate-list">
-                    {sourceCandidates.map((candidate) => (
+              {/* Read-only SKILL.md preview for the currently-selected candidate, with
+                  arrows to page through repos that contain multiple skills. */}
+              <div className="skills-import-field skills-import-field-wide">
+                <div className="skills-source-preview-head">
+                  <span>{t("skills.sourceSkillBody")}</span>
+                  {sourcePreviewed && sourceCandidates.length > 0 && (
+                    <div className="skills-source-preview-nav">
                       <button
-                        className={`skills-candidate-item ${selectedSourceCandidateId === candidate.candidateId ? "selected" : ""}`}
+                        className="btn-ghost"
                         type="button"
-                        key={candidate.candidateId}
-                        onClick={() => handleSourceCandidateSelection(candidate.candidateId)}
-                        disabled={!candidate.valid}
+                        aria-label={t("skills.sourceCandidatePrev")}
+                        onClick={() => stepCandidate(-1)}
+                        disabled={sourceCandidates.length <= 1}
                       >
-                        <span className="skills-candidate-main">
-                          <span className="skills-candidate-name">
-                            {candidate.category}/{candidate.directoryName || candidate.name}
-                          </span>
-                          <span className="skills-candidate-path">{candidate.skillPath}</span>
-                        </span>
-                        <span className="skills-candidate-description">
-                          {candidate.error || candidate.description || t("skills.noCandidateDescription")}
-                        </span>
+                        <ArrowLeft size={16} />
                       </button>
-                    ))}
+                      <span className="skills-source-preview-position">
+                        {t("skills.sourceCandidatePosition", {
+                          position: selectedIndex < 0 ? 1 : selectedIndex + 1,
+                          total: sourceCandidates.length,
+                        })}
+                      </span>
+                      <button
+                        className="btn-ghost"
+                        type="button"
+                        aria-label={t("skills.sourceCandidateNext")}
+                        onClick={() => stepCandidate(1)}
+                        disabled={sourceCandidates.length <= 1}
+                      >
+                        <ArrowRight size={16} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {selectedCandidate && (
+                  <div className="skills-source-preview-meta">
+                    {selectedCandidate.category}/{selectedCandidate.directoryName || selectedCandidate.name}
+                    {" · "}
+                    {selectedCandidate.skillPath}
                   </div>
-                </div>
-              )}
-              {sourcePreviewed && sourceCandidates.length > 1 && !selectedSourceCandidateId && (
-                <div className="skills-validation-text skills-import-field-wide">
-                  {t("skills.candidateRequired")}
-                </div>
-              )}
+                )}
+                <textarea
+                  className="skills-import-textarea skills-source-body"
+                  readOnly
+                  value={
+                    selectedCandidate?.markdown ||
+                    (selectedCandidate
+                      ? t("skills.sourceSkillBodyUnavailable")
+                      : t("skills.sourceSkillBodyEmpty"))
+                  }
+                  placeholder={t("skills.sourceSkillBodyEmpty")}
+                />
+              </div>
             </>
           ) : (
             <label className="skills-import-field skills-import-field-wide">

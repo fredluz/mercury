@@ -685,11 +685,19 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
     setSourcePreviewed(false);
   }
 
+  // Fills the editable Name/Category/Description fields from a previewed source
+  // candidate so the user can review them before importing.
+  function applyCandidateMetadata(candidate: SkillSourceCandidate): void {
+    setImportName(candidate.name || "");
+    setImportCategory(candidate.category || "custom");
+    setImportDescription(candidate.description || "");
+  }
+
   function handleSourceCandidateSelection(candidateId: string): void {
     setSelectedSourceCandidateId(candidateId);
     const candidate = sourceCandidates.find((item) => item.candidateId === candidateId);
     if (candidate) {
-      setImportCategory(candidate.category || "custom");
+      applyCandidateMetadata(candidate);
     }
   }
 
@@ -715,10 +723,12 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
 
       setSourceCandidates(result.candidates);
       setSourcePreviewed(true);
-      if (result.candidates.length === 1) {
-        const [candidate] = result.candidates;
-        setSelectedSourceCandidateId(candidate.candidateId);
-        setImportCategory(candidate.category || "custom");
+      // Default to the first candidate so the read-only SKILL.md preview and the
+      // editable metadata fields populate immediately; arrows page through the rest.
+      const [firstCandidate] = result.candidates;
+      if (firstCandidate) {
+        setSelectedSourceCandidateId(firstCandidate.candidateId);
+        applyCandidateMetadata(firstCandidate);
       }
     } catch (err) {
       setImportError(errorMessage(err, t("skills.sourcePreviewFailed")));

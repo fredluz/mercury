@@ -402,6 +402,56 @@
   line-height: 1.4;
 }
 
+.skills-source-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.skills-source-preview-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.skills-source-preview-position {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.skills-source-preview-meta {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.skills-source-body {
+  min-height: 240px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  cursor: default;
+  resize: vertical;
+}
+
+.skills-source-body:focus {
+  outline: none;
+}
+
+.skills-category-back {
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 2px 0;
+}
+
 .skills-candidate-picker {
   display: flex;
   flex-direction: column;

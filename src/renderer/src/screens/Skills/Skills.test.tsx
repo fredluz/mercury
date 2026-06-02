@@ -707,7 +707,7 @@ describe("Skills redesign", () => {
     fireEvent.change(screen.getByPlaceholderText("skills.sourceUrlPlaceholder"), {
       target: { value: "https://github.com/owner/repo" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "skills.previewSource" }));
+    fireEvent.click(screen.getByRole("button", { name: "skills.getSkills" }));
 
     await waitFor(() => expect(window.hermesAPI.previewSkillSource).toHaveBeenCalledWith({ source: "https://github.com/owner/repo" }));
     fireEvent.click(screen.getByRole("button", { name: "skills.import" }));
@@ -755,7 +755,7 @@ describe("Skills redesign", () => {
     fireEvent.change(screen.getByPlaceholderText("skills.sourceUrlPlaceholder"), {
       target: { value: "owner/repo" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "skills.previewSource" }));
+    fireEvent.click(screen.getByRole("button", { name: "skills.getSkills" }));
     await waitFor(() => expect(window.hermesAPI.previewSkillSource).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole("button", { name: "skills.import" }));
@@ -805,11 +805,13 @@ describe("Skills redesign", () => {
     fireEvent.change(screen.getByPlaceholderText("skills.sourceUrlPlaceholder"), {
       target: { value: "owner/repo" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "skills.previewSource" }));
+    fireEvent.click(screen.getByRole("button", { name: "skills.getSkills" }));
 
-    expect(await screen.findByText("skills/pdf/SKILL.md")).toBeInTheDocument();
-    expect(screen.getByText("skills/lint/SKILL.md")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Lint helper").closest("button")!);
+    // First candidate auto-selected; its SKILL.md path shows in the preview header.
+    expect(await screen.findByText(/skills\/pdf\/SKILL\.md/)).toBeInTheDocument();
+    // Page to the second candidate with the next arrow.
+    fireEvent.click(screen.getByRole("button", { name: "skills.sourceCandidateNext" }));
+    expect(await screen.findByText(/skills\/lint\/SKILL\.md/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "skills.import" }));
 
     await waitFor(() => expect(window.hermesAPI.importSkillSource).toHaveBeenCalledTimes(1));
@@ -823,7 +825,7 @@ describe("Skills redesign", () => {
     );
   });
 
-  it("disables source import until a candidate is selected when preview returns multiple candidates", async () => {
+  it("auto-selects the first candidate so source import is enabled after preview", async () => {
     vi.mocked(window.hermesAPI.previewSkillSource).mockResolvedValueOnce({
       success: true,
       source: {
@@ -855,10 +857,10 @@ describe("Skills redesign", () => {
     fireEvent.change(screen.getByPlaceholderText("skills.sourceUrlPlaceholder"), {
       target: { value: "owner/repo" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "skills.previewSource" }));
+    fireEvent.click(screen.getByRole("button", { name: "skills.getSkills" }));
 
-    await screen.findByText("skills/pdf/SKILL.md");
-    expect(screen.getByRole("button", { name: "skills.import" })).toBeDisabled();
+    await screen.findByText(/skills\/pdf\/SKILL\.md/);
+    expect(screen.getByRole("button", { name: "skills.import" })).not.toBeDisabled();
   });
 
   it("shows the error for a single invalid source candidate", async () => {
@@ -882,7 +884,7 @@ describe("Skills redesign", () => {
     fireEvent.change(screen.getByPlaceholderText("skills.sourceUrlPlaceholder"), {
       target: { value: "owner/repo" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "skills.previewSource" }));
+    fireEvent.click(screen.getByRole("button", { name: "skills.getSkills" }));
 
     expect(await screen.findByText("Invalid SKILL.md frontmatter")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "skills.import" })).toBeDisabled();
@@ -932,7 +934,7 @@ describe("Skills redesign", () => {
     fireEvent.change(screen.getByPlaceholderText("skills.sourceUrlPlaceholder"), {
       target: { value: "owner/repo" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "skills.previewSource" }));
+    fireEvent.click(screen.getByRole("button", { name: "skills.getSkills" }));
     await waitFor(() => expect(window.hermesAPI.previewSkillSource).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("button", { name: "skills.import" }));
 

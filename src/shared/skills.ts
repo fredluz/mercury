@@ -118,6 +118,12 @@ export type SkillSourceCandidate = {
   treeSha?: string;
   valid: boolean;
   error?: string;
+  /**
+   * The SKILL.md body for this candidate, captured at preview time so the UI can
+   * show a read-only preview before importing. Populated for GitHub sources;
+   * may be absent for post-import / directory-derived candidates.
+   */
+  markdown?: string;
 };
 
 export type SkillSourcePreviewRequest = {
