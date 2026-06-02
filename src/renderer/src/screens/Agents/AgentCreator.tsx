@@ -34,6 +34,14 @@ function createWelcomeMessage(
   };
 }
 
+function createSeedSkillAutoPrompt(): string {
+  return [
+    "A seed skill is now attached to this agent draft and is available in the Seed skill briefing.",
+    "Automatically analyze the attached skill now: acknowledge that you can see it, explain what kind of agent best suits it, and fill missing/default displayName, description, and persona fields while preserving deliberate existing choices unless Fred asks to replace them.",
+    "Use the <draft-mutation> delta contract for displayName, description, and persona. Do not emit seedSkill.",
+  ].join("\n");
+}
+
 interface AgentCreatorProps {
   draft: AgentCreationDraft;
   notifications: AgentDraftChangeEvent[];
@@ -61,16 +69,25 @@ export function AgentCreator({
 }: AgentCreatorProps): React.JSX.Element {
   const { t } = useI18n();
   const draftIdRef = useRef(draft.id);
+  const autoAnalyzedSeedFingerprintsRef = useRef<Set<string>>(
+    new Set(draft.seedSkill?.fingerprint ? [draft.seedSkill.fingerprint] : []),
+  );
   const [messages, setMessages] = useState<ChatMessage[]>(() => [
     createWelcomeMessage(draft.displayName, t),
   ]);
   const [creatorSessionId, setCreatorSessionId] = useState<string | null>(null);
   const [conversationVersion, setConversationVersion] = useState(0);
   const [seedModalOpen, setSeedModalOpen] = useState(false);
+  const [attachedSeedForAutoAnalysis, setAttachedSeedForAutoAnalysis] =
+    useState<AgentSeedSkill | null>(null);
 
   useEffect(() => {
     if (draftIdRef.current === draft.id) return;
     draftIdRef.current = draft.id;
+    autoAnalyzedSeedFingerprintsRef.current = new Set(
+      draft.seedSkill?.fingerprint ? [draft.seedSkill.fingerprint] : [],
+    );
+    setAttachedSeedForAutoAnalysis(null);
     setCreatorSessionId(null);
     setMessages([createWelcomeMessage(draft.displayName, t)]);
     setConversationVersion((value) => value + 1);
@@ -109,8 +126,36 @@ export function AgentCreator({
     setSeedModalOpen(true);
   }
 
+  const seedForAutoAnalysis = seed ?? attachedSeedForAutoAnalysis;
+
+  useEffect(() => {
+    if (!seedForAutoAnalysis || chat.isLoading) return;
+    const { fingerprint } = seedForAutoAnalysis;
+    if (autoAnalyzedSeedFingerprintsRef.current.has(fingerprint)) return;
+    autoAnalyzedSeedFingerprintsRef.current.add(fingerprint);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `agent-creator-seed-auto-${Date.now()}`,
+        role: "user",
+        content: t("agents.seedAutoAnalyzing"),
+      },
+    ]);
+    void chat.handleSend(createSeedSkillAutoPrompt());
+  }, [chat, seedForAutoAnalysis, t]);
+
+  async function attachSeedSkill(
+    seedRequest: AgentSeedSkillPrepareRequest,
+  ): Promise<AttachAgentSeedSkillResult> {
+    const result = await onAttachSeedSkill(seedRequest);
+    if (result.success)
+      setAttachedSeedForAutoAnalysis(result.draft.seedSkill ?? null);
+    return result;
+  }
+
   async function clearSeedSkill(): Promise<void> {
     if (affordanceDisabled) return;
+    setAttachedSeedForAutoAnalysis(null);
     await onAttachSeedSkill(null);
   }
 
@@ -185,17 +230,25 @@ export function AgentCreator({
             ref={chat.messagesContainerRef}
           >
             {chat.visibleMessages.map((message) => {
-              const bubbleRole =
-                message.role === "agent" ? "assistant" : "user";
+              const isSystemNote = message.id.startsWith(
+                "agent-creator-seed-auto-",
+              );
+              const bubbleRole = isSystemNote
+                ? "system"
+                : message.role === "agent"
+                  ? "assistant"
+                  : "user";
               return (
                 <div
                   key={message.id}
                   className={`agents-creator-message agents-creator-message-${bubbleRole}`}
                 >
                   <span className="agents-creator-message-role">
-                    {message.role === "agent"
-                      ? "Mercury"
-                      : t("agents.creatorYou")}
+                    {isSystemNote
+                      ? t("agents.creatorSystem")
+                      : message.role === "agent"
+                        ? "Mercury"
+                        : t("agents.creatorYou")}
                   </span>
                   <p>{message.content}</p>
                 </div>
@@ -260,7 +313,7 @@ export function AgentCreator({
       {seedModalOpen ? (
         <AgentSeedSkillModal
           remoteOnly={remoteOnly}
-          onAttach={onAttachSeedSkill}
+          onAttach={attachSeedSkill}
           onClose={() => setSeedModalOpen(false)}
         />
       ) : null}

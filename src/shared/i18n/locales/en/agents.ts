@@ -61,6 +61,7 @@ export default {
   creatorWelcome:
     "Tell me what {{name}} should do. I’ll update the draft as we decide the name, model, persona, packs, tools, and docs.",
   creatorYou: "You",
+  creatorSystem: "System",
   creatorInputPlaceholder: "Describe the agent you want Mercury to create...",
   creatorSendFailed: "Could not send that message to Mercury.",
   creatorNotifications: "Draft changes",
@@ -140,6 +141,7 @@ export default {
   reviewNoPacks: "No packs selected",
   seedCreateFromSkill: "Create from skill",
   seedHeaderHint: "Anchor this agent with an existing skill",
+  seedAutoAnalyzing: "Analyzing attached skill…",
   seedChip: "First skill: {{name}}",
   seedReplace: "Replace",
   seedClear: "Remove",

@@ -47,6 +47,7 @@ export default {
   creatorWelcome:
     "告诉我 {{name}} 应该做什么。我会在确定名称、模型、人格、包、工具和文档时更新草稿。",
   creatorYou: "你",
+  creatorSystem: "系统",
   creatorInputPlaceholder: "描述你希望 Mercury 创建的代理...",
   creatorSendFailed: "无法向 Mercury 发送该消息。",
   creatorNotifications: "草稿变更",
@@ -79,6 +80,7 @@ export default {
   local: "本地",
   seedCreateFromSkill: "从技能创建",
   seedHeaderHint: "用现有技能锚定此代理",
+  seedAutoAnalyzing: "正在分析已附加的技能…",
   seedChip: "首个技能：{{name}}",
   seedReplace: "替换",
   seedClear: "移除",

@@ -30,6 +30,12 @@ import {
   sendQuickAskMessage,
 } from "./chatSendFlows";
 
+function chatHistoryMessages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.filter(
+    (message) => !message.id.startsWith("agent-creator-seed-auto-"),
+  );
+}
+
 interface UseChatControllerArgs {
   messages: ChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
@@ -66,9 +72,8 @@ export function useChatController({
   const [hermesSessionId, setHermesSessionId] = useState<string | null>(null);
   const [usage, setUsage] = useState<ChatUsage | null>(null);
   const [fastMode, setFastMode] = useState(false);
-  const [codexAuthRecovery, setCodexAuthRecovery] = useState<
-    ChatController["codexAuthRecovery"]
-  >(null);
+  const [codexAuthRecovery, setCodexAuthRecovery] =
+    useState<ChatController["codexAuthRecovery"]>(null);
   const messagesRef = useRef(messages);
   const profileRef = useRef(profile);
   const sessionIdRef = useRef<string | null>(sessionId ?? null);
@@ -216,7 +221,10 @@ export function useChatController({
         profile: profileRef.current,
       });
       if (recoveryInfo?.recovery) {
-        showCodexAuthRecovery(recoveryInfo.recovery, recoveryInfo.displayMessage);
+        showCodexAuthRecovery(
+          recoveryInfo.recovery,
+          recoveryInfo.displayMessage,
+        );
       }
       setMessages((prev) => [
         ...prev,
@@ -264,68 +272,96 @@ export function useChatController({
     [handleClear, onNewChat, profile, setMessages, t, usage],
   );
 
-  const handleSend = useCallback(async (): Promise<void> => {
-    const text = input.trim();
-    if (!text || runState.isLoading) return;
-    slash.setSlashMenuOpen(false);
-    setCodexAuthRecovery(null);
-    setInput("");
-    slash.resetInputHeight();
-
-    if (text.startsWith("/")) {
-      const cmd = text.split(/\s+/)[0].toLowerCase();
-      if (isLocalSlashCommand(cmd)) {
-        if (cmd !== "/new" && cmd !== "/clear") {
-          setMessages((prev) => [
-            ...prev,
-            { id: `user-${Date.now()}`, role: "user", content: text },
-          ]);
-        }
-        await runLocalCommand(text);
-        return;
+  const handleSend = useCallback(
+    async (override?: string): Promise<void> => {
+      const hasOverride = override !== undefined;
+      const text = (override ?? input).trim();
+      if (!text || runState.isLoading) return;
+      slash.setSlashMenuOpen(false);
+      setCodexAuthRecovery(null);
+      if (!hasOverride) {
+        setInput("");
+        slash.resetInputHeight();
       }
-    }
 
-    await sendNormalMessage({
-      text,
-      messages,
-      setMessages,
-      profile,
-      chatOptions,
-      beginChatRun: runState.beginChatRun,
-      finalizeChatRun: runState.finalizeChatRun,
-      beginActivityGroup: activity.beginActivityGroup,
-      getResumeSessionId,
+      if (text.startsWith("/")) {
+        const cmd = text.split(/\s+/)[0].toLowerCase();
+        if (isLocalSlashCommand(cmd)) {
+          if (cmd !== "/new" && cmd !== "/clear") {
+            setMessages((prev) => [
+              ...prev,
+              { id: `user-${Date.now()}`, role: "user", content: text },
+            ]);
+          }
+          await runLocalCommand(text);
+          return;
+        }
+      }
+
+      const setMessagesForSend: React.Dispatch<
+        React.SetStateAction<ChatMessage[]>
+      > = hasOverride
+        ? (nextMessages) => {
+            setMessages((prev) => {
+              const resolved =
+                typeof nextMessages === "function"
+                  ? nextMessages(prev)
+                  : nextMessages;
+              const last = resolved[resolved.length - 1];
+              if (
+                resolved.length === prev.length + 1 &&
+                last?.role === "user" &&
+                last.content === text
+              ) {
+                return prev;
+              }
+              return resolved;
+            });
+          }
+        : setMessages;
+
+      await sendNormalMessage({
+        text,
+        messages: chatHistoryMessages(messages),
+        setMessages: setMessagesForSend,
+        profile,
+        chatOptions,
+        beginChatRun: runState.beginChatRun,
+        finalizeChatRun: runState.finalizeChatRun,
+        beginActivityGroup: activity.beginActivityGroup,
+        getResumeSessionId,
+        appendFallbackSendError,
+        perf,
+        titleRequestSeqRef: titleGeneration.titleRequestSeqRef,
+        isSendRunCurrentOrFinalized: runState.isSendRunCurrentOrFinalized,
+        setHermesSessionId,
+        sessionIdRef,
+        requestGeneratedTitleOnce: titleGeneration.requestGeneratedTitleOnce,
+        onSessionStarted,
+        onSessionResolved,
+      });
+    },
+    [
+      activity.beginActivityGroup,
       appendFallbackSendError,
-      perf,
-      titleRequestSeqRef: titleGeneration.titleRequestSeqRef,
-      isSendRunCurrentOrFinalized: runState.isSendRunCurrentOrFinalized,
-      setHermesSessionId,
-      sessionIdRef,
-      requestGeneratedTitleOnce: titleGeneration.requestGeneratedTitleOnce,
-      onSessionStarted,
+      chatOptions,
+      getResumeSessionId,
+      input,
+      messages,
       onSessionResolved,
-    });
-  }, [
-    activity.beginActivityGroup,
-    appendFallbackSendError,
-    chatOptions,
-    getResumeSessionId,
-    input,
-    messages,
-    onSessionResolved,
-    onSessionStarted,
-    perf,
-    profile,
-    runLocalCommand,
-    runState.beginChatRun,
-    runState.finalizeChatRun,
-    runState.isLoading,
-    runState.isSendRunCurrentOrFinalized,
-    setMessages,
-    slash,
-    titleGeneration,
-  ]);
+      onSessionStarted,
+      perf,
+      profile,
+      runLocalCommand,
+      runState.beginChatRun,
+      runState.finalizeChatRun,
+      runState.isLoading,
+      runState.isSendRunCurrentOrFinalized,
+      setMessages,
+      slash,
+      titleGeneration,
+    ],
+  );
 
   const handleQuickAsk = useCallback(async (): Promise<void> => {
     const text = input.trim();
@@ -335,7 +371,7 @@ export function useChatController({
     slash.resetInputHeight();
     await sendQuickAskMessage({
       text,
-      messages,
+      messages: chatHistoryMessages(messages),
       setMessages,
       profile,
       chatOptions,
@@ -413,7 +449,7 @@ export function useChatController({
     perf.reset();
     sendApprovalCommand({
       command: "/approve",
-      messages,
+      messages: chatHistoryMessages(messages),
       setMessages,
       profile,
       chatOptions,
@@ -442,7 +478,7 @@ export function useChatController({
     perf.reset();
     sendApprovalCommand({
       command: "/deny",
-      messages,
+      messages: chatHistoryMessages(messages),
       setMessages,
       profile,
       chatOptions,

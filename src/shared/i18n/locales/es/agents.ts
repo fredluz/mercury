@@ -20,7 +20,8 @@ export default {
   avatarUploading: "Subiendo avatar...",
   avatarUploadFailed: "No se pudo subir el avatar",
   avatarClearFailed: "No se pudo quitar el avatar",
-  avatarInvalidFile: "Elige una imagen PNG, JPEG, WebP o GIF de menos de 10 MB.",
+  avatarInvalidFile:
+    "Elige una imagen PNG, JPEG, WebP o GIF de menos de 10 MB.",
   skillsCount: "{{count}} habilidades",
   gatewayRunning: "Gateway en ejecución",
   gatewayOff: "Gateway desactivado",
@@ -49,6 +50,7 @@ export default {
   creatorWelcome:
     "Cuéntame qué debería hacer {{name}}. Actualizaré el borrador mientras decidimos nombre, modelo, persona, paquetes, herramientas y docs.",
   creatorYou: "Tú",
+  creatorSystem: "Sistema",
   creatorInputPlaceholder: "Describe el agente que quieres que Mercury cree...",
   creatorSendFailed: "No se pudo enviar ese mensaje a Mercury.",
   creatorNotifications: "Cambios del borrador",
@@ -81,6 +83,7 @@ export default {
   local: "Local",
   seedCreateFromSkill: "Crear desde habilidad",
   seedHeaderHint: "Ancla este agente con una habilidad existente",
+  seedAutoAnalyzing: "Analizando la habilidad adjunta…",
   seedChip: "Primera habilidad: {{name}}",
   seedReplace: "Reemplazar",
   seedClear: "Quitar",

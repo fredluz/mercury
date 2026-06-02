@@ -108,7 +108,7 @@ export interface ChatController {
   showCodexAuthRecovery: (recovery: ChatAuthRecovery) => void;
   dismissCodexAuthRecovery: () => void;
   loadModelConfig: () => Promise<void>;
-  handleSend: () => Promise<void>;
+  handleSend: (override?: string) => Promise<void>;
   handleQuickAsk: () => Promise<void>;
   handleKeyDown: (e: React.KeyboardEvent) => void;
   handleInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;

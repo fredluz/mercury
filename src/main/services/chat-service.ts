@@ -62,7 +62,11 @@ import type {
   AgentDraftPatch,
   AgentSeedSkill,
 } from "../../shared/agents";
-import type { TraceEvent, TraceEventType, TraceUsage } from "../../shared/traces";
+import type {
+  TraceEvent,
+  TraceEventType,
+  TraceUsage,
+} from "../../shared/traces";
 import {
   normalizeGenerateChatTitleRequest,
   type GenerateChatTitleRequest,
@@ -222,7 +226,12 @@ function buildAgentCreationInstructions(draft: AgentCreationDraft): string {
           }
         : {}),
       ...(member.kind === "docs-pointer"
-        ? { id: member.id, title: member.title, path: member.path, url: member.url }
+        ? {
+            id: member.id,
+            title: member.title,
+            path: member.path,
+            url: member.url,
+          }
         : {}),
     })),
   }));
@@ -278,7 +287,9 @@ DELTA CONTRACT:
 - Never claim a draft change happened unless you emit the corresponding <draft-mutation> block.`;
 }
 
-function draftForAgentCreationPrompt(draft: AgentCreationDraft): Record<string, unknown> {
+function draftForAgentCreationPrompt(
+  draft: AgentCreationDraft,
+): Record<string, unknown> {
   const snapshot = JSON.parse(JSON.stringify(draft)) as Record<string, unknown>;
   snapshot.seedSkill = draft.seedSkill
     ? seedSkillPromptSummary(draft.seedSkill)
@@ -286,8 +297,11 @@ function draftForAgentCreationPrompt(draft: AgentCreationDraft): Record<string, 
   return snapshot;
 }
 
-function seedSkillPromptSummary(seedSkill: AgentSeedSkill): Record<string, unknown> {
-  const directoryName = seedSkill.kind === "source" ? seedSkill.directoryName : seedSkill.name;
+function seedSkillPromptSummary(
+  seedSkill: AgentSeedSkill,
+): Record<string, unknown> {
+  const directoryName =
+    seedSkill.kind === "source" ? seedSkill.directoryName : seedSkill.name;
   return {
     kind: seedSkill.kind,
     name: seedSkill.name,
@@ -299,12 +313,16 @@ function seedSkillPromptSummary(seedSkill: AgentSeedSkill): Record<string, unkno
   };
 }
 
-function seedSkillBriefing(seedSkill: AgentSeedSkill | null | undefined): string {
+function seedSkillBriefing(
+  seedSkill: AgentSeedSkill | null | undefined,
+): string {
   if (!seedSkill) return "";
-  const directoryName = seedSkill.kind === "source" ? seedSkill.directoryName : seedSkill.name;
+  const directoryName =
+    seedSkill.kind === "source" ? seedSkill.directoryName : seedSkill.name;
   return `
 
 Seed skill briefing (capped; use for context only, do not copy into mutations):
+When a seed skill is attached and the draft is still unnamed/default, proactively analyze the skill and propose displayName, description, and persona via the <draft-mutation> delta contract; never emit seedSkill.
 ${JSON.stringify(
   {
     kind: seedSkill.kind,
@@ -330,14 +348,20 @@ function normalizeDraftMutationPayload(
   if (payloadDraftId && payloadDraftId !== fallbackDraftId) return null;
   const patch = isRecord(payload.patch) ? payload.patch : undefined;
   if (!patch) return null;
-  const mutationId = typeof payload.mutationId === "string" ? payload.mutationId : undefined;
+  const mutationId =
+    typeof payload.mutationId === "string" ? payload.mutationId : undefined;
   const expectedRevision =
     typeof payload.expectedRevision === "number" &&
     Number.isInteger(payload.expectedRevision) &&
     payload.expectedRevision >= 0
       ? payload.expectedRevision
       : undefined;
-  return { draftId: payloadDraftId || fallbackDraftId, mutationId, expectedRevision, patch };
+  return {
+    draftId: payloadDraftId || fallbackDraftId,
+    mutationId,
+    expectedRevision,
+    patch,
+  };
 }
 
 function mergeDraftMutationDelta(
@@ -404,7 +428,8 @@ function mergeMemory(
   delta: Record<string, unknown>,
 ): AgentDraftMemorySelection {
   const merged: AgentDraftMemorySelection = { ...(current ?? {}) };
-  if (typeof delta.userProfile === "string") merged.userProfile = delta.userProfile;
+  if (typeof delta.userProfile === "string")
+    merged.userProfile = delta.userProfile;
   if (isStringArray(delta.entries)) merged.entries = [...delta.entries];
   return merged;
 }
@@ -416,7 +441,9 @@ function mergeStringArrayDelta(
   removals: unknown,
 ): string[] | undefined {
   let changed = false;
-  let next = isStringArray(replacement) ? uniqueStrings(replacement) : [...current];
+  let next = isStringArray(replacement)
+    ? uniqueStrings(replacement)
+    : [...current];
   if (isStringArray(replacement)) changed = true;
   if (isStringArray(additions)) {
     next = uniqueStrings([...next, ...additions]);
@@ -471,14 +498,18 @@ function mergeBooleanOverrideDelta(
 }
 
 function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+  return (
+    Array.isArray(value) && value.every((entry) => typeof entry === "string")
+  );
 }
 
 function uniqueStrings(values: readonly string[]): string[] {
   return [...new Set(values)];
 }
 
-function isDocsPointerArray(value: unknown): value is AgentDocsPointerSelection[] {
+function isDocsPointerArray(
+  value: unknown,
+): value is AgentDocsPointerSelection[] {
   return (
     Array.isArray(value) &&
     value.every(
@@ -509,7 +540,9 @@ function abortCurrentRun(detail: string): void {
   run.settleAbort();
 }
 
-export function abortActiveChatRun(detail = "Mercury shut down the active Hermes run."): void {
+export function abortActiveChatRun(
+  detail = "Mercury shut down the active Hermes run.",
+): void {
   abortCurrentRun(detail);
 }
 
@@ -640,7 +673,10 @@ export async function runChatMessage({
         });
         return;
       }
-      const request = normalizeDraftMutationPayload(block.payload, options.agentDraftId);
+      const request = normalizeDraftMutationPayload(
+        block.payload,
+        options.agentDraftId,
+      );
       if (!request || request.draftId !== options.agentDraftId) {
         recordDraftMutationFailure("Invalid agent draft mutation block.", {
           code: "invalid-draft-mutation-payload",
@@ -688,7 +724,10 @@ export async function runChatMessage({
 
     const payload = extractAgentDraftMutationPayload(traceEvent);
     if (payload === undefined) return;
-    const request = normalizeDraftMutationPayload(payload, options.agentDraftId);
+    const request = normalizeDraftMutationPayload(
+      payload,
+      options.agentDraftId,
+    );
     if (!request || request.draftId !== options.agentDraftId) return;
     const freshDraft = await getAgentDraft(options.agentDraftId);
     if (!freshDraft) return;
@@ -891,8 +930,13 @@ export async function runChatMessage({
             );
           }
         }
-        notify("chat done callback", () => callbacks?.onDone?.(completedSessionId));
-        const response = { response: fullResponse, sessionId: completedSessionId };
+        notify("chat done callback", () =>
+          callbacks?.onDone?.(completedSessionId),
+        );
+        const response = {
+          response: fullResponse,
+          sessionId: completedSessionId,
+        };
         settleResolved(response);
         notify("chat completion callback", () =>
           callbacks?.onCompleted?.({
@@ -901,8 +945,11 @@ export async function runChatMessage({
           }),
         );
       })().catch((error) => {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        notify("chat done error callback", () => callbacks?.onError?.(errorMessage));
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        notify("chat done error callback", () =>
+          callbacks?.onError?.(errorMessage),
+        );
         settleRejected(error);
       });
     },
@@ -927,13 +974,20 @@ export async function runChatMessage({
         undefined,
         visibleError,
       );
-      notify("chat error callback", () => callbacks?.onError?.(visibleError, info));
+      notify("chat error callback", () =>
+        callbacks?.onError?.(visibleError, info),
+      );
       settleRejected(new Error(error));
-      notify("chat failure callback", () => callbacks?.onFailed?.(visibleError));
+      notify("chat failure callback", () =>
+        callbacks?.onFailed?.(visibleError),
+      );
     },
     onTraceEvent: (traceEvent) => {
       if (shouldIgnoreCallback()) return;
-      if (traceEvent.type.startsWith("tool.") || traceEvent.type.startsWith("delegation.")) {
+      if (
+        traceEvent.type.startsWith("tool.") ||
+        traceEvent.type.startsWith("delegation.")
+      ) {
         skipNextLegacyToolTrace = true;
       }
       const recordedEvent = recordChatTraceEvent(
@@ -965,7 +1019,9 @@ export async function runChatMessage({
         );
         emitLiveTrace(callbacks, recordedEvent ?? null);
       }
-      notify("chat tool progress callback", () => callbacks?.onToolProgress?.(tool));
+      notify("chat tool progress callback", () =>
+        callbacks?.onToolProgress?.(tool),
+      );
     },
     onUsage: (usage) => {
       if (shouldIgnoreCallback()) return;
@@ -977,7 +1033,11 @@ export async function runChatMessage({
   };
 
   try {
-    const runtime = await prepareChatBackend(profile, "chat", effectiveSessionId);
+    const runtime = await prepareChatBackend(
+      profile,
+      "chat",
+      effectiveSessionId,
+    );
     if (runtime) {
       const serverSession = effectiveSessionId
         ? await readHermesSession(runtime, effectiveSessionId)
@@ -1017,9 +1077,13 @@ export async function runChatMessage({
       };
     }
   } catch (error) {
-    const code = error && typeof error === "object" && "code" in error && typeof (error as { code?: unknown }).code === "string"
-      ? (error as { code: string }).code
-      : undefined;
+    const code =
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      typeof (error as { code?: unknown }).code === "string"
+        ? (error as { code: string }).code
+        : undefined;
     const errorMessage = error instanceof Error ? error.message : String(error);
     const visibleError = code ? `${code}: ${errorMessage}` : errorMessage;
     const info = {
@@ -1048,7 +1112,9 @@ export async function runChatMessage({
       callbacks?.onError?.(visibleError, info.remediation ? info : undefined),
     );
     settleRejected(error);
-    notify("chat setup failure callback", () => callbacks?.onFailed?.(visibleError));
+    notify("chat setup failure callback", () =>
+      callbacks?.onFailed?.(visibleError),
+    );
   }
 
   return promise;
@@ -1090,7 +1156,9 @@ export async function resolveChatRunApprovalForRequest({
 }: ResolveChatRunApprovalRequest): Promise<RunApprovalResponse> {
   const runtime = await prepareChatBackend(profile, "chat");
   if (!runtime) {
-    throw new Error("Synthetic chat mode does not support Hermes run approvals.");
+    throw new Error(
+      "Synthetic chat mode does not support Hermes run approvals.",
+    );
   }
   return resolveRunApproval(runtime, runId, { choice, all, resolveAll });
 }

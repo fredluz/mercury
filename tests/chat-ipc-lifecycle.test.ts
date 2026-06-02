@@ -31,7 +31,11 @@ const mocks = vi.hoisted(() => {
     let buffer = "";
     const drain = () => {
       let visibleText = "";
-      const mutations: Array<{ payload: unknown; raw: string; parseError?: string }> = [];
+      const mutations: Array<{
+        payload: unknown;
+        raw: string;
+        parseError?: string;
+      }> = [];
       while (buffer) {
         const open = buffer.indexOf("<draft-mutation>");
         if (open === -1) {
@@ -253,26 +257,30 @@ function resetMockState(): void {
     profile: "default",
     raw: {},
   });
-  mocks.readHermesSession.mockReset().mockImplementation(async (_runtime, id: string) => ({
-    id,
-    title: "Existing Conversation",
-    startedAt: 1,
-    endedAt: null,
-    source: "api",
-    messageCount: 0,
-    model: "",
-    profile: "default",
-    raw: {},
-  }));
-  mocks.cachedSessionFromServerSession.mockReset().mockImplementation((session) => ({
-    id: session.id,
-    title: session.title || "New Conversation",
-    startedAt: session.startedAt,
-    source: session.source,
-    messageCount: session.messageCount,
-    model: session.model,
-    profile: session.profile,
-  }));
+  mocks.readHermesSession
+    .mockReset()
+    .mockImplementation(async (_runtime, id: string) => ({
+      id,
+      title: "Existing Conversation",
+      startedAt: 1,
+      endedAt: null,
+      source: "api",
+      messageCount: 0,
+      model: "",
+      profile: "default",
+      raw: {},
+    }));
+  mocks.cachedSessionFromServerSession
+    .mockReset()
+    .mockImplementation((session) => ({
+      id: session.id,
+      title: session.title || "New Conversation",
+      startedAt: session.startedAt,
+      source: session.source,
+      messageCount: session.messageCount,
+      model: session.model,
+      profile: session.profile,
+    }));
   mocks.generateChatTitle.mockReset();
   mocks.profileRuntimeManager.normalizeProfile
     .mockReset()
@@ -494,9 +502,7 @@ describe("chat IPC lifecycle hardening", () => {
     });
     expect(mocks.stopGateway).toHaveBeenCalledWith(true, "default");
     expect(mocks.startGateway).toHaveBeenCalledWith("default");
-    expect(
-      mocks.startGateway.mock.invocationCallOrder[0],
-    ).toBeLessThan(
+    expect(mocks.startGateway.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.profileRuntimeManager.resolveRuntime.mock.invocationCallOrder[0],
     );
   });
@@ -734,13 +740,11 @@ describe("chat IPC lifecycle hardening", () => {
       ),
     ).resolves.toBe("Profile Aware Title");
 
-    expect(mocks.generateChatTitle).toHaveBeenCalledWith(
-      {
-        profile: "research-agent",
-        sessionId: "session-title-1",
-        messages: [{ role: "user", content: "Summarize this session" }],
-      }
-    );
+    expect(mocks.generateChatTitle).toHaveBeenCalledWith({
+      profile: "research-agent",
+      sessionId: "session-title-1",
+      messages: [{ role: "user", content: "Summarize this session" }],
+    });
     expect(mocks.updateSessionTitle).toHaveBeenCalledTimes(1);
     expect(mocks.updateSessionTitle).toHaveBeenNthCalledWith(
       1,
@@ -794,10 +798,17 @@ describe("chat IPC lifecycle hardening", () => {
     const handler = await setupHandler();
     const event = createEvent();
 
-    const invokePromise = handler(event, "hello", "default", undefined, undefined, {
-      agentDraftId: "draft-chat-options",
-      mode: "agent-creation",
-    });
+    const invokePromise = handler(
+      event,
+      "hello",
+      "default",
+      undefined,
+      undefined,
+      {
+        agentDraftId: "draft-chat-options",
+        mode: "agent-creation",
+      },
+    );
     const callbacks = await waitForTransportCallbacks();
     callbacks.onChunk("answer");
     callbacks.onDone("session-options");
@@ -854,10 +865,17 @@ describe("chat IPC lifecycle hardening", () => {
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
 
-    const invokePromise = handler(event, "hello", "default", undefined, undefined, {
-      agentDraftId: "draft-seed-prompt",
-      mode: "agent-creation",
-    });
+    const invokePromise = handler(
+      event,
+      "hello",
+      "default",
+      undefined,
+      undefined,
+      {
+        agentDraftId: "draft-seed-prompt",
+        mode: "agent-creation",
+      },
+    );
     const callbacks = await waitForTransportCallbacks();
     callbacks.onDone("session-seed-prompt");
 
@@ -865,8 +883,11 @@ describe("chat IPC lifecycle hardening", () => {
       response: "",
       sessionId: "session-seed-prompt",
     });
-    const instructions = mocks.sendMessage.mock.calls[0]?.[6]?.instructions as string;
+    const instructions = mocks.sendMessage.mock.calls[0]?.[6]
+      ?.instructions as string;
     expect(instructions).toContain("Seed skill briefing");
+    expect(instructions).toContain("proactively analyze the skill");
+    expect(instructions).toContain("displayName, description, and persona");
     expect(instructions).toContain("sha256:seedprompt");
     expect(instructions).toContain("[redacted: see Seed skill briefing]");
     expect(instructions).not.toContain(hiddenTail);
@@ -906,10 +927,17 @@ describe("chat IPC lifecycle hardening", () => {
         updatedAt: "2026-01-01T00:00:00.000Z",
       });
 
-    const invokePromise = handler(event, "create agent", "default", undefined, undefined, {
-      agentDraftId: "draft-chat",
-      mode: "agent-creation",
-    });
+    const invokePromise = handler(
+      event,
+      "create agent",
+      "default",
+      undefined,
+      undefined,
+      {
+        agentDraftId: "draft-chat",
+        mode: "agent-creation",
+      },
+    );
     const callbacks = await waitForTransportCallbacks();
     callbacks.onChunk(
       'I updated the draft. <draft-mutation>{"patch":{"displayName":"Research Bot","addPackIds":["research"],"removePackIds":["default"],"addDocsPointers":[{"id":"new-doc","title":"New docs","path":"docs/new.md"}],"removeDocsPointerIds":["existing-doc"],"toolsetOverrides":{"browser":null,"terminal":true},"skillOverrides":{"skill:research/arxiv":null,"skill:media/youtube-content":false}}}</draft-mutation>',
@@ -947,10 +975,17 @@ describe("chat IPC lifecycle hardening", () => {
     const handler = await setupHandler();
     const event = createEvent();
 
-    const invokePromise = handler(event, "create agent", "default", undefined, undefined, {
-      agentDraftId: "draft-chat",
-      mode: "agent-creation",
-    });
+    const invokePromise = handler(
+      event,
+      "create agent",
+      "default",
+      undefined,
+      undefined,
+      {
+        agentDraftId: "draft-chat",
+        mode: "agent-creation",
+      },
+    );
     const callbacks = await waitForTransportCallbacks();
     callbacks.onTraceEvent?.({
       type: "tool.completed",
@@ -1014,10 +1049,17 @@ describe("chat IPC lifecycle hardening", () => {
       };
     });
 
-    const invokePromise = handler(event, "create agent", "default", undefined, undefined, {
-      agentDraftId: "draft-chat",
-      mode: "agent-creation",
-    });
+    const invokePromise = handler(
+      event,
+      "create agent",
+      "default",
+      undefined,
+      undefined,
+      {
+        agentDraftId: "draft-chat",
+        mode: "agent-creation",
+      },
+    );
     const callbacks = await waitForTransportCallbacks();
     callbacks.onTraceEvent?.({
       type: "tool.completed",
@@ -1033,7 +1075,10 @@ describe("chat IPC lifecycle hardening", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     callbacks.onDone("session-draft");
 
-    await expect(invokePromise).resolves.toEqual({ response: "", sessionId: "session-draft" });
+    await expect(invokePromise).resolves.toEqual({
+      response: "",
+      sessionId: "session-draft",
+    });
     expect(mocks.updateAgentDraft).toHaveBeenCalledWith(
       expect.objectContaining({ draftId: "draft-chat" }),
       expect.objectContaining({ onChange: expect.any(Function) }),

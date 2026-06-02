@@ -9,7 +9,7 @@ export default {
   createFailed: "Falha ao criar o agente",
   loadFailed: "Falha ao carregar agentes",
   deleteFailed: "Falha ao excluir agente",
-  creating: "Criando...", 
+  creating: "Criando...",
   create: "Criar",
   active: "Ativo",
   noModel: "Nenhum modelo definido",
@@ -20,7 +20,8 @@ export default {
   avatarUploading: "Enviando avatar...",
   avatarUploadFailed: "Falha ao enviar avatar",
   avatarClearFailed: "Falha ao limpar avatar",
-  avatarInvalidFile: "Escolha uma imagem PNG, JPEG, WebP ou GIF com menos de 10 MB.",
+  avatarInvalidFile:
+    "Escolha uma imagem PNG, JPEG, WebP ou GIF com menos de 10 MB.",
   skillsCount: "{{count}} habilidades",
   gatewayRunning: "Gateway em execução",
   gatewayOff: "Gateway desligado",
@@ -49,7 +50,9 @@ export default {
   creatorWelcome:
     "Conte o que {{name}} deve fazer. Vou atualizar o rascunho enquanto decidimos nome, modelo, persona, pacotes, ferramentas e docs.",
   creatorYou: "Você",
-  creatorInputPlaceholder: "Descreva o agente que você quer que o Mercury crie...",
+  creatorSystem: "Sistema",
+  creatorInputPlaceholder:
+    "Descreva o agente que você quer que o Mercury crie...",
   creatorSendFailed: "Não foi possível enviar essa mensagem ao Mercury.",
   creatorNotifications: "Mudanças do rascunho",
   creatorDraftChanged: "Rascunho atualizado.",
@@ -81,6 +84,7 @@ export default {
   local: "Local",
   seedCreateFromSkill: "Criar a partir de habilidade",
   seedHeaderHint: "Ancore este agente com uma habilidade existente",
+  seedAutoAnalyzing: "Analisando a habilidade anexada…",
   seedChip: "Primeira habilidade: {{name}}",
   seedReplace: "Substituir",
   seedClear: "Remover",
