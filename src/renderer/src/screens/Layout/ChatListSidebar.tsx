@@ -53,6 +53,8 @@ function fallbackProfile(name: string): ProfileSummary {
     hasEnv: false,
     hasSoul: false,
     skillCount: 0,
+    skillPackCount: 0,
+    memoryCount: 0,
     gatewayRunning: false,
     displayName: isDefault ? "Mercury" : profileName,
     kind: isDefault ? "builtin" : "custom",

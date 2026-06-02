@@ -52,6 +52,8 @@ export default {
   noDescription: "No description yet",
   packsCount: "{{count}} packs",
   docsPointersCount: "{{count}} docs",
+  skillPacksCount: "{{count}} skill packs",
+  memoriesCount: "{{count}} memories",
   creatorEyebrow: "Created with Mercury",
   creatorTitle: "Design a new agent",
   creatorBack: "Back to agents",

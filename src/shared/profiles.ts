@@ -33,6 +33,10 @@ export interface ProfileInfo {
   hasEnv: boolean;
   hasSoul: boolean;
   skillCount: number;
+  /** Number of catalog skill packs with at least one installed skill member (derived). */
+  skillPackCount: number;
+  /** Number of MEMORY.md entries for this agent (derived). */
+  memoryCount: number;
   gatewayRunning: boolean;
   displayName: string;
   kind: ProfileKind;

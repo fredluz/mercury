@@ -38,6 +38,8 @@ export default {
   noDescription: "暂无描述",
   packsCount: "{{count}} 个包",
   docsPointersCount: "{{count}} 个文档",
+  skillPacksCount: "{{count}} 个技能包",
+  memoriesCount: "{{count}} 条记忆",
   creatorEyebrow: "由 Mercury 创建",
   creatorTitle: "设计新代理",
   creatorBack: "返回代理",

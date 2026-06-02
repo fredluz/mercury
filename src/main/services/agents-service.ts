@@ -937,6 +937,8 @@ function fallbackProfileInfo(
     hasEnv: false,
     hasSoul: Boolean(draft.persona?.trim()),
     skillCount: 0,
+    skillPackCount: 0,
+    memoryCount: 0,
     gatewayRunning: false,
     displayName: metadata.displayName || draft.profile,
     kind: "custom",

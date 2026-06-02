@@ -13,6 +13,7 @@ import {
   type ProfileAvatarMetadata,
   type ProfileInfo,
 } from "../../shared/profiles";
+import { deriveAgentSkillPackCount } from "../../shared/agent-packs";
 import { pythonJsonInput, shellQuote, sshExec, sshPython } from "./transport";
 
 // ── Sessions ─────────────────────────────────────────────────────────────────
@@ -221,6 +222,28 @@ def count_skills(path):
                         count += 1
     return count
 
+def collect_skill_keys(path):
+    skills_dir = os.path.join(path, "skills")
+    keys = []
+    if os.path.isdir(skills_dir):
+        for cat in os.listdir(skills_dir):
+            cat_path = os.path.join(skills_dir, cat)
+            if os.path.isdir(cat_path):
+                for name in os.listdir(cat_path):
+                    if os.path.exists(os.path.join(cat_path, name, "SKILL.md")):
+                        keys.append("skill:" + cat + "/" + name)
+    return keys
+
+def count_memory(path):
+    mem_file = os.path.join(path, "memories", "MEMORY.md")
+    try:
+        content = open(mem_file).read()
+    except Exception:
+        return 0
+    if not content.strip():
+        return 0
+    return len([e for e in content.split("\n§\n") if e.strip()])
+
 def gw_running(path):
     pid_file = os.path.join(path, "gateway.pid")
     if not os.path.exists(pid_file): return False
@@ -288,6 +311,8 @@ def append_profile(name, path, is_default, active):
         "hasEnv": os.path.exists(os.path.join(path, ".env")),
         "hasSoul": os.path.exists(os.path.join(path, "SOUL.md")),
         "skillCount": count_skills(path),
+        "installedSkillKeys": collect_skill_keys(path),
+        "memoryCount": count_memory(path),
         "gatewayRunning": gw_running(path),
         "displayName": "Mercury" if is_default else (metadata.get("displayName") or name),
         "kind": "builtin" if is_default else "custom",
@@ -313,7 +338,16 @@ print(json.dumps(profiles))
 `;
   try {
     const out = await sshPython(config, script);
-    return JSON.parse(out.trim() || "[]");
+    const raw = JSON.parse(out.trim() || "[]") as Array<
+      SshProfileInfo & { installedSkillKeys?: string[] }
+    >;
+    return raw.map(({ installedSkillKeys, ...profile }) => ({
+      ...profile,
+      skillPackCount: deriveAgentSkillPackCount(
+        new Set(installedSkillKeys ?? []),
+      ),
+      memoryCount: profile.memoryCount ?? 0,
+    }));
   } catch {
     return [
       {
@@ -326,6 +360,8 @@ print(json.dumps(profiles))
         hasEnv: false,
         hasSoul: false,
         skillCount: 0,
+        skillPackCount: 0,
+        memoryCount: 0,
         gatewayRunning: false,
         displayName: "Mercury",
         kind: "builtin",
@@ -875,6 +911,8 @@ function fallbackSshAvatarAgent(
     hasEnv: false,
     hasSoul: false,
     skillCount: 0,
+    skillPackCount: 0,
+    memoryCount: 0,
     gatewayRunning: false,
     displayName: profile,
     kind: "custom",

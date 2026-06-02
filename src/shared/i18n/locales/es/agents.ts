@@ -40,6 +40,8 @@ export default {
   noDescription: "Sin descripción todavía",
   packsCount: "{{count}} paquetes",
   docsPointersCount: "{{count}} docs",
+  skillPacksCount: "{{count}} paquetes de habilidades",
+  memoriesCount: "{{count}} recuerdos",
   creatorEyebrow: "Creado con Mercury",
   creatorTitle: "Diseñar un nuevo agente",
   creatorBack: "Volver a agentes",

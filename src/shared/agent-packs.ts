@@ -456,6 +456,21 @@ export function deriveAgentPackState(
   return enabledCount === selectableMembers.length ? "on" : "partial";
 }
 
+/**
+ * Count catalog packs that draw on at least one installed skill. Used by the
+ * agents grid to derive a "Y skill packs" stat from backend-installed skills
+ * (source of truth) instead of the Mercury-stored `selectedPackIds`. A pack is
+ * counted when its derived state is not "off" — i.e. partial packs count too.
+ */
+export function deriveAgentSkillPackCount(
+  enabledSkillMemberKeys: ReadonlySet<string>,
+  catalog: readonly AgentPackDefinition[] = AGENT_PACK_CATALOG,
+): number {
+  return catalog.filter(
+    (pack) => deriveAgentPackState(pack, enabledSkillMemberKeys) !== "off",
+  ).length;
+}
+
 export function expandAgentPackSelection(
   packIds: readonly string[],
   catalog: readonly AgentPackDefinition[] = AGENT_PACK_CATALOG,

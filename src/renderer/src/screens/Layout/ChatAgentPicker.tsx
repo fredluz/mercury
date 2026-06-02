@@ -143,10 +143,14 @@ function ChatAgentPicker({
                 </div>
                 <div className="chat-agent-picker-meta">
                   <span>
-                    {t("agents.packsCount", { count: profile.selectedPackIds.length })}
+                    {t("agents.skillsCount", { count: profile.skillCount })}
                   </span>
                   <span>
-                    {t("agents.docsPointersCount", { count: profile.docsPointers.length })}
+                    {t("agents.skillPacksCount", { count: profile.skillPackCount })}
+                  </span>
+                  <span aria-hidden="true">|</span>
+                  <span>
+                    {t("agents.memoriesCount", { count: profile.memoryCount })}
                   </span>
                 </div>
                 <div className="chat-agent-picker-action">

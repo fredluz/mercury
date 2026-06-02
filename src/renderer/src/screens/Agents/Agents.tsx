@@ -456,11 +456,17 @@ function Agents({
               </div>
               <div className="agents-card-stats">
                 <span>
-                  {t("agents.packsCount", { count: agent.selectedPackIds.length })}
+                  {t("agents.skillsCount", { count: agent.skillCount })}
                 </span>
                 <span className="agents-card-dot" />
                 <span>
-                  {t("agents.docsPointersCount", { count: agent.docsPointers.length })}
+                  {t("agents.skillPacksCount", { count: agent.skillPackCount })}
+                </span>
+                <span className="agents-card-sep" aria-hidden="true">
+                  |
+                </span>
+                <span>
+                  {t("agents.memoriesCount", { count: agent.memoryCount })}
                 </span>
               </div>
               <div className="agents-card-footer">

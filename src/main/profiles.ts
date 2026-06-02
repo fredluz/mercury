@@ -17,6 +17,11 @@ import {
   HERMES_SCRIPT,
   getEnhancedPath,
 } from "./installer";
+import { readMemory } from "./memory";
+import {
+  agentSkillMemberKey,
+  deriveAgentSkillPackCount,
+} from "../shared/agent-packs";
 
 const PROFILES_DIR = join(HERMES_HOME, "profiles");
 const PROFILE_AGENT_METADATA_VERSION = 1;
@@ -67,27 +72,42 @@ function parseModelConfigBlock(content: string): {
   return result;
 }
 
-async function countSkills(profilePath: string): Promise<number> {
+interface SkillStats {
+  /** Number of installed skills (SKILL.md files under skills/<category>/<dir>). */
+  count: number;
+  /** Pack member keys (`skill:<category>/<dir>`) for installed skills. */
+  keys: Set<string>;
+}
+
+async function collectSkillStats(profilePath: string): Promise<SkillStats> {
   const skillsDir = join(profilePath, "skills");
+  const keys = new Set<string>();
   try {
     const dirs = await fs.readdir(skillsDir);
-    let count = 0;
-    for (const d of dirs) {
-      const sub = join(skillsDir, d);
+    for (const category of dirs) {
+      const sub = join(skillsDir, category);
       const stat = await fs.stat(sub);
-      if (stat.isDirectory()) {
-        const inner = await fs.readdir(sub);
-        for (const f of inner) {
-          try {
-            await fs.access(join(sub, f, "SKILL.md"));
-            count++;
-          } catch {
-            // not a skill
-          }
+      if (!stat.isDirectory()) continue;
+      const inner = await fs.readdir(sub);
+      for (const directoryName of inner) {
+        try {
+          await fs.access(join(sub, directoryName, "SKILL.md"));
+          keys.add(agentSkillMemberKey({ category, directoryName }));
+        } catch {
+          // not a skill
         }
       }
     }
-    return count;
+  } catch {
+    // no skills dir
+  }
+  return { count: keys.size, keys };
+}
+
+/** Per-agent memory entry count from memories/MEMORY.md. */
+function countMemoryEntries(profile?: string): number {
+  try {
+    return readMemory(profile).memory.entries.length;
   } catch {
     return 0;
   }
@@ -314,7 +334,7 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
     readProfileConfig(HERMES_HOME),
     fileExists(join(HERMES_HOME, ".env")),
     fileExists(join(HERMES_HOME, "SOUL.md")),
-    countSkills(HERMES_HOME),
+    collectSkillStats(HERMES_HOME),
     isGatewayRunning(HERMES_HOME),
     readProfileAgentMetadata(HERMES_HOME),
   ]);
@@ -328,7 +348,9 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
     provider: defaultConfig.provider,
     hasEnv: defaultHasEnv,
     hasSoul: defaultHasSoul,
-    skillCount: defaultSkills,
+    skillCount: defaultSkills.count,
+    skillPackCount: deriveAgentSkillPackCount(defaultSkills.keys),
+    memoryCount: countMemoryEntries("default"),
     gatewayRunning: defaultGw,
     ...profileDisplayFields("default", true, defaultMetadata),
   });
@@ -349,12 +371,12 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
         // We deliberately do NOT require config.yaml or .env to exist —
         // a freshly created profile may have neither yet, and filtering on
         // them silently hides it from the UI (issue #19).
-        const [config, hasEnvFile, hasSoul, skillCount, gwRunning, metadata] =
+        const [config, hasEnvFile, hasSoul, skillStats, gwRunning, metadata] =
           await Promise.all([
             readProfileConfig(profilePath),
             fileExists(join(profilePath, ".env")),
             fileExists(join(profilePath, "SOUL.md")),
-            countSkills(profilePath),
+            collectSkillStats(profilePath),
             isGatewayRunning(profilePath),
             readProfileAgentMetadata(profilePath),
           ]);
@@ -368,7 +390,9 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
           provider: config.provider,
           hasEnv: hasEnvFile,
           hasSoul: hasSoul,
-          skillCount,
+          skillCount: skillStats.count,
+          skillPackCount: deriveAgentSkillPackCount(skillStats.keys),
+          memoryCount: countMemoryEntries(name),
           gatewayRunning: gwRunning,
           ...profileDisplayFields(name, false, metadata),
         } as ProfileInfo;

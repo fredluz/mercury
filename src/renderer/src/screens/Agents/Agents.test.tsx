@@ -47,6 +47,8 @@ const mercuryProfile: ProfileInfo = {
   hasEnv: true,
   hasSoul: true,
   skillCount: 0,
+  skillPackCount: 0,
+  memoryCount: 0,
   gatewayRunning: false,
   displayName: "Mercury",
   kind: "builtin",
