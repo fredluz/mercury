@@ -19,6 +19,7 @@ export interface ProfileAgentMetadata {
   description?: string;
   selectedPackIds?: string[];
   docsPointers?: AgentDocsPointerSelection[];
+  seedSkillFingerprint?: string;
   avatar?: ProfileAvatarMetadata;
 }
 
@@ -39,6 +40,7 @@ export interface ProfileInfo {
   deletable: boolean;
   selectedPackIds: string[];
   docsPointers: AgentDocsPointerSelection[];
+  seedSkillFingerprint?: string;
   avatar?: ProfileAvatarMetadata;
   description?: string;
   createdAt?: string;

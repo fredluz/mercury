@@ -75,4 +75,21 @@ export default {
   creatorCommitting: "提交中...",
   auto: "自动",
   local: "本地",
+  seedCreateFromSkill: "从技能创建",
+  seedHeaderHint: "用现有技能锚定此代理",
+  seedChip: "首个技能：{{name}}",
+  seedReplace: "替换",
+  seedClear: "移除",
+  seedRemoteDisabled: "在仅远程模式下无法附加技能。",
+  seedBusyDisabled: "请等待当前回合结束后再更改首个技能。",
+  seedModalTitle: "附加为首个技能",
+  seedModalHelp:
+    "导入一个技能来锚定此代理。创建代理时它将成为该代理的首个技能，而不是目录包。",
+  seedSourceRemoteUnavailable:
+    "在仅远程模式下无法使用 GitHub 和 npx 来源。请改为粘贴 Markdown。",
+  seedAttach: "附加技能",
+  seedAttaching: "附加中...",
+  seedAttachFailed: "无法附加该技能。",
+  seedReviewLabel: "首个技能",
+  seedReviewSub: "已导入的技能 — 锚定此代理。",
 } as const;

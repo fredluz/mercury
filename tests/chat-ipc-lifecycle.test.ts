@@ -824,6 +824,55 @@ describe("chat IPC lifecycle hardening", () => {
     );
   });
 
+  it("redacts raw seed markdown from agent creation prompt and includes only capped briefing", async () => {
+    const handler = await setupHandler();
+    const event = createEvent();
+    const hiddenTail = "SECRET_FULL_MARKDOWN_TAIL";
+    mocks.getAgentDraft.mockResolvedValueOnce({
+      id: "draft-seed-prompt",
+      status: "draft",
+      revision: 0,
+      profile: "draft_profile",
+      displayName: "Draft Agent",
+      selectedPackIds: ["default"],
+      docsPointers: [],
+      toolsetOverrides: {},
+      skillOverrides: {},
+      seedSkill: {
+        kind: "markdown",
+        name: "seed-skill",
+        category: "custom",
+        description: "Seed prompt skill",
+        markdown: `${"A".repeat(2100)}${hiddenTail}`,
+        overwrite: false,
+        contentPreview: `${"A".repeat(2000)}…`,
+        contentPreviewTruncated: true,
+        fingerprint: "sha256:seedprompt",
+      },
+      mutationIds: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    const invokePromise = handler(event, "hello", "default", undefined, undefined, {
+      agentDraftId: "draft-seed-prompt",
+      mode: "agent-creation",
+    });
+    const callbacks = await waitForTransportCallbacks();
+    callbacks.onDone("session-seed-prompt");
+
+    await expect(invokePromise).resolves.toEqual({
+      response: "",
+      sessionId: "session-seed-prompt",
+    });
+    const instructions = mocks.sendMessage.mock.calls[0]?.[6]?.instructions as string;
+    expect(instructions).toContain("Seed skill briefing");
+    expect(instructions).toContain("sha256:seedprompt");
+    expect(instructions).toContain("[redacted: see Seed skill briefing]");
+    expect(instructions).not.toContain(hiddenTail);
+    expect(instructions).not.toContain('"markdown":');
+  });
+
   it("strips draft mutation blocks and applies merged full draft patches", async () => {
     const handler = await setupHandler();
     const event = createEvent();
@@ -892,6 +941,40 @@ describe("chat IPC lifecycle hardening", () => {
       },
       expect.objectContaining({ onChange: expect.any(Function) }),
     );
+  });
+
+  it("ignores seedSkill carried by structured draft mutation tool traces", async () => {
+    const handler = await setupHandler();
+    const event = createEvent();
+
+    const invokePromise = handler(event, "create agent", "default", undefined, undefined, {
+      agentDraftId: "draft-chat",
+      mode: "agent-creation",
+    });
+    const callbacks = await waitForTransportCallbacks();
+    callbacks.onTraceEvent?.({
+      type: "tool.completed",
+      title: "Agent draft mutation",
+      metadata: {
+        agentDraftMutation: {
+          draftId: "draft-chat",
+          patch: {
+            seedSkill: {
+              kind: "markdown",
+              markdown: "SHOULD_NOT_BE_APPLIED",
+            },
+          },
+        },
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    callbacks.onDone("session-seed-ignored");
+
+    await expect(invokePromise).resolves.toEqual({
+      response: "",
+      sessionId: "session-seed-ignored",
+    });
+    expect(mocks.updateAgentDraft).not.toHaveBeenCalled();
   });
 
   it("forwards agent-draft change events produced by structured tool traces", async () => {

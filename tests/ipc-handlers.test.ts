@@ -187,6 +187,7 @@ describe("New IPC handlers from v0.8/v0.9 features", () => {
     "create-agent-draft",
     "get-agent-draft",
     "update-agent-draft",
+    "attach-agent-seed-skill",
     "abandon-agent-draft",
     "commit-agent-draft",
     "get-agent-avatar-data-url",

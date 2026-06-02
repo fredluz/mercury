@@ -50,6 +50,8 @@ import type {
   AgentDraftChangeEvent,
   AgentDraftMutationRequest,
   AgentDraftMutationResult,
+  AttachAgentSeedSkillRequest,
+  AttachAgentSeedSkillResult,
   ClearAgentAvatarRequest,
   CreateAgentDraftRequest,
   SetAgentAvatarRequest,
@@ -228,6 +230,9 @@ interface HermesAPI {
   updateAgentDraft: (
     request: AgentDraftMutationRequest,
   ) => Promise<AgentDraftMutationResult>;
+  attachAgentSeedSkill: (
+    request: AttachAgentSeedSkillRequest,
+  ) => Promise<AttachAgentSeedSkillResult>;
   abandonAgentDraft: (
     draftId: string,
   ) => Promise<{ success: boolean; error?: string }>;

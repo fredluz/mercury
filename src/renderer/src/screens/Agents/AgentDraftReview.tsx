@@ -13,6 +13,7 @@ import { BarChart3, Code2, Pencil } from "lucide-react";
 import type {
   AgentCreationDraft,
   AgentDraftPatch,
+  AgentSeedSkill,
 } from "../../../../shared/agents";
 import {
   AGENT_PACK_CATALOG,
@@ -37,6 +38,15 @@ interface AgentDraftReviewProps {
   commitError: string | null;
   onCommit: () => void;
   onUpdateDraft: (patch: AgentDraftPatch) => Promise<void>;
+  onClearSeedSkill: () => void;
+  seedActionsDisabled: boolean;
+}
+
+/** A seed skill is shown as the pinned "first skill" — never a catalog pack. */
+function seedSkillLabel(seed: AgentSeedSkill): string {
+  const leaf =
+    seed.kind === "source" ? seed.directoryName || seed.name : seed.name;
+  return `${seed.category}/${leaf}`;
 }
 
 type Step = "identity" | "capabilities" | "review";
@@ -88,8 +98,11 @@ export function AgentDraftReview({
   commitError,
   onCommit,
   onUpdateDraft,
+  onClearSeedSkill,
+  seedActionsDisabled,
 }: AgentDraftReviewProps): React.JSX.Element {
   const { t } = useI18n();
+  const seed = draft.seedSkill ?? null;
   const [step, setStep] = useState<Step>("identity");
   const [openPackId, setOpenPackId] = useState<string | null>(null);
   const [skillModal, setSkillModal] = useState<SkillModalContext | null>(null);
@@ -103,7 +116,7 @@ export function AgentDraftReview({
   );
 
   const skillsSelected = useMemo(() => {
-    let count = 0;
+    let count = seed ? 1 : 0;
     for (const pack of AGENT_PACK_CATALOG) {
       if (!selectedPackIdSet.has(pack.id)) continue;
       for (const member of pack.members) {
@@ -111,7 +124,7 @@ export function AgentDraftReview({
       }
     }
     return count;
-  }, [selectedPackIdSet, draft.skillOverrides]);
+  }, [seed, selectedPackIdSet, draft.skillOverrides]);
 
   // Curated packs shown as cards (skip the lean "default" baseline + one-skill
   // independent packs, which live behind "Browse all skills").
@@ -185,6 +198,14 @@ export function AgentDraftReview({
                 })}
               </div>
             </div>
+
+            {seed ? (
+              <SeedSkillPinned
+                seed={seed}
+                onClear={onClearSeedSkill}
+                disabled={seedActionsDisabled}
+              />
+            ) : null}
 
             <div className="agents-step-section-label">
               {t("agents.capabilitiesPacks")}
@@ -328,8 +349,11 @@ export function AgentDraftReview({
             draft={draft}
             errors={errors}
             valid={valid}
+            seed={seed}
             skillsSelected={skillsSelected}
             selectedPackIdSet={selectedPackIdSet}
+            onClearSeedSkill={onClearSeedSkill}
+            seedActionsDisabled={seedActionsDisabled}
           />
         ) : null}
       </div>
@@ -682,18 +706,65 @@ function IdentityStep({
   );
 }
 
+function SeedSkillPinned({
+  seed,
+  onClear,
+  disabled,
+}: {
+  seed: AgentSeedSkill;
+  onClear: () => void;
+  disabled: boolean;
+}): React.JSX.Element {
+  const { t } = useI18n();
+  return (
+    <div className="agents-seed-pinned">
+      <span className="agents-seed-pinned-icon">
+        <Puzzle size={16} />
+      </span>
+      <div className="agents-seed-pinned-text">
+        <div className="agents-seed-pinned-head">
+          <span className="agents-seed-pinned-eyebrow">
+            {t("agents.seedReviewLabel")}
+          </span>
+          <span className="agents-seed-pinned-name">
+            {seedSkillLabel(seed)}
+          </span>
+        </div>
+        <div className="agents-seed-pinned-desc">
+          {seed.description || t("agents.seedReviewSub")}
+        </div>
+      </div>
+      <button
+        type="button"
+        className="agents-seed-pinned-clear"
+        aria-label={t("agents.seedClear")}
+        onClick={onClear}
+        disabled={disabled}
+      >
+        <X size={14} />
+      </button>
+    </div>
+  );
+}
+
 function ReviewStep({
   draft,
   errors,
   valid,
+  seed,
   skillsSelected,
   selectedPackIdSet,
+  onClearSeedSkill,
+  seedActionsDisabled,
 }: {
   draft: AgentCreationDraft;
   errors: string[];
   valid: boolean;
+  seed: AgentSeedSkill | null;
   skillsSelected: number;
   selectedPackIdSet: Set<string>;
+  onClearSeedSkill: () => void;
+  seedActionsDisabled: boolean;
 }): React.JSX.Element {
   const { t } = useI18n();
   const empty = t("agents.creatorNotSet");
@@ -747,6 +818,13 @@ function ReviewStep({
         <div className="agents-review-card-title">
           {t("agents.reviewCapabilities")}
         </div>
+        {seed ? (
+          <SeedSkillPinned
+            seed={seed}
+            onClear={onClearSeedSkill}
+            disabled={seedActionsDisabled}
+          />
+        ) : null}
         <div className="agents-review-pills">
           {packNames.length ? (
             packNames.map((packName) => (

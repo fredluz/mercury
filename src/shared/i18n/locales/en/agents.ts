@@ -136,4 +136,22 @@ export default {
   reviewIdentity: "Identity",
   reviewCapabilities: "Capabilities",
   reviewNoPacks: "No packs selected",
+  seedCreateFromSkill: "Create from skill",
+  seedHeaderHint: "Anchor this agent with an existing skill",
+  seedChip: "First skill: {{name}}",
+  seedReplace: "Replace",
+  seedClear: "Remove",
+  seedRemoteDisabled: "Attaching a skill isn’t available in remote-only mode.",
+  seedBusyDisabled:
+    "Wait for the current turn to finish before changing the first skill.",
+  seedModalTitle: "Attach as first skill",
+  seedModalHelp:
+    "Import a skill to anchor this agent. It becomes the agent’s first skill when you create it — not a catalog pack.",
+  seedSourceRemoteUnavailable:
+    "GitHub and npx sources aren’t available in remote-only mode. Paste Markdown instead.",
+  seedAttach: "Attach skill",
+  seedAttaching: "Attaching...",
+  seedAttachFailed: "Could not attach that skill.",
+  seedReviewLabel: "First skill",
+  seedReviewSub: "Imported skill — anchors this agent.",
 } as const;

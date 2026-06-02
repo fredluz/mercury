@@ -77,4 +77,23 @@ export default {
   creatorCommitting: "Confirmando...",
   auto: "Auto",
   local: "Local",
+  seedCreateFromSkill: "Criar a partir de habilidade",
+  seedHeaderHint: "Ancore este agente com uma habilidade existente",
+  seedChip: "Primeira habilidade: {{name}}",
+  seedReplace: "Substituir",
+  seedClear: "Remover",
+  seedRemoteDisabled:
+    "Anexar uma habilidade não está disponível no modo somente remoto.",
+  seedBusyDisabled:
+    "Aguarde o término do turno atual antes de alterar a primeira habilidade.",
+  seedModalTitle: "Anexar como primeira habilidade",
+  seedModalHelp:
+    "Importe uma habilidade para ancorar este agente. Ela se torna a primeira habilidade do agente ao criá-lo — não um pacote do catálogo.",
+  seedSourceRemoteUnavailable:
+    "Fontes do GitHub e npx não estão disponíveis no modo somente remoto. Cole Markdown em vez disso.",
+  seedAttach: "Anexar habilidade",
+  seedAttaching: "Anexando...",
+  seedAttachFailed: "Não foi possível anexar essa habilidade.",
+  seedReviewLabel: "Primeira habilidade",
+  seedReviewSub: "Habilidade importada — ancora este agente.",
 } as const;

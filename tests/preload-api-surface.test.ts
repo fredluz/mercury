@@ -254,6 +254,7 @@ describe("New APIs from v0.8/v0.9 features", () => {
       "createAgentDraft",
       "getAgentDraft",
       "updateAgentDraft",
+      "attachAgentSeedSkill",
       "abandonAgentDraft",
       "commitAgentDraft",
       "onAgentDraftChanged",
@@ -266,11 +267,14 @@ describe("New APIs from v0.8/v0.9 features", () => {
       expect(typeMethods).toContain(method);
     }
     expect(preloadSrc).toContain('ipcRenderer.invoke("update-agent-draft", request)');
+    expect(preloadSrc).toContain('ipcRenderer.invoke("attach-agent-seed-skill", request)');
     expect(preloadSrc).toContain('ipcRenderer.invoke("get-agent-avatar-data-url", profile)');
     expect(preloadSrc).toContain('ipcRenderer.invoke("set-agent-avatar", request)');
     expect(preloadSrc).toContain('ipcRenderer.invoke("clear-agent-avatar", request)');
     expect(preloadSrc.match(/ipcRenderer\.on\("agent-draft-changed", handler\)/g) ?? []).toHaveLength(1);
     expect(preloadTypes).toContain("AgentDraftChangeEvent");
+    expect(preloadTypes).toContain("AttachAgentSeedSkillRequest");
+    expect(preloadTypes).toContain("AttachAgentSeedSkillResult");
     expect(preloadTypes).toContain("SetAgentAvatarRequest");
     expect(preloadTypes).toContain("ClearAgentAvatarRequest");
     expect(preloadTypes).toContain("AgentAvatarMutationResult");

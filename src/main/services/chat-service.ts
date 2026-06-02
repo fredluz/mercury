@@ -60,6 +60,7 @@ import type {
   AgentDraftMemorySelection,
   AgentDraftModelSelection,
   AgentDraftPatch,
+  AgentSeedSkill,
 } from "../../shared/agents";
 import type { TraceEvent, TraceEventType, TraceUsage } from "../../shared/traces";
 import {
@@ -178,6 +179,8 @@ function draftIdFromPayload(payload: unknown): string | undefined {
 
 type NormalizedDraftMutationDelta = {
   draftId: string;
+  mutationId?: string;
+  expectedRevision?: number;
   patch: Record<string, unknown>;
 };
 
@@ -254,7 +257,7 @@ function buildAgentCreationInstructions(draft: AgentCreationDraft): string {
   return `You are Mercury helping Fred build an agent draft in Mercury.
 
 Current persisted draft snapshot (authoritative for this turn):
-${JSON.stringify(draft, null, 2)}
+${JSON.stringify(draftForAgentCreationPrompt(draft), null, 2)}${seedSkillBriefing(draft.seedSkill)}
 
 Valid Mercury agent pack/toolset/skill vocabulary:
 ${JSON.stringify({ packs, toolsetKeys, skillOverrideKeys, docsPointerIds }, null, 2)}
@@ -270,8 +273,52 @@ DELTA CONTRACT:
 - Docs are deltas: use addDocsPointers with complete {id,title,path?,url?} entries and removeDocsPointerIds with ids.
 - toolsetOverrides is a touched-key map keyed by toolsetKeys. Use true/false to set; use null to clear an existing override key.
 - skillOverrides is a touched-key map keyed by skillOverrideKeys. Use true/false to set; use null to clear an existing override key.
+- seedSkill is managed by Mercury UI/import flows only. Do not emit seedSkill in <draft-mutation>; Mercury ignores it.
 - For model and memory objects, include only changed keys; Mercury will merge them with the current draft snapshot.
 - Never claim a draft change happened unless you emit the corresponding <draft-mutation> block.`;
+}
+
+function draftForAgentCreationPrompt(draft: AgentCreationDraft): Record<string, unknown> {
+  const snapshot = JSON.parse(JSON.stringify(draft)) as Record<string, unknown>;
+  snapshot.seedSkill = draft.seedSkill
+    ? seedSkillPromptSummary(draft.seedSkill)
+    : draft.seedSkill;
+  return snapshot;
+}
+
+function seedSkillPromptSummary(seedSkill: AgentSeedSkill): Record<string, unknown> {
+  const directoryName = seedSkill.kind === "source" ? seedSkill.directoryName : seedSkill.name;
+  return {
+    kind: seedSkill.kind,
+    name: seedSkill.name,
+    category: seedSkill.category,
+    directoryName,
+    description: seedSkill.description,
+    fingerprint: seedSkill.fingerprint,
+    contentPreview: "[redacted: see Seed skill briefing]",
+  };
+}
+
+function seedSkillBriefing(seedSkill: AgentSeedSkill | null | undefined): string {
+  if (!seedSkill) return "";
+  const directoryName = seedSkill.kind === "source" ? seedSkill.directoryName : seedSkill.name;
+  return `
+
+Seed skill briefing (capped; use for context only, do not copy into mutations):
+${JSON.stringify(
+  {
+    kind: seedSkill.kind,
+    name: seedSkill.name,
+    category: seedSkill.category,
+    directoryName,
+    description: seedSkill.description,
+    fingerprint: seedSkill.fingerprint,
+    contentPreview: seedSkill.contentPreview,
+    contentPreviewTruncated: seedSkill.contentPreviewTruncated,
+  },
+  null,
+  2,
+)}`;
 }
 
 function normalizeDraftMutationPayload(
@@ -283,7 +330,14 @@ function normalizeDraftMutationPayload(
   if (payloadDraftId && payloadDraftId !== fallbackDraftId) return null;
   const patch = isRecord(payload.patch) ? payload.patch : undefined;
   if (!patch) return null;
-  return { draftId: payloadDraftId || fallbackDraftId, patch };
+  const mutationId = typeof payload.mutationId === "string" ? payload.mutationId : undefined;
+  const expectedRevision =
+    typeof payload.expectedRevision === "number" &&
+    Number.isInteger(payload.expectedRevision) &&
+    payload.expectedRevision >= 0
+      ? payload.expectedRevision
+      : undefined;
+  return { draftId: payloadDraftId || fallbackDraftId, mutationId, expectedRevision, patch };
 }
 
 function mergeDraftMutationDelta(
@@ -604,7 +658,14 @@ export async function runChatMessage({
       const patch = mergeDraftMutationDelta(freshDraft, request.patch);
       if (!hasPatchFields(patch)) return;
       const result = await updateAgentDraft(
-        { draftId: options.agentDraftId, patch },
+        {
+          draftId: options.agentDraftId,
+          ...(request.mutationId ? { mutationId: request.mutationId } : {}),
+          ...(request.expectedRevision !== undefined
+            ? { expectedRevision: request.expectedRevision }
+            : {}),
+          patch,
+        },
         { onChange: callbacks?.onAgentDraftChanged },
       );
       if (!result.success) {
@@ -627,11 +688,26 @@ export async function runChatMessage({
 
     const payload = extractAgentDraftMutationPayload(traceEvent);
     if (payload === undefined) return;
-    if (draftIdFromPayload(payload) !== options.agentDraftId) return;
+    const request = normalizeDraftMutationPayload(payload, options.agentDraftId);
+    if (!request || request.draftId !== options.agentDraftId) return;
+    const freshDraft = await getAgentDraft(options.agentDraftId);
+    if (!freshDraft) return;
+    const patch = mergeDraftMutationDelta(freshDraft, request.patch);
+    if (!hasPatchFields(patch)) return;
 
-    const result = await updateAgentDraft(payload, {
-      onChange: callbacks?.onAgentDraftChanged,
-    });
+    const result = await updateAgentDraft(
+      {
+        draftId: options.agentDraftId,
+        ...(request.mutationId ? { mutationId: request.mutationId } : {}),
+        ...(request.expectedRevision !== undefined
+          ? { expectedRevision: request.expectedRevision }
+          : {}),
+        patch,
+      },
+      {
+        onChange: callbacks?.onAgentDraftChanged,
+      },
+    );
     if (!result.success) {
       const recordedEvent = recordChatTraceEvent(
         "trace agent draft mutation failed",

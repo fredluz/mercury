@@ -140,13 +140,18 @@ liveDescribe("live conversational agent creator via chat-service.runChatMessage"
     }
   });
 
-  it("spends real tokens and populates two agent drafts through draft mutations", async () => {
-    hermesHome = createLiveHermesHome();
-    process.env.HERMES_HOME = hermesHome;
+  it("spends real tokens, populates drafts, and commits an attached seed skill", async () => {
+    const liveHome = createLiveHermesHome();
+    hermesHome = liveHome;
+    process.env.HERMES_HOME = liveHome;
     process.env.MERCURY_CHAT_SYNTHETIC_STREAM = "0";
     process.env.NODE_ENV = "test";
 
-    const [{ createAgentDraft, getAgentDraft }, chatService, gateway] = await Promise.all([
+    const [
+      { attachAgentSeedSkill, commitAgentDraft, createAgentDraft, getAgentDraft },
+      chatService,
+      gateway,
+    ] = await Promise.all([
       import("../src/main/services/agents-service"),
       import("../src/main/services/chat-service"),
       import("../src/main/hermes/gateway"),
@@ -268,13 +273,119 @@ liveDescribe("live conversational agent creator via chat-service.runChatMessage"
       });
     }
 
+    const seedMarkdown = [
+      "# Field Notes Synthesizer",
+      "",
+      "Use this skill to design agents that turn messy field notes into concise operational briefs.",
+      "",
+      "## Workflow",
+      "- Extract actors, constraints, and unresolved decisions.",
+      "- Produce a short brief with risks and next actions.",
+      "- Ask one clarifying question when source notes conflict.",
+      "",
+    ].join("\n");
+    const seedDraft = await createAgentDraft({
+      displayName: "Live E2E Seed Skill Draft",
+    });
+    const seedChanges: AgentDraftChangeEvent[] = [];
+    const attachResult = await attachAgentSeedSkill(
+      {
+        draftId: seedDraft.id,
+        expectedRevision: seedDraft.revision,
+        seedSkill: {
+          kind: "markdown",
+          markdown: seedMarkdown,
+          name: "field-notes-synthesizer",
+          category: "e2e",
+          description: "Turns messy field notes into concise operational briefs.",
+        },
+      },
+      { onChange: (event) => seedChanges.push(event) },
+    );
+    expect(attachResult.success, attachResult.success ? "" : attachResult.error).toBe(true);
+    if (!attachResult.success) throw new Error(attachResult.error);
+    expect(attachResult.draft.seedSkill?.kind).toBe("markdown");
+    expect(attachResult.draft.seedSkill?.category).toBe("e2e");
+    expect(attachResult.draft.seedSkill?.name).toBe("field-notes-synthesizer");
+    expect(seedChanges.flatMap((event) => event.changes).map((change) => change.path)).toContain(
+      "seedSkill",
+    );
+
+    const seedTurnChunks: string[] = [];
+    const seedTurnTraces: TraceEvent[] = [];
+    const seedTurnUsage: unknown[] = [];
+    const seedTurnDraftChanges: AgentDraftChangeEvent[] = [];
+    const seedUserMessage =
+      "Design this agent around the attached skill. Do not call tools. Choose a clear display name, description, persona, and set model provider opencode-go with model deepseek-v4-flash. Keep the attached seed skill as the first required skill and emit the draft mutation block for the changes you decide.";
+    const seedResponse = await withTimeout(
+      "seed skill turn",
+      chatService.runChatMessage({
+        message: seedUserMessage,
+        profile: "default",
+        history: [],
+        options: { mode: "agent-creation", agentDraftId: seedDraft.id },
+        callbacks: {
+          onChunk: (text) => seedTurnChunks.push(text),
+          onError: (error) => {
+            throw new Error(error);
+          },
+          onLiveTraceEvent: (event) => seedTurnTraces.push(event),
+          onUsage: (event) => seedTurnUsage.push(event),
+          onAgentDraftChanged: (event) => seedTurnDraftChanges.push(event),
+        },
+      }),
+    );
+    const finalSeedDraft = await getAgentDraft(seedDraft.id);
+    if (!finalSeedDraft) throw new Error("Seed draft missing after live turn.");
+    const seedAppliedDeltas = seedTurnDraftChanges.flatMap((event) => event.changes);
+    expect(seedResponse.response.trim().length, "seed assistant response").toBeGreaterThan(0);
+    expect(seedTurnChunks.join("").trim().length, "seed assistant chunks").toBeGreaterThan(0);
+    expect(seedAppliedDeltas.length, "seed draft mutation deltas").toBeGreaterThan(0);
+    expect(seedTurnUsage.length, "seed usage").toBeGreaterThan(0);
+    expect(
+      seedTurnTraces.some((event) => event.type === "approval.requested"),
+      "seed approval hang guard",
+    ).toBe(false);
+    expect(finalSeedDraft.seedSkill?.kind).toBe("markdown");
+    expect(finalSeedDraft.seedSkill?.category).toBe("e2e");
+    expect(finalSeedDraft.seedSkill?.name).toBe("field-notes-synthesizer");
+    expect(finalSeedDraft.model?.provider, "seed model provider").toBe("opencode-go");
+    expect(finalSeedDraft.model?.model, "seed model").toBe("deepseek-v4-flash");
+
+    const seedCommit = await commitAgentDraft({
+      draftId: finalSeedDraft.id,
+      expectedRevision: finalSeedDraft.revision,
+      activate: false,
+    });
+    expect(seedCommit.success, seedCommit.success ? "" : seedCommit.error).toBe(true);
+    if (!seedCommit.success) throw new Error(seedCommit.error);
+    const installedSeedSkill = join(
+      liveHome,
+      "profiles",
+      finalSeedDraft.profile,
+      "skills",
+      "e2e",
+      "field-notes-synthesizer",
+      "SKILL.md",
+    );
+    expect(existsSync(installedSeedSkill), installedSeedSkill).toBe(true);
+    expect(readFileSync(installedSeedSkill, "utf8")).toContain("Field Notes Synthesizer");
+
     const report = {
-      hermesHome,
+      hermesHome: liveHome,
       provider: "opencode-go",
       model: "deepseek-v4-flash",
-      realTokensFlowed: results.every((result) =>
-        result.turns.some((turn) => turn.usage.length > 0),
-      ),
+      realTokensFlowed:
+        results.every((result) => result.turns.some((turn) => turn.usage.length > 0)) &&
+        seedTurnUsage.length > 0,
+      seedSkillScenario: {
+        draftId: finalSeedDraft.id,
+        profile: finalSeedDraft.profile,
+        installedSkill: installedSeedSkill,
+        draftChangePaths: seedAppliedDeltas.map((change) => change.path),
+        usage: seedTurnUsage,
+        visibleResponse: seedResponse.response,
+      },
       scenarios: results.map((result) => ({
         name: result.name,
         draftId: result.draftId,

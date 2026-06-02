@@ -11,6 +11,11 @@ import {
   writeAgentsState,
 } from "../agent-store";
 import {
+  applyDraftSeedSkill,
+  attachSeedSkillToDraft,
+  seedSkillTargetKey,
+} from "./agent-seed-skill-service";
+import {
   createProfileForConnection,
   deleteProfileForConnection,
   listProfilesForConnection,
@@ -48,6 +53,7 @@ import type {
   AgentDraftChangeEvent,
   AgentDraftMutationRequest,
   AgentDraftMutationResult,
+  AttachAgentSeedSkillResult,
   CreateAgentDraftRequest,
 } from "../../shared/agents";
 import {
@@ -568,6 +574,17 @@ export async function updateAgentDraft(
   return result;
 }
 
+export async function attachAgentSeedSkill(
+  request: unknown,
+  options: { onChange?: AgentDraftChangeListener } = {},
+): Promise<AttachAgentSeedSkillResult> {
+  const result = await attachSeedSkillToDraft(request);
+  if (result.success && result.changed && result.event) {
+    coordinateDraftChangeNotification(result.event, options.onChange);
+  }
+  return result;
+}
+
 export async function abandonAgentDraft(
   draftId: string,
   options: { onChange?: AgentDraftChangeListener } = {},
@@ -663,6 +680,10 @@ export async function commitAgentDraft(
   );
   const docsPointers = mergeDocsPointers(expanded.docsPointers, draft.docsPointers);
   const metadata = profileMetadataFromDraft(draft, expanded.packIds, docsPointers);
+  const skillTargets = dedupeSkillTargetsForSeed(
+    expanded.skillTargets,
+    draft.seedSkill,
+  );
 
   const existingProfile = existingProfiles.find((profile) => profile.name === draft.profile);
   if (existingProfile) {
@@ -709,7 +730,8 @@ export async function commitAgentDraft(
     await applyDraftPersonaAndMemory(draft);
 
     await applyDraftToolsets(draft, expanded.toolKeys);
-    await applyDraftSkills(draft, expanded.skillTargets);
+    await applyDraftSeedSkill(draft);
+    await applyDraftSkills(draft, skillTargets);
 
     await writeProfileMetadataForConnection(connection, draft.profile, metadata);
     metadataWritten = true;
@@ -839,6 +861,18 @@ async function applyDraftSkills(
   }
 }
 
+function dedupeSkillTargetsForSeed(
+  skillTargets: SkillMutationTarget[],
+  seedSkill: AgentCreationDraft["seedSkill"],
+): SkillMutationTarget[] {
+  const key = seedSkillTargetKey(seedSkill);
+  if (!key) return skillTargets;
+  return skillTargets.filter((target) => {
+    const targetDirectory = target.directoryName || target.name;
+    return `${target.category ?? ""}/${targetDirectory}` !== key;
+  });
+}
+
 function mergeDocsPointers(
   packDocsPointers: AgentDocsPointerSelection[],
   draftDocsPointers: AgentDocsPointerSelection[],
@@ -862,6 +896,9 @@ function profileMetadataFromDraft(
     ...(draft.description?.trim() ? { description: draft.description.trim() } : {}),
     selectedPackIds: [...selectedPackIds],
     docsPointers: docsPointers.map((pointer) => ({ ...pointer })),
+    ...(draft.seedSkill?.fingerprint
+      ? { seedSkillFingerprint: draft.seedSkill.fingerprint }
+      : {}),
   };
 }
 
@@ -919,7 +956,9 @@ function profileMatchesMetadata(
     profile.displayName === (metadata.displayName || profile.name) &&
     (profile.description ?? undefined) === (metadata.description ?? undefined) &&
     JSON.stringify(profile.selectedPackIds) === JSON.stringify(metadata.selectedPackIds ?? []) &&
-    JSON.stringify(profile.docsPointers) === JSON.stringify(metadata.docsPointers ?? [])
+    JSON.stringify(profile.docsPointers) === JSON.stringify(metadata.docsPointers ?? []) &&
+    (profile.seedSkillFingerprint ?? undefined) ===
+      (metadata.seedSkillFingerprint ?? undefined)
   );
 }
 
@@ -1063,6 +1102,12 @@ function createNotification(
   change: AgentDraftChange,
   debounced: boolean,
 ): AgentDraftChangeEvent["notification"] {
+  if (change.path === "seedSkill") {
+    return {
+      text: change.next ? "Attached seed skill." : "Removed seed skill.",
+      debounced,
+    };
+  }
   return {
     text: createNotificationText(change.path),
     previousText: valueToNotificationText(change.previous),

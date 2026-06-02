@@ -16,6 +16,11 @@ import type {
   AgentDraftMutationRequest,
   AgentDraftMutationResult,
   AgentDraftPatch,
+  AgentSeedSkill,
+  AgentSeedSkillBase,
+  AgentSeedSkillSource,
+  AttachAgentSeedSkillRequest,
+  AttachAgentSeedSkillResult,
   CreateAgentDraftRequest,
 } from "../shared/agents";
 import { DEFAULT_AGENT_PACK_IDS } from "../shared/agent-packs";
@@ -178,6 +183,73 @@ export async function mutateAgentDraft(
   };
 }
 
+export async function setAgentDraftSeedSkill(
+  request: Omit<AttachAgentSeedSkillRequest, "seedSkill"> & {
+    seedSkill: AgentSeedSkill | null;
+  },
+): Promise<AttachAgentSeedSkillResult> {
+  const state = await readAgentsState();
+  const draft = state.drafts[request.draftId];
+  if (!draft) {
+    return {
+      success: false,
+      code: "not-found",
+      error: `Agent draft '${request.draftId}' was not found.`,
+    };
+  }
+
+  if (request.mutationId && draft.mutationIds.includes(request.mutationId)) {
+    return { success: true, draft: cloneDraft(draft), changed: false };
+  }
+
+  if (draft.status !== "draft") {
+    return {
+      success: false,
+      code: "immutable-agent",
+      error: "Only draft agents can be modified.",
+      draft: cloneDraft(draft),
+    };
+  }
+
+  if (
+    typeof request.expectedRevision === "number" &&
+    request.expectedRevision !== draft.revision
+  ) {
+    return {
+      success: false,
+      code: "conflict",
+      error: `Agent draft '${request.draftId}' is at revision ${draft.revision}, not ${request.expectedRevision}.`,
+      draft: cloneDraft(draft),
+    };
+  }
+
+  const changes: AgentDraftChange[] = [];
+  setIfChanged(draft, "seedSkill", request.seedSkill, changes);
+  if (request.mutationId) draft.mutationIds.push(request.mutationId);
+
+  if (changes.length === 0) {
+    await writeAgentsState(state);
+    return { success: true, draft: cloneDraft(draft), changed: false };
+  }
+
+  draft.revision += 1;
+  draft.updatedAt = new Date().toISOString();
+  await writeAgentsState(state);
+
+  const snapshot = cloneDraft(draft);
+  return {
+    success: true,
+    draft: snapshot,
+    changed: true,
+    event: {
+      draftId: draft.id,
+      revision: draft.revision,
+      changes,
+      snapshot,
+    },
+  };
+}
+
 export const deriveBackendProfileId = deriveProfileIdFromDisplayName;
 export const isValidBackendProfileId = isValidProfileName;
 
@@ -231,6 +303,7 @@ function normalizeDraft(id: string, value: unknown): AgentCreationDraft | null {
     docsPointers: docsPointers(value.docsPointers),
     toolsetOverrides: booleanRecord(value.toolsetOverrides),
     skillOverrides: booleanRecord(value.skillOverrides),
+    seedSkill: normalizeSeedSkill(value.seedSkill),
     mutationIds: stringArray(value.mutationIds),
     createdAt: stringValue(value.createdAt) || now,
     updatedAt: stringValue(value.updatedAt) || now,
@@ -349,6 +422,58 @@ function booleanRecord(value: unknown): Record<string, boolean> {
     if (typeof enabled === "boolean") result[key] = enabled;
   }
   return result;
+}
+
+function normalizeSeedSkill(value: unknown): AgentSeedSkill | null | undefined {
+  if (value === null) return null;
+  if (!isRecord(value)) return undefined;
+  const base = normalizeSeedSkillBase(value);
+  if (!base) return undefined;
+
+  if (value.kind === "markdown") {
+    const markdown = stringValue(value.markdown);
+    if (!markdown) return undefined;
+    return { ...base, kind: "markdown", markdown };
+  }
+
+  if (value.kind === "source") {
+    const source = stringValue(value.source);
+    const candidateId = stringValue(value.candidateId);
+    const directoryName = stringValue(value.directoryName);
+    if (!source || !candidateId || !directoryName) return undefined;
+    if (!isRecord(value.request) || !isRecord(value.candidate)) return undefined;
+    return {
+      ...base,
+      kind: "source",
+      source,
+      candidateId,
+      directoryName,
+      request: { ...value.request } as AgentSeedSkillSource["request"],
+      candidate: { ...value.candidate } as AgentSeedSkillSource["candidate"],
+    };
+  }
+
+  return undefined;
+}
+
+function normalizeSeedSkillBase(
+  value: Record<string, unknown>,
+): AgentSeedSkillBase | null {
+  const name = stringValue(value.name);
+  const category = stringValue(value.category);
+  const description = typeof value.description === "string" ? value.description : undefined;
+  const fingerprint = stringValue(value.fingerprint);
+  const contentPreview = typeof value.contentPreview === "string" ? value.contentPreview : undefined;
+  if (!name || !category || !fingerprint || contentPreview === undefined) return null;
+  return {
+    name,
+    category,
+    description: description ?? "",
+    fingerprint,
+    contentPreview,
+    contentPreviewTruncated: value.contentPreviewTruncated === true,
+    overwrite: value.overwrite === true,
+  };
 }
 
 function nonNegativeInteger(value: unknown): number {

@@ -170,6 +170,7 @@ function normalizeProfileAgentMetadata(value: unknown): ProfileAgentMetadata {
     ...optionalStringField("description", value.description),
     selectedPackIds: stringArray(value.selectedPackIds),
     docsPointers: docsPointers(value.docsPointers),
+    ...optionalStringField("seedSkillFingerprint", value.seedSkillFingerprint),
     ...optionalAvatarMetadata(value.avatar),
   };
 }
@@ -198,7 +199,7 @@ function optionalAvatarMetadata(
   return { avatar };
 }
 
-function optionalStringField<K extends "displayName" | "description">(
+function optionalStringField<K extends "displayName" | "description" | "seedSkillFingerprint">(
   key: K,
   value: unknown,
 ): Partial<Pick<ProfileAgentMetadata, K>> {
@@ -254,6 +255,7 @@ function profileDisplayFields(
   | "description"
   | "selectedPackIds"
   | "docsPointers"
+  | "seedSkillFingerprint"
   | "avatar"
 > {
   if (isDefault) {
@@ -265,6 +267,9 @@ function profileDisplayFields(
       ...optionalProfileDescription(metadata.description),
       selectedPackIds: [...(metadata.selectedPackIds ?? [])],
       docsPointers: [...(metadata.docsPointers ?? [])],
+      ...(metadata.seedSkillFingerprint
+        ? { seedSkillFingerprint: metadata.seedSkillFingerprint }
+        : {}),
     };
   }
 
@@ -277,6 +282,9 @@ function profileDisplayFields(
     ...optionalProfileAvatar(metadata.avatar),
     selectedPackIds: [...(metadata.selectedPackIds ?? [])],
     docsPointers: [...(metadata.docsPointers ?? [])],
+    ...(metadata.seedSkillFingerprint
+      ? { seedSkillFingerprint: metadata.seedSkillFingerprint }
+      : {}),
   };
 }
 

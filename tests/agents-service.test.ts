@@ -46,6 +46,8 @@ const { TEST_HOME, execFileSyncMock, serviceMocks, sshMocks, KNOWN_TOOLSETS } =
         getToolsetsForProfile: vi.fn(),
         setToolsetEnabledForProfile: vi.fn(),
         mutateSkillsForProfile: vi.fn(),
+        importSkillMarkdownForProfile: vi.fn(),
+        importSkillSourceForProfile: vi.fn(),
         writeSoulForProfile: vi.fn(),
         writeUserProfileForProfile: vi.fn(),
         addMemoryEntryForProfile: vi.fn(),
@@ -87,6 +89,8 @@ vi.mock("../src/main/services/knowledge-service", () => ({
   addMemoryEntryForProfile: serviceMocks.addMemoryEntryForProfile,
   getToolsetsForProfile: serviceMocks.getToolsetsForProfile,
   mutateSkillsForProfile: serviceMocks.mutateSkillsForProfile,
+  importSkillMarkdownForProfile: serviceMocks.importSkillMarkdownForProfile,
+  importSkillSourceForProfile: serviceMocks.importSkillSourceForProfile,
   setToolsetEnabledForProfile: serviceMocks.setToolsetEnabledForProfile,
   writeSoulForProfile: serviceMocks.writeSoulForProfile,
   writeUserProfileForProfile: serviceMocks.writeUserProfileForProfile,
@@ -114,6 +118,7 @@ import {
 } from "../src/main/agent-store";
 import {
   abandonAgentDraft,
+  attachAgentSeedSkill,
   cancelAgentDraftNotifications,
   commitAgentDraft,
   createAgentDraft,
@@ -239,6 +244,39 @@ beforeEach(() => {
       changed: true,
     })),
   }));
+  serviceMocks.importSkillMarkdownForProfile.mockReset();
+  serviceMocks.importSkillMarkdownForProfile.mockResolvedValue({
+    success: true,
+    skill: {
+      name: "seed-skill",
+      category: "research",
+      description: "Seed skill",
+      path: join(PROFILES_DIR, "seed_bot", "skills", "research", "seed-skill"),
+    },
+  });
+  serviceMocks.importSkillSourceForProfile.mockReset();
+  serviceMocks.importSkillSourceForProfile.mockResolvedValue({
+    success: true,
+    skill: {
+      name: "seed-skill",
+      category: "research",
+      description: "Seed skill",
+      path: join(PROFILES_DIR, "seed_bot", "skills", "research", "seed-skill"),
+      directoryName: "seed-skill",
+    },
+    source: { kind: "github", owner: "acme", repo: "skills", originalSource: "https://github.com/acme/skills", pathKind: "repo" },
+    candidate: {
+      candidateId: "github:acme/skills@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:research/seed-skill/SKILL.md",
+      name: "seed-skill",
+      category: "research",
+      directoryName: "seed-skill",
+      description: "Seed skill",
+      skillPath: "research/seed-skill/SKILL.md",
+      sourceLabel: "acme/skills",
+      commitSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      valid: true,
+    },
+  });
   serviceMocks.writeSoulForProfile.mockReset();
   serviceMocks.writeSoulForProfile.mockResolvedValue(true);
   serviceMocks.writeUserProfileForProfile.mockReset();
@@ -855,6 +893,91 @@ describe("agents service draft lifecycle", () => {
     );
     // The excluded web tool is not enabled.
     expect(toolToggleMap().web).toBe(false);
+  });
+
+  it("attaches a markdown seed skill, imports it before pack skills, dedupes matching pack target, and stores only fingerprint metadata", async () => {
+    const draft = await createAgentDraft({
+      draftId: "draft-seed-skill",
+      displayName: "Seed Researcher",
+      profileId: "seed_researcher",
+    });
+    const configured = await updateAgentDraft({
+      draftId: draft.id,
+      expectedRevision: draft.revision,
+      mutationId: "configure-seed-skill",
+      patch: {
+        model: { provider: "openai", model: "gpt-4.1", baseUrl: "" },
+        selectedPackIds: ["research"],
+      },
+    });
+    expect(configured.success).toBe(true);
+    if (!configured.success) return;
+
+    const events: AgentDraftChangeEvent[] = [];
+    const attached = await attachAgentSeedSkill(
+      {
+        draftId: draft.id,
+        expectedRevision: configured.draft.revision,
+        mutationId: "attach-seed-skill",
+        seedSkill: {
+          kind: "markdown",
+          markdown:
+            "---\nname: arxiv\ndescription: Seeded arxiv replacement\n---\n# arxiv\nSeed instructions.",
+          category: "research",
+        },
+      },
+      { onChange: (event) => events.push(event) },
+    );
+    expect(attached.success).toBe(true);
+    if (!attached.success) return;
+    expect(attached.draft.seedSkill).toMatchObject({
+      kind: "markdown",
+      name: "arxiv",
+      category: "research",
+      overwrite: false,
+      fingerprint: expect.stringMatching(/^sha256:/),
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      changes: [expect.objectContaining({ path: "seedSkill" })],
+      notification: { text: "Attached seed skill.", debounced: false },
+    });
+    expect(JSON.stringify(events[0]?.notification)).not.toContain("Seed instructions");
+
+    const result = await commitAgentDraft({
+      draftId: draft.id,
+      expectedRevision: attached.draft.revision,
+    });
+    expect(result.success).toBe(true);
+    expect(serviceMocks.importSkillMarkdownForProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        markdown: expect.stringContaining("Seed instructions."),
+        name: "arxiv",
+        category: "research",
+        description: "Seeded arxiv replacement",
+        overwrite: false,
+      }),
+      "seed_researcher",
+    );
+    const [skillTargets] = serviceMocks.mutateSkillsForProfile.mock.calls[0];
+    expect(skillTargets).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ category: "research", directoryName: "arxiv" }),
+      ]),
+    );
+    expect(skillTargets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ category: "research", directoryName: "blogwatcher" }),
+      ]),
+    );
+    expect(
+      serviceMocks.importSkillMarkdownForProfile.mock.invocationCallOrder[0],
+    ).toBeLessThan(serviceMocks.mutateSkillsForProfile.mock.invocationCallOrder[0]);
+
+    const metadata = readAgentMetadata("seed_researcher");
+    expect(metadata.seedSkillFingerprint).toBe(attached.draft.seedSkill?.fingerprint);
+    expect(JSON.stringify(metadata)).not.toContain("Seed instructions");
+    expect(JSON.stringify(metadata)).not.toContain("markdown");
   });
 
   it("rolls back profile creation and does not persist metadata when skill application fails", async () => {

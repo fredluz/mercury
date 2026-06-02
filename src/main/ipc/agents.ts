@@ -3,6 +3,7 @@ import type { AgentCommitRequest } from "../../shared/agents";
 import type { IpcRegistrationContext } from "./types";
 import {
   abandonAgentDraft,
+  attachAgentSeedSkill,
   clearAgentAvatar,
   commitAgentDraft,
   createAgentDraft,
@@ -38,6 +39,12 @@ export function registerAgentsIpc({ getMainWindow: _getMainWindow }: IpcRegistra
   );
   ipcMain.handle("update-agent-draft", (event, request: unknown) =>
     updateAgentDraft(request, {
+      onChange: (draftEvent) =>
+        safeSend(event.sender, "agent-draft-changed", draftEvent),
+    }),
+  );
+  ipcMain.handle("attach-agent-seed-skill", (event, request: unknown) =>
+    attachAgentSeedSkill(request, {
       onChange: (draftEvent) =>
         safeSend(event.sender, "agent-draft-changed", draftEvent),
     }),

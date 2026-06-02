@@ -9,8 +9,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AgentCreationDraft,
   AgentDraftChangeEvent,
+  AgentSeedSkill,
 } from "../../../../shared/agents";
 import type { ProfileInfo } from "../../../../shared/profiles";
+import type { SkillSourceCandidate } from "../../../../shared/skills";
 import { normalizeAvatarFileToPngDataUrl } from "../../utils/agent-avatar-image";
 import Agents from "./Agents";
 
@@ -99,6 +101,46 @@ const draft: AgentCreationDraft = {
   updatedAt: "2026-06-01T00:00:00.000Z",
 };
 
+const seedSkill: AgentSeedSkill = {
+  kind: "markdown",
+  name: "my-skill",
+  category: "custom",
+  description: "Does a thing",
+  fingerprint: "fp-1",
+  contentPreview: "preview",
+  contentPreviewTruncated: false,
+  overwrite: false,
+  markdown: "# my-skill",
+};
+
+const seededDraft: AgentCreationDraft = {
+  ...draft,
+  revision: 2,
+  selectedPackIds: [],
+  seedSkill,
+};
+
+const candidateA: SkillSourceCandidate = {
+  candidateId: "github:owner/repo@sha1:skills/a",
+  name: "Skill A",
+  category: "custom",
+  directoryName: "skill-a",
+  description: "First candidate",
+  skillPath: "skills/a/SKILL.md",
+  sourceLabel: "owner/repo",
+  commitSha: "sha1",
+  valid: true,
+};
+
+const candidateB: SkillSourceCandidate = {
+  ...candidateA,
+  candidateId: "github:owner/repo@sha1:skills/b",
+  name: "Skill B",
+  directoryName: "skill-b",
+  description: "Second candidate",
+  skillPath: "skills/b/SKILL.md",
+};
+
 let draftChangedCallback: ((event: AgentDraftChangeEvent) => void) | null =
   null;
 
@@ -114,6 +156,23 @@ function installHermesApiMock(
       }),
       createAgentDraft: vi.fn().mockResolvedValue(draft),
       getAgentDraft: vi.fn().mockResolvedValue(draft),
+      isRemoteOnlyMode: vi.fn().mockResolvedValue(false),
+      attachAgentSeedSkill: vi.fn().mockResolvedValue({
+        success: true,
+        draft: seededDraft,
+        changed: true,
+      }),
+      previewSkillSource: vi.fn().mockResolvedValue({
+        success: true,
+        source: {
+          kind: "github",
+          owner: "owner",
+          repo: "repo",
+          originalSource: "owner/repo",
+          pathKind: "repo",
+        },
+        candidates: [candidateA],
+      }),
       commitAgentDraft: vi.fn().mockResolvedValue({
         success: false,
         code: "commit-failed",
@@ -204,8 +263,12 @@ describe("Agents conversational creator", () => {
     expect(screen.queryByTitle("agents.actionTools")).not.toBeInTheDocument();
     expect(screen.queryByTitle("agents.actionPersona")).not.toBeInTheDocument();
     expect(screen.queryByTitle("agents.actionMemory")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("agents.setAvatarFor")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("agents.clearAvatarFor")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("agents.setAvatarFor"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("agents.clearAvatarFor"),
+    ).not.toBeInTheDocument();
     expect(screen.getByTitle("agents.actionChat")).toBeInTheDocument();
   });
 
@@ -220,7 +283,8 @@ describe("Agents conversational creator", () => {
     expect(await screen.findByText("Research Buddy")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("agents.setAvatarFor"));
 
-    const input = container.querySelector<HTMLInputElement>("input[type='file']");
+    const input =
+      container.querySelector<HTMLInputElement>("input[type='file']");
     expect(input).toBeTruthy();
     const file = new File(["avatar"], "avatar.png", { type: "image/png" });
     fireEvent.change(input as HTMLInputElement, { target: { files: [file] } });
@@ -267,7 +331,8 @@ describe("Agents conversational creator", () => {
 
     expect(await screen.findByText("Research Buddy")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("agents.setAvatarFor"));
-    const input = container.querySelector<HTMLInputElement>("input[type='file']");
+    const input =
+      container.querySelector<HTMLInputElement>("input[type='file']");
     const file = new File(["avatar"], "avatar.png", { type: "image/png" });
     fireEvent.change(input as HTMLInputElement, { target: { files: [file] } });
 
@@ -278,7 +343,9 @@ describe("Agents conversational creator", () => {
 
   it("shows a localized clear failure message", async () => {
     installHermesApiMock({
-      listProfiles: vi.fn().mockResolvedValue([mercuryProfile, customProfileWithAvatar]),
+      listProfiles: vi
+        .fn()
+        .mockResolvedValue([mercuryProfile, customProfileWithAvatar]),
       clearAgentAvatar: vi.fn().mockResolvedValue({
         success: false,
         code: "write-failed",
@@ -436,5 +503,197 @@ describe("Agents conversational creator", () => {
     ).toBeInTheDocument();
     // The draft stays visible on the Review step.
     expect(screen.getByText("research-buddy")).toBeInTheDocument();
+  });
+
+  async function openCreator(): Promise<void> {
+    fireEvent.click(
+      await screen.findByRole("button", { name: "agents.newAgent" }),
+    );
+    await screen.findByDisplayValue("Research Buddy");
+  }
+
+  it("relocates the seed affordance from the centered CTA to the header once a seed is attached", async () => {
+    renderAgents();
+    await openCreator();
+
+    // Empty chat + no seed → centered "Create from skill" CTA, no header chip.
+    expect(
+      screen.getByRole("button", { name: /agents\.seedCreateFromSkill/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "agents.seedReplace" }),
+    ).not.toBeInTheDocument();
+
+    // A seed lands on the draft (e.g. via attach) → affordance moves to header.
+    act(() => {
+      draftChangedCallback?.({
+        draftId: draft.id,
+        revision: 2,
+        snapshot: seededDraft,
+        changes: [{ path: "seedSkill", previous: null, next: seedSkill }],
+      });
+    });
+
+    expect(
+      await screen.findByRole("button", { name: "agents.seedReplace" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /agents\.seedCreateFromSkill/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("attaches a pasted markdown skill via attachAgentSeedSkill", async () => {
+    renderAgents();
+    await openCreator();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /agents\.seedCreateFromSkill/ }),
+    );
+
+    // Modal opens on the Paste Markdown tab.
+    const markdown = await screen.findByPlaceholderText(
+      "skills.importMarkdownPlaceholder",
+    );
+    fireEvent.change(markdown, {
+      target: { value: "---\nname: my-skill\n---\n# Body" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "agents.seedAttach" }));
+
+    await waitFor(() => {
+      expect(window.hermesAPI.attachAgentSeedSkill).toHaveBeenCalledWith(
+        expect.objectContaining({
+          draftId: "draft-1",
+          expectedRevision: 1,
+          seedSkill: expect.objectContaining({
+            kind: "markdown",
+            markdown: "---\nname: my-skill\n---\n# Body",
+          }),
+        }),
+      );
+    });
+  });
+
+  it("requires a source candidate selection before a source seed can attach", async () => {
+    installHermesApiMock({
+      previewSkillSource: vi.fn().mockResolvedValue({
+        success: true,
+        source: {
+          kind: "github",
+          owner: "owner",
+          repo: "repo",
+          originalSource: "owner/repo",
+          pathKind: "repo",
+        },
+        candidates: [candidateA, candidateB],
+      }),
+    });
+    renderAgents();
+    await openCreator();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /agents\.seedCreateFromSkill/ }),
+    );
+    // Switch to the GitHub link tab.
+    fireEvent.click(
+      await screen.findByRole("tab", { name: "skills.githubLinkTab" }),
+    );
+
+    const sourceInput = screen.getByPlaceholderText(
+      "skills.sourceUrlPlaceholder",
+    );
+    fireEvent.change(sourceInput, { target: { value: "owner/repo" } });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "skills.previewSource" }),
+    );
+
+    // Two candidates and none selected → attach disabled + prompt shown.
+    expect(
+      await screen.findByText("skills.candidateRequired"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "agents.seedAttach" }),
+    ).toBeDisabled();
+
+    // Selecting a candidate enables attach.
+    fireEvent.click(screen.getByText("custom/skill-a"));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "agents.seedAttach" }),
+      ).not.toBeDisabled();
+    });
+  });
+
+  it("shows the attached seed pinned in the capabilities and review steps", async () => {
+    installHermesApiMock({
+      createAgentDraft: vi.fn().mockResolvedValue(seededDraft),
+      getAgentDraft: vi.fn().mockResolvedValue(seededDraft),
+    });
+    renderAgents();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "agents.newAgent" }),
+    );
+    await screen.findByDisplayValue("Research Buddy");
+
+    // Header chip relocates immediately because a seed is present.
+    expect(
+      screen.getByRole("button", { name: "agents.seedReplace" }),
+    ).toBeInTheDocument();
+
+    // Capabilities step shows the pinned first skill.
+    fireEvent.click(
+      screen.getByRole("button", { name: /agents\.creatorContinue/ }),
+    );
+    expect(screen.getAllByText("custom/my-skill").length).toBeGreaterThan(0);
+
+    // Review step also pins the seed (label + name).
+    fireEvent.click(
+      screen.getByRole("button", { name: /agents\.creatorContinue/ }),
+    );
+    expect(await screen.findByText("research-buddy")).toBeInTheDocument();
+    expect(
+      screen.getAllByText("agents.seedReviewLabel").length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("custom/my-skill").length).toBeGreaterThan(0);
+  });
+
+  it("clears the seed via attachAgentSeedSkill(null)", async () => {
+    const attachAgentSeedSkill = vi
+      .fn()
+      .mockResolvedValue({ success: true, draft, changed: true });
+    installHermesApiMock({
+      createAgentDraft: vi.fn().mockResolvedValue(seededDraft),
+      getAgentDraft: vi.fn().mockResolvedValue(seededDraft),
+      attachAgentSeedSkill,
+    });
+    renderAgents();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "agents.newAgent" }),
+    );
+    await screen.findByDisplayValue("Research Buddy");
+
+    // The header chip's clear control removes the seed.
+    fireEvent.click(screen.getByLabelText("agents.seedClear"));
+
+    await waitFor(() => {
+      expect(attachAgentSeedSkill).toHaveBeenCalledWith(
+        expect.objectContaining({ draftId: "draft-1", seedSkill: null }),
+      );
+    });
+  });
+
+  it("disables the seed affordance in remote-only mode", async () => {
+    installHermesApiMock({
+      isRemoteOnlyMode: vi.fn().mockResolvedValue(true),
+    });
+    renderAgents();
+    await openCreator();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /agents\.seedCreateFromSkill/ }),
+      ).toBeDisabled();
+    });
   });
 });

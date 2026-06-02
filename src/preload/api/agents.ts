@@ -8,6 +8,8 @@ import type {
   AgentDraftChangeEvent,
   AgentDraftMutationRequest,
   AgentDraftMutationResult,
+  AttachAgentSeedSkillRequest,
+  AttachAgentSeedSkillResult,
   ClearAgentAvatarRequest,
   CreateAgentDraftRequest,
   SetAgentAvatarRequest,
@@ -26,6 +28,11 @@ export const agentsApi = {
     request: AgentDraftMutationRequest,
   ): Promise<AgentDraftMutationResult> =>
     ipcRenderer.invoke("update-agent-draft", request),
+
+  attachAgentSeedSkill: (
+    request: AttachAgentSeedSkillRequest,
+  ): Promise<AttachAgentSeedSkillResult> =>
+    ipcRenderer.invoke("attach-agent-seed-skill", request),
 
   abandonAgentDraft: (
     draftId: string,

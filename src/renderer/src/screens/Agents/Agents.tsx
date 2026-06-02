@@ -15,6 +15,8 @@ import type {
   AgentCreationDraft,
   AgentDraftChangeEvent,
   AgentDraftPatch,
+  AgentSeedSkillPrepareRequest,
+  AttachAgentSeedSkillResult,
 } from "../../../../shared/agents";
 import type { ProfileInfo } from "../../../../shared/profiles";
 import AgentAvatar from "../../components/common/AgentAvatar";
@@ -72,6 +74,7 @@ function Agents({
   const [avatarTarget, setAvatarTarget] = useState<ProfileInfo | null>(null);
   const [avatarMutatingProfile, setAvatarMutatingProfile] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [remoteOnly, setRemoteOnly] = useState(false);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadAgents = useCallback(async (): Promise<void> => {
@@ -101,6 +104,21 @@ function Agents({
       }
     });
     return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.hermesAPI
+      .isRemoteOnlyMode()
+      .then((value) => {
+        if (!cancelled) setRemoteOnly(value);
+      })
+      .catch(() => {
+        if (!cancelled) setRemoteOnly(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -243,6 +261,36 @@ function Agents({
     }
   }
 
+  async function handleAttachSeedSkill(
+    seedSkill: AgentSeedSkillPrepareRequest | null,
+  ): Promise<AttachAgentSeedSkillResult> {
+    if (!currentDraft) {
+      return {
+        success: false,
+        code: "not-found",
+        error: t("agents.seedAttachFailed"),
+      };
+    }
+    const result = await window.hermesAPI.attachAgentSeedSkill({
+      draftId: currentDraft.id,
+      expectedRevision: currentDraft.revision,
+      mutationId: `ui:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+      seedSkill,
+    });
+    if (result.success) {
+      setCurrentDraft(result.draft);
+      setCommitError(null);
+    } else {
+      if (result.draft) setCurrentDraft(result.draft);
+      // The modal surfaces its own error when attaching; a clear has no modal,
+      // so surface its failure in the review pane.
+      if (seedSkill === null) {
+        setCommitError(`${result.code}: ${result.error}`);
+      }
+    }
+    return result;
+  }
+
   async function handleCommitDraft(): Promise<void> {
     if (!currentDraft || committing) return;
     setCommitting(true);
@@ -288,6 +336,8 @@ function Agents({
           commitError={commitError}
           onCommit={handleCommitDraft}
           onUpdateDraft={handleUpdateDraft}
+          onAttachSeedSkill={handleAttachSeedSkill}
+          remoteOnly={remoteOnly}
           onClose={() => {
             setCurrentDraft(null);
             setDraftNotifications([]);

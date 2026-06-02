@@ -1,4 +1,10 @@
 import type { ProfileAvatarMetadata, ProfileInfo } from "./profiles";
+import type {
+  SkillMarkdownImportRequest,
+  SkillSourceCandidate,
+  SkillSourceFailureCode,
+  SkillSourceImportRequest,
+} from "./skills";
 
 export interface AgentDocsPointerSelection {
   id: string;
@@ -27,6 +33,64 @@ export interface CreateAgentDraftRequest {
   profileId?: string;
 }
 
+export interface AgentSeedSkillBase {
+  name: string;
+  category: string;
+  description: string;
+  fingerprint: string;
+  contentPreview: string;
+  contentPreviewTruncated: boolean;
+  overwrite: boolean;
+}
+
+export interface AgentSeedSkillMarkdown extends AgentSeedSkillBase {
+  kind: "markdown";
+  markdown: string;
+}
+
+export interface AgentSeedSkillSource extends AgentSeedSkillBase {
+  kind: "source";
+  source: string;
+  candidateId: string;
+  directoryName: string;
+  request: SkillSourceImportRequest;
+  candidate: SkillSourceCandidate;
+}
+
+export type AgentSeedSkill = AgentSeedSkillMarkdown | AgentSeedSkillSource;
+
+export type AgentSeedSkillPrepareRequest =
+  | ({ kind: "markdown" } & SkillMarkdownImportRequest)
+  | ({ kind: "source" } & SkillSourceImportRequest);
+
+export interface AttachAgentSeedSkillRequest {
+  draftId: string;
+  mutationId?: string;
+  expectedRevision?: number;
+  seedSkill: AgentSeedSkillPrepareRequest | null;
+}
+
+export type AttachAgentSeedSkillResult =
+  | {
+      success: true;
+      draft: AgentCreationDraft;
+      changed: boolean;
+      event?: AgentDraftChangeEvent;
+    }
+  | {
+      success: false;
+      code:
+        | "not-found"
+        | "conflict"
+        | "validation-error"
+        | "immutable-agent"
+        | "unsupported-remote-mode"
+        | SkillSourceFailureCode;
+      error: string;
+      draft?: AgentCreationDraft;
+      candidates?: SkillSourceCandidate[];
+    };
+
 export interface AgentCreationDraft {
   id: string;
   status: AgentDraftStatus;
@@ -49,6 +113,7 @@ export interface AgentCreationDraft {
    * member.
    */
   skillOverrides: Record<string, boolean>;
+  seedSkill?: AgentSeedSkill | null;
   /** Persisted idempotency keys for deterministic draft mutation retries. */
   mutationIds: string[];
   createdAt: string;
