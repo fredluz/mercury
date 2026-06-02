@@ -1,6 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { Search, X, Refresh, Plus } from "../../assets/icons";
 import { SkillModals } from "./components/SkillModals";
+import { parseSkillMarkdownMeta } from "./skillMarkdownMeta";
 import {
   SkillCategorySection,
   type InstalledSkill,
@@ -246,6 +247,10 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
   const [importCategory, setImportCategory] = useState("custom");
   const [importDescription, setImportDescription] = useState("");
   const [importMarkdown, setImportMarkdown] = useState("");
+  // Track whether the user has manually edited Name/Description so auto-fill from
+  // pasted Markdown never clobbers their typing.
+  const [importNameTouched, setImportNameTouched] = useState(false);
+  const [importDescriptionTouched, setImportDescriptionTouched] = useState(false);
   const [importSource, setImportSource] = useState("");
   const [sourceCandidates, setSourceCandidates] = useState<SkillSourceCandidate[]>([]);
   const [selectedSourceCandidateId, setSelectedSourceCandidateId] = useState<string>("");
@@ -631,6 +636,8 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
     setImportCategory("custom");
     setImportDescription("");
     setImportMarkdown("");
+    setImportNameTouched(false);
+    setImportDescriptionTouched(false);
     setImportSource("");
     setSourceCandidates([]);
     setSelectedSourceCandidateId("");
@@ -650,6 +657,25 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
         ? t(sourceImport ? "skills.sourceImportRestartWarning" : "skills.importRestartWarning")
         : t(sourceImport ? "skills.sourceImportSuccess" : "skills.importSuccess"),
     );
+  }
+
+  function handleImportNameChange(value: string): void {
+    setImportNameTouched(true);
+    setImportName(value);
+  }
+
+  function handleImportDescriptionChange(value: string): void {
+    setImportDescriptionTouched(true);
+    setImportDescription(value);
+  }
+
+  // Pasting/editing Markdown pre-fills Name and Description from the SKILL.md
+  // frontmatter (or heading/first paragraph) unless the user has edited them.
+  function handleImportMarkdownChange(value: string): void {
+    setImportMarkdown(value);
+    const meta = parseSkillMarkdownMeta(value);
+    if (!importNameTouched && meta.name) setImportName(meta.name);
+    if (!importDescriptionTouched && meta.description) setImportDescription(meta.description);
   }
 
   function handleImportSourceChange(value: string): void {
@@ -920,14 +946,14 @@ function Skills({ profile }: SkillsProps): React.JSX.Element {
           remoteOnlyMode: remoteOnlyMode === true,
           sourceTabsAvailable: remoteOnlyMode === false,
           importName,
-          setImportName,
+          setImportName: handleImportNameChange,
           importCategory,
           setImportCategory,
           importCategoryOptions,
           importDescription,
-          setImportDescription,
+          setImportDescription: handleImportDescriptionChange,
           importMarkdown,
-          setImportMarkdown,
+          setImportMarkdown: handleImportMarkdownChange,
           importSource,
           setImportSource: handleImportSourceChange,
           sourceCandidates,

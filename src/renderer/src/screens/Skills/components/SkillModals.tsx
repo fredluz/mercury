@@ -1,8 +1,10 @@
-import type React from "react";
+import { useState, type JSX } from "react";
 import { X } from "../../../assets/icons";
 import type { SkillMarkdownImportRequest, SkillSourceCandidate } from "../../../../../shared/skills";
 
 type AddSkillMode = "markdown" | "github" | "command";
+
+const NEW_CATEGORY_SENTINEL = "__create_new_pack__";
 
 interface SkillModalsProps {
   values: {
@@ -47,7 +49,10 @@ function sourcePlaceholder(mode: AddSkillMode, t: (key: string) => string): stri
   return t("skills.sourceUrlPlaceholder");
 }
 
-export function SkillModals({ values }: SkillModalsProps): React.JSX.Element | null {
+export function SkillModals({ values }: SkillModalsProps): JSX.Element | null {
+  // Local toggle: when true, the Category control becomes a free-text input for
+  // naming a brand-new skill pack instead of picking an existing one.
+  const [creatingNewCategory, setCreatingNewCategory] = useState(false);
   const {
     t,
     importOpen,
@@ -83,6 +88,12 @@ export function SkillModals({ values }: SkillModalsProps): React.JSX.Element | n
   } = values;
 
   if (!importOpen) return null;
+
+  // Existing skill packs the skill can be filed under, plus the current value so a
+  // category resolved from a source candidate still renders as the selected option.
+  const categorySelectOptions = Array.from(
+    new Set([...importCategoryOptions, importCategory, "custom"].filter(Boolean)),
+  );
 
   const sourceMode = importMode !== "markdown";
   const selectedCandidate =
@@ -264,18 +275,47 @@ export function SkillModals({ values }: SkillModalsProps): React.JSX.Element | n
           </label>
           <label className="skills-import-field">
             <span>{t("skills.importCategory")}</span>
-            <input
-              className="skills-search-input"
-              list="skills-import-category-options"
-              value={importCategory}
-              onChange={(e) => setImportCategory(e.target.value)}
-              placeholder="custom"
-            />
-            <datalist id="skills-import-category-options">
-              {importCategoryOptions.map((category) => (
-                <option key={category} value={category} />
-              ))}
-            </datalist>
+            {creatingNewCategory ? (
+              <>
+                <input
+                  className="skills-search-input"
+                  value={importCategory}
+                  onChange={(e) => setImportCategory(e.target.value)}
+                  placeholder={t("skills.importCategoryNewPlaceholder")}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className="btn-ghost skills-category-back"
+                  onClick={() => {
+                    setCreatingNewCategory(false);
+                    setImportCategory(importCategoryOptions[0] ?? "custom");
+                  }}
+                >
+                  {t("skills.importCategoryBack")}
+                </button>
+              </>
+            ) : (
+              <select
+                className="skills-search-input"
+                value={importCategory}
+                onChange={(e) => {
+                  if (e.target.value === NEW_CATEGORY_SENTINEL) {
+                    setCreatingNewCategory(true);
+                    setImportCategory("");
+                    return;
+                  }
+                  setImportCategory(e.target.value);
+                }}
+              >
+                {categorySelectOptions.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+                <option value={NEW_CATEGORY_SENTINEL}>{t("skills.importCategoryNewOption")}</option>
+              </select>
+            )}
             <span className="skills-field-hint">{t("skills.importCategoryHint")}</span>
           </label>
           <label className="skills-import-field skills-import-field-wide">

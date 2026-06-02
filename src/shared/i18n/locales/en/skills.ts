@@ -47,7 +47,10 @@ export default {
   candidateRequired: "Choose one candidate before importing.",
   singleCandidateSummary: "Ready to import {{name}}.",
   noCandidateDescription: "No description provided.",
-  importCategoryHint: "Choose an existing category or type a new one.",
+  importCategoryHint: "Choose an existing skill pack or create a new one.",
+  importCategoryNewOption: "+ Create new skill pack…",
+  importCategoryNewPlaceholder: "new-pack-name",
+  importCategoryBack: "Use an existing pack",
   sourceImportFailed: "Failed to import source skill",
   sourceImportSuccess: "Skill imported from source.",
   sourceImportRestartWarning:
