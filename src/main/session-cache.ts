@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { HERMES_HOME } from "./installer";
 import { safeWriteFile } from "./utils";
-import Database from "better-sqlite3";
+import type Database from "better-sqlite3";
 import { sanitizeChatTitle } from "../shared/chat-metadata";
 import { t } from "../shared/i18n";
 import { getAppLocale } from "./locale";
@@ -10,6 +10,7 @@ import {
   discoverSessionProfileScopes,
   getSessionProfileScope,
   normalizeSessionProfile,
+  openSessionDb,
   sessionCacheKey,
   type SessionProfileScope,
 } from "./session-db";
@@ -114,8 +115,9 @@ function getDb(
   scope: SessionProfileScope,
   readonly = true,
 ): Database.Database | null {
-  if (!existsSync(scope.dbPath)) return null;
-  return new Database(scope.dbPath, { readonly });
+  // Open writable when callers need it, but always through the view guard
+  // (CVE-2026-119371 mitigation) since state.db can be attacker-supplied.
+  return openSessionDb(scope.dbPath, { readonly });
 }
 
 type SessionRow = {
