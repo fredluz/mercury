@@ -201,7 +201,7 @@ void sharedI18n.init({
     escapeValue: false,
   },
   resources,
-  initImmediate: false,
+  initAsync: false,
 });
 
 export function getLocale(): AppLocale {
