@@ -111,4 +111,24 @@ describe("state.db view guard (CVE-2026-119371 mitigation)", () => {
         .sort(),
     ).toEqual(["default", "research-agent"]);
   });
+
+  it("refuses a state.db whose view carries a long COLLATE operator chain (CVE-2026-119376)", () => {
+    const dbPath = dbPathForProfile(undefined);
+    mkdirSync(join(dbPath, ".."), { recursive: true });
+    const db = new Database(dbPath);
+    // CVE-2026-119376: SQLite <3.54.0 does not count chained postfix COLLATE
+    // operators against SQLITE_LIMIT_EXPR_DEPTH, so a deep chain in a view's
+    // stored SELECT drives unbounded sqlite3WalkExprNN() recursion -> stack
+    // exhaustion on prepare(). better-sqlite3 12.8.0 bundles 3.51.3. The
+    // chain need not reach the ~175k crash threshold: the contract under
+    // test is refusal of any view before attacker SQL is ever prepared.
+    const collateChain = "COLLATE NOCASE ".repeat(2000);
+    db.exec(`CREATE VIEW sessions AS SELECT 'x' ${collateChain}`);
+    db.close();
+    expect(openSessionDb(dbPath)).toBeNull();
+    // The downstream read path degrades to empty rather than preparing the
+    // view's chained SELECT and crashing.
+    expect(listSessions(10)).toEqual([]);
+  });
+
 });
