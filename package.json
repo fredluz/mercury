@@ -57,7 +57,7 @@
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@types/react-syntax-highlighter": "^15.5.13",
-    "better-sqlite3": "^12.8.0",
+    "better-sqlite3": "^12.11.1",
     "electron-updater": "^6.3.9",
     "i18next": "^25.6.0",
     "lucide-react": "^1.7.0",
