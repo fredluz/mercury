@@ -1,8 +1,8 @@
-import Database from "better-sqlite3";
-import { existsSync } from "fs";
+import type Database from "better-sqlite3";
 import {
   discoverSessionProfileScopes,
   getSessionProfileScope,
+  openSessionDb,
   type SessionProfileScope,
 } from "./session-db";
 
@@ -37,8 +37,7 @@ export interface SearchResult {
 }
 
 function getDb(scope: SessionProfileScope): Database.Database | null {
-  if (!existsSync(scope.dbPath)) return null;
-  return new Database(scope.dbPath, { readonly: true });
+  return openSessionDb(scope.dbPath);
 }
 
 function listSessionsForScope(
