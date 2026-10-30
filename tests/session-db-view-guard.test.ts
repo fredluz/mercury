@@ -160,6 +160,24 @@ describe("state.db view guard (CVE-2026-119371 mitigation)", () => {
     expect(listSessions(10)).toEqual([]);
   });
 
+  it("refuses a state.db whose sessions view wraps a multi-row VALUES clause (CVE-2026-119591)", () => {
+    const dbPath = dbPathForProfile(undefined);
+    mkdirSync(join(dbPath, ".."), { recursive: true });
+    const db = new Database(dbPath);
+    // CVE-2026-119591: SQLite <3.54.0 (better-sqlite3 12.8.0 bundles 3.51.3)
+    // exhausts the stack in sqlite3ExprDeleteNN()/countOfViewOptimization()
+    // when COUNT(*) runs over a view resolving to a large multi-row VALUES
+    // clause — the row values are chained into a deep TK_PLUS tree freed
+    // recursively. A few dozen rows stand in for the crash-scale clause:
+    // the contract under test is refusal of any view before attacker SQL
+    // is ever prepared.
+    const valuesRows = Array.from({ length: 48 }, (_, i) => `(${i},'x')`).join(",");
+    db.exec(`CREATE VIEW sessions AS SELECT * FROM (VALUES ${valuesRows})`);
+    db.close();
+    expect(openSessionDb(dbPath)).toBeNull();
+    expect(listSessions(10)).toEqual([]);
+  });
+
   it("still opens a state.db with a legitimate messages_fts FTS5 table", () => {
     const dbPath = dbPathForProfile(undefined);
     mkdirSync(join(dbPath, ".."), { recursive: true });

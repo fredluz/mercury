@@ -17,7 +17,11 @@ export interface SessionProfileScope {
  * selectExpander() recursion when prepare() expands a malicious VIEW
  * (CVE-2026-119371), and contains a use-after-free in the R-Tree
  * nodeWrite() path reachable through a poisoned rtree shadow table such as
- * sessions_node (CVE-2026-119378). An imported Hermes archive can land an
+ * sessions_node (CVE-2026-119378). The same VIEW refusal also blocks the
+ * crafted-view route to CVE-2026-119591, where a VIEW resolving to a large
+ * multi-row VALUES clause crashes sqlite3ExprDeleteNN() /
+ * countOfViewOptimization() via recursive free of the nested expression
+ * tree on COUNT(*). An imported Hermes archive can land an
  * attacker-controlled state.db under any profile home, so every open of
  * these DBs must go through this guard: any database containing a view, an
  * rtree/geopoly virtual table, or an rtree-style *_node/*_rowid/*_parent
@@ -62,7 +66,7 @@ export function openSessionDb(
     if ((viewRow?.count ?? 0) === 0 && (rtreeRow?.count ?? 0) === 0)
       return db;
     console.warn(
-      `[session-db] refusing to open ${dbPath}: database contains views or rtree/geopoly tables (CVE-2026-119371/CVE-2026-119378 mitigation)`,
+      `[session-db] refusing to open ${dbPath}: database contains views or rtree/geopoly tables (CVE-2026-119371/CVE-2026-119376/CVE-2026-119378/CVE-2026-119591 mitigation)`,
     );
   } catch {
     // Fall through and refuse the handle on any probe failure.
