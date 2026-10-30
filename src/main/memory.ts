@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from "fs";
 import { join } from "path";
-import Database from "better-sqlite3";
+import { openSessionDb } from "./session-db";
 import { profileHome, safeWriteFile } from "./utils";
 
 const ENTRY_DELIMITER = "\n§\n";
@@ -84,7 +84,8 @@ function getSessionStats(profile?: string): {
   if (!existsSync(dbPath)) return { totalSessions: 0, totalMessages: 0 };
 
   try {
-    const db = new Database(dbPath, { readonly: true });
+    const db = openSessionDb(dbPath);
+    if (!db) return { totalSessions: 0, totalMessages: 0 };
     try {
       const sessionRow = db
         .prepare("SELECT COUNT(*) as count FROM sessions")
