@@ -131,4 +131,69 @@ describe("state.db view guard (CVE-2026-119371 mitigation)", () => {
     expect(listSessions(10)).toEqual([]);
   });
 
+
+  it("refuses a state.db whose sessions table is an rtree virtual table (CVE-2026-119378)", () => {
+    const dbPath = dbPathForProfile(undefined);
+    mkdirSync(join(dbPath, ".."), { recursive: true });
+    const db = new Database(dbPath);
+    // CVE-2026-119378: SQLite <3.54.0 (better-sqlite3 12.8.0 bundles 3.51.3)
+    // has a use-after-free in R-Tree nodeWrite(), reachable via a poisoned
+    // sessions_node shadow table when the app runs UPDATE sessions. rtree is
+    // compiled into the bundled SQLite, which is why this vtab is the
+    // delivery vehicle. Any rtree/geopoly module must be refused.
+    db.exec(`CREATE VIRTUAL TABLE sessions USING rtree(id, minX, maxX)`);
+    db.close();
+    expect(openSessionDb(dbPath)).toBeNull();
+    expect(listSessions(10)).toEqual([]);
+  });
+
+  it("refuses a state.db carrying an orphan rtree-style shadow table", () => {
+    const dbPath = dbPathForProfile(undefined);
+    mkdirSync(join(dbPath, ".."), { recursive: true });
+    const db = new Database(dbPath);
+    // A crafted archive may drop the vtab row and plant only the poisoned
+    // shadow table (e.g. WITHOUT ROWID sessions_node); the *_node name is
+    // refused independently of the CREATE VIRTUAL TABLE probe.
+    db.exec(`CREATE TABLE sessions_node (nodeno INTEGER PRIMARY KEY, data BLOB)`);
+    db.close();
+    expect(openSessionDb(dbPath)).toBeNull();
+    expect(listSessions(10)).toEqual([]);
+  });
+
+  it("still opens a state.db with a legitimate messages_fts FTS5 table", () => {
+    const dbPath = dbPathForProfile(undefined);
+    mkdirSync(join(dbPath, ".."), { recursive: true });
+    const db = new Database(dbPath);
+    // Real Hermes state.db files ship CREATE VIRTUAL TABLE messages_fts
+    // USING fts5(content) plus its _data/_idx/_content/_docsize/_config
+    // shadow tables; none of these match the rtree/geopoly or *_node /
+    // *_rowid / *_parent probes, so the FTS5 db must remain accepted.
+    db.exec(`
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY,
+        source TEXT,
+        started_at INTEGER,
+        ended_at INTEGER,
+        message_count INTEGER,
+        model TEXT,
+        title TEXT
+      );
+      CREATE TABLE messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT,
+        role TEXT,
+        content TEXT,
+        timestamp INTEGER
+      );
+      INSERT INTO sessions (id, source, started_at, ended_at, message_count, model, title)
+        VALUES ('s-1', 'cli', 1700000000, NULL, 1, 'gpt-5.5', 'fixture');
+      CREATE VIRTUAL TABLE messages_fts USING fts5(content);
+      INSERT INTO messages_fts (rowid, content) VALUES (1, 'hello fts');
+    `);
+    db.close();
+    const handle = openSessionDb(dbPath);
+    expect(handle).not.toBeNull();
+    handle?.close();
+    expect(listSessions(10).map((session) => session.id)).toEqual(["s-1"]);
+  });
 });

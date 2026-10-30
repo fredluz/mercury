@@ -15,11 +15,14 @@ export interface SessionProfileScope {
  *
  * better-sqlite3 12.8.0 bundles SQLite 3.51.3, which crashes on unbounded
  * selectExpander() recursion when prepare() expands a malicious VIEW
- * (CVE-2026-119371). An imported Hermes archive can land an attacker-controlled
- * state.db under any profile home, so every open of these DBs must go through
- * this guard: any database containing a view is refused until a better-sqlite3
- * release bundling a fixed SQLite ships. Revert this guard when the dependency
- * update lands.
+ * (CVE-2026-119371), and contains a use-after-free in the R-Tree
+ * nodeWrite() path reachable through a poisoned rtree shadow table such as
+ * sessions_node (CVE-2026-119378). An imported Hermes archive can land an
+ * attacker-controlled state.db under any profile home, so every open of
+ * these DBs must go through this guard: any database containing a view, an
+ * rtree/geopoly virtual table, or an rtree-style *_node/*_rowid/*_parent
+ * shadow table is refused until a better-sqlite3 release bundling a fixed
+ * SQLite ships. Revert this guard when the dependency update lands.
  */
 export function openSessionDb(
   dbPath: string,
@@ -39,14 +42,27 @@ export function openSessionDb(
   }
 
   try {
-    const row = db
+    const viewRow = db
       .prepare(
         "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'view'",
       )
       .get() as { count: number } | undefined;
-    if ((row?.count ?? 0) === 0) return db;
+    // CVE-2026-119378: rtree/geopoly virtual tables (and their _node,
+    // _rowid, _parent shadow tables) expose the R-Tree nodeWrite()
+    // use-after-free in SQLite <3.54.0. FTS5 shadows are type='table' too
+    // but carry no 'CREATE VIRTUAL TABLE ... rtree/geopoly' sql and are not
+    // named *_node/*_rowid/*_parent, so legitimate messages_fts dbs pass.
+    const rtreeRow = db
+      .prepare(
+        "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND " +
+          "((sql LIKE 'CREATE VIRTUAL TABLE%' AND (sql LIKE '%rtree%' OR sql LIKE '%geopoly%')) " +
+          "OR name LIKE '%_node' OR name LIKE '%_rowid' OR name LIKE '%_parent')",
+      )
+      .get() as { count: number } | undefined;
+    if ((viewRow?.count ?? 0) === 0 && (rtreeRow?.count ?? 0) === 0)
+      return db;
     console.warn(
-      `[session-db] refusing to open ${dbPath}: database contains views (CVE-2026-119371 mitigation)`,
+      `[session-db] refusing to open ${dbPath}: database contains views or rtree/geopoly tables (CVE-2026-119371/CVE-2026-119378 mitigation)`,
     );
   } catch {
     // Fall through and refuse the handle on any probe failure.
