@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { homedir } from "os";
 import { basename, dirname, join, relative, resolve } from "path";
-import Database from "better-sqlite3";
+import { openSessionDb } from "../session-db";
 import { HERMES_HOME } from "../install/paths";
 import type {
   CandidateActivity,
@@ -267,7 +267,8 @@ function summarizeSessions(dbPath: string, root: string, evidence: CandidateEvid
   if (!isFile(dbPath)) return { count: 0, messageCount: 0, lastActive: null, sources: [], models: [] };
   addEvidence(evidence, root, "session", dbPath, "state.db sessions", undefined, ["transcript-derived"]);
   try {
-    const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+    const db = openSessionDb(dbPath);
+    if (!db) return { count: 0, messageCount: 0, lastActive: null, sources: [], models: [] };
     try {
       const aggregate = db
         .prepare(
